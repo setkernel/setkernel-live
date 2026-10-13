@@ -8,11 +8,38 @@ export const AGENTS = ["Vega", "Rigel", "Lyra", "Orion"];
 export const STATES = ["WORKING", "REVIEW", "DISCUSS", "IDLE", "PAUSED"];
 export const WORK = ["issue", "review", "changes", "discussion", "decision"];
 export const ACTIONS = ["picked_up", "opened_pr", "approved", "requested_changes", "pushed", "posted_round", "decision_pr"];
+// Fields that never reach the page, under the names GitHub's CI, deployment and push payloads use
+// (hq#113): deployment environments, branches, commit messages, run URLs, actors. The same list as
+// NEVER in setkernel/hq observability/wall/public.py. A clean event or agent state carrying one, at
+// any depth, is dropped whole, so a future CI event can't leak them through a field added in a hurry.
+export const NEVER = new Set([
+  "environment", "environment_name", "environment_url", "deployment", "deployment_environment", // environments
+  "ref", "branch", "branches", "head_branch", "head_ref", "base_ref", "ref_name", // branches
+  "commit", "commits", "head_commit", "commit_message", "message", "display_title", // commit messages
+  "run_url", "html_url", "url", "logs_url", "log_url", "jobs_url", "details_url", "target_url", "check_suite_url", // run URLs
+  "actor", "triggering_actor", "sender", "pusher", "author", "committer", "login", "user", "creator", // actor logins
+]);
 const REPO = /^[A-Za-z0-9._-]{1,100}$/;
 const MAX_EVENTS = 500;
 const FEED = 30;
 
+// Does v carry a NEVER field anywhere inside it?
+export function hasNever(v) {
+  if (Array.isArray(v)) return v.some(hasNever);
+  if (v && typeof v === "object") return Object.entries(v).some(([k, x]) => NEVER.has(k) || hasNever(x));
+  return false;
+}
+
+// The last check on anything that becomes public: null if it carries a NEVER field.
+export function guard(out) {
+  return out && !hasNever(out) ? out : null;
+}
+
 function cleanAgentInfo(v) {
+  return guard(agentInfo(v));
+}
+
+function agentInfo(v) {
   if (!v || typeof v !== "object" || !STATES.includes(v.state)) return null;
   const out = { state: v.state };
   if (WORK.includes(v.work)) out.work = v.work;
@@ -22,6 +49,10 @@ function cleanAgentInfo(v) {
 
 // One pushed event -> a clean copy, or null. Unknown fields are dropped, unknown values rejected.
 export function cleanEvent(e) {
+  return guard(eventFields(e));
+}
+
+function eventFields(e) {
   if (!e || typeof e !== "object" || !AGENTS.includes(e.agent)) return null;
   const ts = Number.isFinite(e.ts) ? Math.trunc(e.ts) : null;
   if (e.t === "agent") {
