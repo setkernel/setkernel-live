@@ -26,7 +26,7 @@ Public repo: everything here is visible to anyone.
 a laptop.
 
 ## Layout
-- `src/worker.js`: routes (`/ws`, `/api/state`, `/ingest`) and the `Hub` Durable Object.
+- `src/worker.js`: routes (`/ws`, `/api/state`, `/ingest`, `/github/webhook`, `/github/queue`) and the `Hub` Durable Object.
 - `src/logic.js`: the allowlist and the public state (pure, tested).
 - `src/access.js`: checks the Cloudflare Access token on `/ingest` and `/github/queue` (pure, tested).
 - `src/github.js`: the GitHub Actions webhook check, the fields it keeps, and the pull queue (pure, tested).

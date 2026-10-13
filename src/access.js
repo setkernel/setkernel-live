@@ -1,6 +1,7 @@
-// Checks the Cloudflare Access token on /ingest. Access already admits only the live-ingest
-// service token at the edge (setkernel-cloudflare, access stack); this is the second check, so a
-// mistake in Access config still can't let anyone push to the page.
+// Checks the Cloudflare Access token on /ingest and /github/queue. Access already admits only the
+// live-ingest (or live-queue) service token at the edge (setkernel-cloudflare, access stack); this
+// is the second check, so a mistake in Access config still can't let anyone push to the page or
+// read the queue.
 
 export const ISSUER = "https://setkernel.cloudflareaccess.com";
 export const CERTS = `${ISSUER}/cdn-cgi/access/certs`;
