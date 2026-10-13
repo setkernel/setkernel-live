@@ -170,10 +170,10 @@ describe("fan-out", () => {
   it("sends only allowlisted fields to viewers", async () => {
     const v = await viewer();
     await v.next(); // hello
-    await ingest(batch([{ ...claude(), title: "secret PR title", host: "sk-dev01" }, { t: "msg", kind: "github", agent: "Mallory", action: "opened_pr" }]));
+    await ingest(batch([{ ...claude(), title: "secret PR title", host: "box.example.test" }, { t: "msg", kind: "github", agent: "Mallory", action: "opened_pr" }]));
     const msg = await v.next();
     expect(msg.events).toEqual([{ t: "msg", kind: "claude", agent: "Vega", ts: expect.any(Number) }]);
-    expect(JSON.stringify(msg)).not.toMatch(/secret|sk-dev01|Mallory/);
+    expect(JSON.stringify(msg)).not.toMatch(/secret|box.example.test|Mallory/);
   });
 });
 
