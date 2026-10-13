@@ -14,8 +14,9 @@ Public repo: everything here is visible to anyone.
 ```sh
 # install:  npm ci
 # test:     npm test                 (node --test: allowlist, counters, Access token check)
+# worker:   npm run test:worker      (vitest in workerd: the real Worker and Hub, see test/worker/)
 # lint:     npm run check            (node --check on every script)
-# validate: npm run validate         (check + test + wrangler deploy --dry-run; what CI runs)
+# validate: npm run validate         (check + test + test:worker + wrangler deploy --dry-run; what CI runs)
 ```
 
 ## Deploy
@@ -30,7 +31,10 @@ a laptop.
 - `src/logic.js`: the allowlist and the public state (pure, tested).
 - `src/access.js`: checks the Cloudflare Access token on `/ingest` (pure, tested).
 - `public/`: the page (`index.html`, `app.js`, `style.css`) and its security headers (`_headers`).
-- `test/`: `node --test` suites.
+- `test/`: `node --test` suites for the pure modules.
+- `test/worker/`: vitest suites run in workerd by `@cloudflare/vitest-plugin` (`vitest.config.mjs`
+  reads `wrangler.jsonc`). They fake Access's certs with a throwaway key and drive `/ingest`, `/ws`
+  and `/api/state` end to end.
 
 ## Traps and don't-touch
 - Anything added to what the page shows must be added to the allowlist on **both** sides
@@ -41,3 +45,7 @@ a laptop.
 - The page builds everything with `textContent`, never `innerHTML`; keep it that way. The CSP in
   `public/_headers` allows only same-origin scripts and Google Fonts.
 - The Durable Object migration tag `v1` creates `Hub`; never edit an applied migration, add a new tag.
+- vitest stays on 4.1.x for now: with vitest 5.0.4, `@cloudflare/vitest-plugin` 1.4.0 fails every
+  suite ("no such file or directory, readAll …/.vitest-cache/…").
+- In worker tests, read every response body. An unread body keeps the request open, and
+  `evictDurableObject` then waits for it until the test times out.
