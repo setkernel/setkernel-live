@@ -14,7 +14,8 @@ Public repo: everything here is visible to anyone.
 ```sh
 # install:  npm ci
 # test:     npm test                 (node --test: allowlist, state and replay buffer, Access token
-#                                    check, GitHub receiver, page wording/demo/replay/layout, page hosts and contrast)
+#                                    check, GitHub receiver, Buzz alert, page wording/demo/replay/layout,
+#                                    page hosts and contrast)
 # lint:     npm run check            (node --check on every script)
 # validate: npm run validate         (check + test + wrangler deploy --dry-run; what CI runs)
 ```
@@ -31,6 +32,8 @@ a laptop.
 - `src/logic.js`: the allowlist (pure, tested); re-exports the state from `public/lib/state.js`.
 - `src/access.js`: checks the Cloudflare Access token on `/ingest` and `/github/queue` (pure, tested).
 - `src/github.js`: the GitHub Actions webhook check, the fields it keeps, and the pull queue (pure, tested).
+- `src/watch.js`: when to post "updates stopped" and "updates resumed" to Buzz (pure, tested).
+- `src/buzz.js`: signs and posts a Buzz message as the Worker's own identity (tested).
 - `public/`: the page (`index.html`, `app.js`, `style.css`), its security headers (`_headers`),
   `favicon.svg`, `og.png` (the share preview) and `fonts/`.
 - `public/lib/`: ES modules for the page. `state.js` is the public state and the 24-hour replay
@@ -58,4 +61,6 @@ a laptop.
 - The page builds everything with `textContent`, never `innerHTML`; keep it that way. The CSP in
   `public/_headers` allows only same-origin scripts, styles and fonts; the fonts are self-hosted in
   `public/fonts/` (SIL OFL, licences beside them). Never add a third-party host.
+- `BUZZ_PRIVATE_KEY` is a Worker secret from Infisical (README, "When updates stop"); never put it
+  in `wrangler.jsonc`, a log line or an error message.
 - The Durable Object migration tag `v1` creates `Hub`; never edit an applied migration, add a new tag.

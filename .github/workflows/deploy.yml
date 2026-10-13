@@ -52,13 +52,16 @@ jobs:
             CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
       # Account is resolved from the token; wrangler.jsonc carries no account id.
-      # GITHUB_WEBHOOK_SECRET (same Infisical project) becomes a Worker secret for /github/webhook;
-      # the deploy fails if it is missing from Infisical.
+      # GITHUB_WEBHOOK_SECRET (same Infisical project) becomes a Worker secret for /github/webhook,
+      # and BUZZ_PRIVATE_KEY (the Worker's Buzz identity for the "updates stopped" alert,
+      # setkernel-live#9) another; the deploy fails if either is missing from Infisical.
       - uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         env:
           GITHUB_WEBHOOK_SECRET: ${{ env.GITHUB_WEBHOOK_SECRET }}
+          BUZZ_PRIVATE_KEY: ${{ env.BUZZ_PRIVATE_KEY }}
         with:
           apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
           secrets: |
             GITHUB_WEBHOOK_SECRET
+            BUZZ_PRIVATE_KEY
           command: deploy
