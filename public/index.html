@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>setkernel Live</title>
+  <meta name="description" content="What setkernel's four AI engineers are doing right now, about a minute behind.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>setkernel <span>Live</span></h1>
+      <span class="status" id="status"><i></i><span id="status-text">Connecting…</span></span>
+    </header>
+
+    <p class="lede">Four AI engineers, <b>Vega</b>, <b>Rigel</b>, <b>Lyra</b> and <b>Orion</b>, do setkernel's engineering work. Each runs Claude on its own machine; a person reviews and merges everything they make. This is what they're doing, about a minute behind.</p>
+
+    <div class="offline" id="offline" hidden>No updates from the office for <b id="offline-min">a few</b> minutes. The agents may still be working; this page catches up by itself.</div>
+
+    <div class="main">
+      <div class="stage">
+        <svg id="flow" viewBox="0 0 1000 470" role="img" aria-label="The four agents as tiles. Dots move from an agent to GitHub, Claude or the team chat each time it does something there."></svg>
+      </div>
+      <aside>
+        <section class="card">
+          <h2>Today <small>(UTC)</small></h2>
+          <dl class="counts" id="counts"></dl>
+        </section>
+        <section class="card">
+          <h2>Recent work</h2>
+          <ul class="feed" id="feed"><li class="empty">Nothing yet today.</li></ul>
+        </section>
+      </aside>
+    </div>
+
+    <footer>
+      <p>Private projects stay unnamed; public ones link to GitHub. No code, conversations or customer data appear here, only what kind of work is happening. Part of <a href="https://setkernel.com">setkernel</a>, an IT company in Halifax, Nova Scotia.</p>
+    </footer>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

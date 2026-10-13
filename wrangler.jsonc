@@ -1,0 +1,19 @@
+// live.setkernel.com (setkernel/hq#105). Deployed only by .github/workflows/deploy.yml.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "setkernel-live",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-09-23",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "live.setkernel.com", "custom_domain": true }],
+  "assets": { "directory": "./public", "binding": "ASSETS" },
+  "durable_objects": { "bindings": [{ "name": "HUB", "class_name": "Hub" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Hub"] }],
+  "vars": {
+    // Audience tag of the "live ingest" Access app (setkernel-cloudflare, access stack): not a
+    // secret. Until it's set, /ingest answers 503 and the page shows the office offline.
+    "INGEST_AUD": ""
+  },
+  "observability": { "enabled": true }
+}

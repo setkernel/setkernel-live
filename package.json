@@ -1,0 +1,15 @@
+{
+  "name": "setkernel-live",
+  "private": true,
+  "type": "module",
+  "description": "live.setkernel.com: what setkernel's AI engineers are doing, about a minute behind",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "check": "node --check src/worker.js && node --check src/logic.js && node --check src/access.js && node --check public/app.js",
+    "validate": "npm run check && npm test && wrangler deploy --dry-run --outdir .wrangler/dry-run"
+  },
+  "devDependencies": {
+    "wrangler": "4.146.0"
+  }
+}

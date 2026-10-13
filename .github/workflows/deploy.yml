@@ -1,0 +1,58 @@
+name: Deploy
+
+on:
+  workflow_dispatch: {} # no push trigger: Raghav starts it by hand, like the other Worker repos
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: setkernel-linux
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # OIDC login to Infisical
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Re-gate before deploy
+        run: npm run validate
+
+      # The deploy token lives in Infisical (project setkernel-live, prod), not in GitHub
+      # (setkernel decision 0003 + amendments). Fetched last, so no npm script runs with it. The
+      # org-runner Access token gets past Cloudflare Access; the identity only accepts this
+      # workflow on main of this repo.
+      - name: Fetch the deploy token from Infisical
+        uses: Infisical/secrets-action@d2e351f16c6ca20d17c85e6c992e04bdeb64e87d # v1.0.18
+        with:
+          method: oidc
+          identity-id: 37b06681-c931-4bad-b3cf-4e76bfb633dc # setkernel-live-deploy
+          oidc-audience: https://github.com/setkernel
+          domain: https://secrets-api.setkernel.net
+          project-slug: setkernel-live
+          env-slug: prod
+          secret-path: /
+          export-type: env
+          extra-headers: |
+            CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+            CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      # Account is resolved from the token; wrangler.jsonc carries no account id.
+      - uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
+          command: deploy
