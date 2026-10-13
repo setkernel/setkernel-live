@@ -124,7 +124,7 @@ el("rect", { x: n.x, y: n.y, width: n.w, height: n.h, rx: 6, class: "node" }, no
 
   // ---- CI
   const ciDots = el("g", {}, nodeLayer);
-  const short = (s, max = 22) => (s.length > max ? s.slice(0, max - 1) + "…" : s);
+  const short = (s, max = 16) => (s.length > max ? s.slice(0, max - 1) + "…" : s);
   function showCi(runs) {
     const n = nodes.ci;
     if (!Array.isArray(runs)) return;
