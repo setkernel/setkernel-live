@@ -71,7 +71,7 @@ test("helpers are counted today, stay out of the feed and reset each day", () =>
     { t: "msg", kind: "helper", agent: "Mallory", ts: 102 },
   ], agents: {} });
   let s = applyBatch(emptyState("2026-10-13"), batch, 1_000_000, "2026-10-13");
-  assert.equal(s.counts.helpers, 2);
+  assert.deepEqual(s.counts, { claude: 0, chat: 0, prs: 0, reviews: 0, started: 0, helpers: 2 });
   assert.equal(s.feed.length, 0);
   s = applyBatch(s, cleanBatch({ events: [], agents: {} }), 2_000_000, "2026-10-14");
   assert.equal(s.counts.helpers, 0);
