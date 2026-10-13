@@ -1,213 +1,334 @@
-// live.setkernel.com page. Connects to /ws, draws the four agents and the places their work goes,
-// and moves a dot along a pipe for each event. Everything shown is built with textContent and
-// attributes, never innerHTML, so nothing in a batch can inject markup.
-(() => {
-  "use strict";
-  const NS = "http://www.w3.org/2000/svg";
-  const svg = document.getElementById("flow");
-  const css = getComputedStyle(document.documentElement);
-  const C = (k) => css.getPropertyValue("--" + k).trim();
-  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const AGENTS = ["Vega", "Rigel", "Lyra", "Orion"];
-  const OFFLINE_AFTER_MS = 120_000;
+// live.setkernel.com page. Connects to /ws (or, with ?demo, runs the sample simulation through the
+// same reducer as the Durable Object), and shows: one line of what's happening now, the sky, today
+// in a few numbers, the last 24 hours, and the recent-work stream. Everything shown is built with
+// textContent and attributes, never innerHTML, so nothing in a batch can inject markup.
+import { AGENTS, applyBatch, emptyReplay, emptyState, recordReplay, replaySince, view } from "/lib/state.js";
+import { ACTION_TEXT, OFFLINE_AFTER_MS, clock, createAnnouncer, headline, isActive, reviewTarget, starLabel, tally } from "/lib/words.js";
+import { PLACES, PLACE_NAMES, skyLayout } from "/lib/layout.js";
+import { createSky } from "/lib/sky.js";
+import { createDemo } from "/lib/demo.js";
+import { REPLAYS, plan } from "/lib/replay.js";
 
-  const ACTION_TEXT = {
-    picked_up: "started on an issue",
-    opened_pr: "opened a pull request",
-    approved: "approved a teammate's pull request",
-    requested_changes: "asked for changes on a teammate's pull request",
-    pushed: "pushed fixes to a pull request",
-    posted_round: "posted in a design discussion",
-    decision_pr: "wrote up a decision",
-  };
-  const DOING = {
-    issue: "Working on an issue", changes: "Addressing review feedback", decision: "Writing up a decision",
-    review: "Reviewing a pull request", discussion: "In a design discussion",
-  };
-  const PILL = { WORKING: ["WORKING", "claude"], REVIEW: ["REVIEWING", "chat"], DISCUSS: ["DISCUSSING", "github"], PAUSED: ["PAUSED", "warn"], IDLE: ["IDLE", "line"] };
-
-  // ---- drawing
-  const el = (tag, attrs = {}, parent = svg) => {
-    const e = document.createElementNS(NS, tag);
-    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
-    parent.appendChild(e);
-    return e;
-  };
-  const text = (str, attrs, parent) => {
-    const t = el("text", attrs, parent);
-    t.textContent = str;
-    return t;
-  };
-
-  const nodes = {
-    github: { x: 70, label: "GitHub", sub: "issues, pull requests, reviews", color: "github" },
-    claude: { x: 380, label: "Claude", sub: "the model doing the work", color: "claude" },
-    chat: { x: 690, label: "Team chat", sub: "status updates", color: "chat" },
-  };
-  const pipeLayer = el("g");
-  const nodeLayer = el("g");
-  const dotLayer = el("g");
-  for (const n of Object.values(nodes)) {
-    n.y = 24; n.w = 240; n.h = 76;
-    el("rect", { x: n.x, y: n.y, width: n.w, height: n.h, rx: 6, class: "node" }, nodeLayer);
-    text(n.label, { x: n.x + 16, y: n.y + 32, class: "n-name" }, nodeLayer);
-    text(n.sub, { x: n.x + 16, y: n.y + 54, class: "n-sub" }, nodeLayer);
-    n.count = text("", { x: n.x + n.w - 14, y: n.y + 28, class: "n-count", "text-anchor": "end" }, nodeLayer);
+const $ = (id) => document.getElementById(id);
+const make = (tag, props = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "text") e.textContent = v;
+    else if (k === "class") e.className = v;
+    else e.setAttribute(k, v);
   }
+  e.append(...kids);
+  return e;
+};
+const params = new URLSearchParams(location.search);
+const DEMO = params.has("demo");
+const css = getComputedStyle(document.documentElement);
+const color = (k) => css.getPropertyValue(`--${k}`).trim();
+const reducedQuery = matchMedia("(prefers-reduced-motion: reduce)");
+const COLORS = Object.fromEntries([...AGENTS.map((n) => [n, color(n.toLowerCase())]), ...PLACES.map((k) => [k, color(k)])]);
 
-  const agents = {};
-  AGENTS.forEach((name, i) => {
-    const a = { name, x: 22 + i * 246, y: 290, w: 215, h: 150 };
-    agents[name] = a;
-    const cx = a.x + a.w / 2;
-    const offsets = { github: -30, claude: 0, chat: 30 };
-    for (const [key, n] of Object.entries(nodes)) {
-      const x1 = cx + offsets[key], y1 = a.y, x2 = n.x + 40 + i * 53, y2 = n.y + n.h, m = (y1 + y2) / 2;
-      a["pipe_" + key] = el("path", { d: `M${x1},${y1} C${x1},${m} ${x2},${m} ${x2},${y2}`, class: "pipe" }, pipeLayer);
-    }
-    a.rect = el("rect", { x: a.x, y: a.y, width: a.w, height: a.h, rx: 6, class: "tile" }, nodeLayer);
-    text(name, { x: a.x + 16, y: a.y + 34, class: "a-name" }, nodeLayer);
-    text("AI engineer", { x: a.x + 16, y: a.y + 54, class: "a-role" }, nodeLayer);
-    a.pillBg = el("rect", { x: a.x + a.w - 92, y: a.y + 16, width: 78, height: 20, rx: 10, fill: C("line") }, nodeLayer);
-    a.pill = text("IDLE", { x: a.x + a.w - 53, y: a.y + 30, class: "pill-text", "text-anchor": "middle", fill: C("ink-dim") }, nodeLayer);
-    a.doing = text("Waiting for work", { x: a.x + 16, y: a.y + 92, class: "a-doing" }, nodeLayer);
-    a.repo = text("", { x: a.x + 16, y: a.y + 114, class: "a-repo" }, nodeLayer);
+let skew = 0; // server clock minus ours
+const serverNow = () => Date.now() + skew;
+let current = { agents: {}, counts: {}, byAgent: {}, seen: {}, feed: [], hours: [], lastIngest: 0 };
+let replaying = null;
+
+// ---- the sky and the labels over it
+const skyEl = $("sky");
+const sky = createSky($("sky-canvas"), { reduced: reducedQuery.matches, colors: COLORS });
+const starEls = {}, placeEls = {};
+for (const name of AGENTS) {
+  const li = make("li", { class: "idle" }, make("b", { text: name }), make("span", { class: "state" }), make("span", { class: "tally" }));
+  li.style.setProperty("--star", COLORS[name]);
+  starEls[name] = li;
+  $("stars").append(li);
+}
+for (const key of PLACES) {
+  const li = make("li", {}, PLACE_NAMES[key], make("small"));
+  placeEls[key] = li;
+  $("places").append(li);
+}
+function layoutSky() {
+  const { width, height } = skyEl.getBoundingClientRect();
+  if (!width || !height) return;
+  const L = skyLayout(width, height);
+  sky.resize(L, devicePixelRatio);
+  const place = (li, p) => {
+    li.style.setProperty("--x", `${p.x}px`);
+    li.style.setProperty("--y", `${p.y}px`);
+  };
+  for (const name of AGENTS) {
+    const st = L.stars[name], left = st.label === "left";
+    place(starEls[name], st);
+    starEls[name].classList.toggle("left", left);
+    // the words wrap rather than run off the sky
+    starEls[name].style.maxWidth = `${Math.max(120, (left ? st.x : width - st.x) - 26)}px`;
+  }
+  for (const key of PLACES) {
+    place(placeEls[key], L.places[key]);
+    placeEls[key].className = L.places[key].label;
+  }
+  declutter();
+}
+new ResizeObserver(layoutSky).observe(skyEl);
+
+// Where a star's words would run into a place's label (mid-size skies), drop the tally first,
+// then the detail. The name and state always stay.
+function declutter() {
+  for (const name of AGENTS) starEls[name].classList.remove("compact", "tiny");
+  const overlap = (r, b) => r.left < b.right + 8 && r.right + 8 > b.left && r.top < b.bottom && r.bottom > b.top;
+  const others = (me) => [...PLACES.map((k) => placeEls[k]), ...AGENTS.filter((n) => n !== me).map((n) => starEls[n])];
+  const hits = (name) => {
+    const r = starEls[name].getBoundingClientRect();
+    return others(name).some((el) => overlap(r, el.getBoundingClientRect()));
+  };
+  for (const name of AGENTS) {
+    if (hits(name)) starEls[name].classList.add("compact");
+    if (hits(name)) starEls[name].classList.add("tiny");
+  }
+}
+
+// draw only while someone can see it
+let onScreen = true;
+const wake = () => (onScreen && !document.hidden ? sky.start() : sky.stop());
+new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; wake(); }).observe(skyEl);
+document.addEventListener("visibilitychange", wake);
+
+// ---- rendering the picture
+function showNow() {
+  const h = headline({ ...current, now: serverNow() });
+  $("now-main").textContent = h.main;
+  $("now-sub").textContent = h.sub;
+  document.querySelector(".now").className = `now ${h.mood}`;
+  $("offer").hidden = DEMO || h.mood === "live";
+}
+
+function showStars() {
+  for (const name of AGENTS) {
+    const info = current.agents?.[name];
+    const { state, detail } = starLabel(info);
+    const li = starEls[name];
+    li.classList.toggle("idle", !isActive(info));
+    const st = li.querySelector(".state");
+    st.replaceChildren(state, ...(detail ? [" ", make("em", { text: detail })] : []));
+    li.querySelector(".tally").textContent = tally(current.byAgent?.[name]);
+  }
+  const c = current.counts || {};
+  const placeCount = { claude: c.claude, github: (c.started ?? 0) + (c.prs ?? 0) + (c.reviews ?? 0), chat: c.chat };
+  for (const key of PLACES) placeEls[key].querySelector("small").textContent = `${fmt.format(placeCount[key] ?? 0)} today`;
+  sky.setAgents(current.agents);
+  declutter();
+}
+
+const fmt = new Intl.NumberFormat("en");
+function showNumbers() {
+  const c = current.counts || {};
+  const big = [["Pull requests opened", c.prs], ["Reviews", c.reviews], ["Issues started", c.started], ["Claude requests", c.claude]];
+  $("numbers").replaceChildren(...big.map(([label, v]) => make("div", {}, make("dt", { text: label }), make("dd", { text: fmt.format(v ?? 0) }))));
+  $("minor").replaceChildren(
+    make("span", { text: `${fmt.format(c.chat ?? 0)} team-chat posts` }),
+    make("span", { text: `${fmt.format(c.helpers ?? 0)} helpers used` }),
+  );
+}
+
+const ROWS = [["claude", "Claude requests"], ["github", "GitHub actions"], ["chat", "Team-chat posts"]];
+function showHours() {
+  const hours = Array.isArray(current.hours) && current.hours.length === 24 ? current.hours : null;
+  if (!hours) return;
+  const said = [];
+  const rows = ROWS.map(([key, name]) => {
+    const vals = hours.map((b) => (Number.isFinite(b[key]) && b[key] > 0 ? b[key] : 0));
+    const peak = Math.max(...vals), total = vals.reduce((a, v) => a + v, 0);
+    const bars = make("div", { class: "hbars", "aria-hidden": "true" }, ...vals.map((v, i) => {
+      const bar = make("i", { title: `${clock(hours[i].h * 3600)} UTC: ${fmt.format(v)} ${name.toLowerCase()}` });
+      if (!v) bar.className = "zero";
+      bar.style.setProperty("--v", peak ? String(v / peak) : "0");
+      bar.style.setProperty("--c", COLORS[key]);
+      return bar;
+    }));
+    said.push(total ? `${name}: ${total}, busiest at ${clock(hours[vals.indexOf(peak)].h * 3600)} with ${peak}.` : `${name}: none.`);
+    return make("div", { class: "hrow" }, make("p", {}, name, make("small", { text: total ? `${fmt.format(total)} · peak ${fmt.format(peak)}/h` : "none" })), bars);
   });
+  const ticks = make("div", { class: "hticks", "aria-hidden": "true" }, make("span"),
+    make("div", {}, ...[0, 6, 12, 18].map((i) => make("span", { text: clock(hours[i].h * 3600) }))));
+  $("hours").replaceChildren(...rows, ticks);
+  $("hours-desc").textContent = `Per hour over the last 24 hours, ${clock(hours[0].h * 3600)} to now, UTC. ${said.join(" ")}`;
+}
 
-  function showAgent(name, info) {
-    const a = agents[name];
-    if (!a) return;
-    const state = info?.state || "IDLE";
-    const [label, color] = PILL[state] || PILL.IDLE;
-    a.pill.textContent = label;
-    a.pill.setAttribute("fill", color === "line" ? C("ink-dim") : C("bg"));
-    a.pillBg.setAttribute("fill", C(color));
-    a.doing.textContent = state === "IDLE" ? "Waiting for work" : state === "PAUSED" ? "Paused" : DOING[info.work] || "Working";
-    a.repo.textContent = info?.repo && state !== "IDLE" ? info.repo : "";
-  }
+function feedItem(f) {
+  const who = make("b", { text: f.agent });
+  who.style.setProperty("--star", COLORS[f.agent] || COLORS.Vega);
+  const p = make("span", {}, who, ` ${ACTION_TEXT[f.action] || "did something"}`);
+  if (f.repo) p.append(" in ", make("a", { href: `https://github.com/setkernel/${encodeURIComponent(f.repo)}`, rel: "noopener", text: f.repo }));
+  return make("li", {}, make("time", { datetime: new Date(f.ts * 1000).toISOString(), text: clock(f.ts) }), p);
+}
+function showFeed() {
+  const feed = (current.feed || []).slice(0, 20);
+  $("feed").replaceChildren(...(feed.length ? feed.map(feedItem) : [make("li", { class: "empty", text: "Nothing yet." })]));
+}
 
-  // ---- dots
-  const dots = [];
-  function dot(name, key) {
-    const a = agents[name], n = nodes[key];
-    if (!a || !n || document.hidden) return;
-    const p = a["pipe_" + key], color = C(n.color);
-    a.rect.style.stroke = color;
-    setTimeout(() => { a.rect.style.stroke = ""; }, 300);
-    if (reduced) {
-      p.style.stroke = color;
-      setTimeout(() => { p.style.stroke = ""; }, 500);
-      return;
-    }
-    if (dots.length > 120) return;
-    const c = el("circle", { r: key === "claude" ? 4 : 5, fill: color, class: "dot" }, dotLayer);
-    c.style.color = color;
-    dots.push({ c, p, len: p.getTotalLength(), t0: performance.now(), dur: 1500 });
+let lastStatus = "";
+function showStatus(connected) {
+  const quiet = !current.lastIngest || serverNow() - current.lastIngest > OFFLINE_AFTER_MS;
+  let cls, text;
+  if (DEMO) [cls, text] = ["demo", "Demo · sample data"];
+  else if (!connected) [cls, text] = ["down", "Reconnecting…"];
+  else if (quiet) [cls, text] = ["down", current.lastIngest ? "Office offline" : "Waiting for the office"];
+  else [cls, text] = ["live", "Live · about a minute behind"];
+  if (cls + text !== lastStatus) { // only on change, so screen readers aren't told twice
+    lastStatus = cls + text;
+    $("status").className = `status ${cls}`;
+    $("status-text").textContent = text;
   }
-  function frame(now) {
-    for (let i = dots.length - 1; i >= 0; i--) {
-      const d = dots[i], f = (now - d.t0) / d.dur;
-      if (f >= 1) { d.c.remove(); dots.splice(i, 1); continue; }
-      const pt = d.p.getPointAtLength(f * d.len);
-      d.c.setAttribute("cx", pt.x);
-      d.c.setAttribute("cy", pt.y);
-      d.c.setAttribute("opacity", f < 0.1 ? f * 10 : f > 0.9 ? (1 - f) * 10 : 1);
-    }
-    requestAnimationFrame(frame);
-  }
-  requestAnimationFrame(frame);
+  $("asof-time").textContent = current.lastIngest ? clock(current.lastIngest) : "--:--";
+}
 
-  // ---- counters and feed
-  const countsEl = document.getElementById("counts");
-  function showCounts(c = {}) {
-    const rows = [["Issues started", c.started], ["Pull requests opened", c.prs], ["Reviews", c.reviews], ["Claude requests", c.claude], ["Team-chat posts", c.chat]];
-    countsEl.replaceChildren(...rows.flatMap(([label, v]) => {
-      const dt = document.createElement("dt"); dt.textContent = label;
-      const dd = document.createElement("dd"); dd.textContent = String(v ?? 0);
-      return [dt, dd];
-    }));
-    nodes.claude.count.textContent = `${c.claude ?? 0} today`;
-    nodes.github.count.textContent = `${(c.started ?? 0) + (c.prs ?? 0) + (c.reviews ?? 0)} today`;
-    nodes.chat.count.textContent = `${c.chat ?? 0} today`;
-  }
+function render(connected = true) {
+  showNow();
+  showStars();
+  showNumbers();
+  showHours();
+  showFeed();
+  showStatus(connected);
+}
 
-  let skew = 0; // server clock minus ours
-  const ago = (ts) => {
-    const s = Math.max(0, Math.round((Date.now() + skew) / 1000 - ts));
-    return s < 90 ? "about a minute ago" : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`;
+// ---- events: light across the sky, spread over the seconds they really took
+const announcer = createAnnouncer({ say: (t) => { $("announce").textContent = t; } });
+function light(e, recent) {
+  if (document.hidden) return;
+  sky.event(e.agent, e.kind === "github" ? "github" : e.kind);
+  const target = e.kind === "github" ? reviewTarget(e, recent) : null;
+  if (target) sky.review(e.agent, target);
+}
+function play(events) {
+  const msgs = events.filter((e) => e.t === "msg");
+  if (!msgs.length || replaying) return;
+  const first = Math.min(...msgs.map((e) => e.ts ?? Infinity));
+  const recent = current.feed || [];
+  for (const e of msgs) {
+    const delay = Number.isFinite(first) ? Math.min(5000, Math.max(0, ((e.ts ?? first) - first) * 1000)) : 0;
+    setTimeout(() => light(e, recent), delay);
+  }
+}
+
+function apply(msg) {
+  if (typeof msg.now === "number") skew = msg.now - Date.now();
+  for (const k of ["agents", "counts", "byAgent", "seen", "feed", "hours"]) if (msg[k] && typeof msg[k] === "object") current[k] = msg[k];
+  if (typeof msg.lastIngest === "number") current.lastIngest = msg.lastIngest;
+  render(true);
+  if (msg.t === "batch" && Array.isArray(msg.events)) {
+    announcer.add(msg.events);
+    play(msg.events);
+  }
+}
+
+// ---- live: the WebSocket, reconnecting with backoff
+let ws, retry = 1000;
+function connect() {
+  ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
+  ws.onopen = () => { retry = 1000; showStatus(true); };
+  ws.onmessage = (m) => {
+    try { apply(JSON.parse(m.data)); } catch (err) { console.error(err); }
   };
-  const feedEl = document.getElementById("feed");
-  let feed = [];
-  function showFeed() {
-    if (!feed.length) {
-      const li = document.createElement("li"); li.className = "empty"; li.textContent = "Nothing yet today.";
-      feedEl.replaceChildren(li);
-      return;
+  ws.onclose = () => {
+    showStatus(false);
+    setTimeout(connect, retry);
+    retry = Math.min(retry * 2, 30_000);
+  };
+}
+
+// ---- demo: the sample simulation, through the same reducer and view as the Durable Object
+let demoReplay = emptyReplay();
+function startDemo() {
+  $("demo-note").hidden = false;
+  document.title = `Demo · ${document.title}`;
+  const nowS = Math.trunc(Date.now() / 1000);
+  const sim = createDemo(17, nowS - 86_400);
+  const day = (s) => new Date(s * 1000).toISOString().slice(0, 10);
+  const midnight = Math.floor(nowS / 86_400) * 86_400;
+  const history = sim.advance(nowS);
+  const before = { events: history.events.filter((e) => e.ts < midnight), agents: history.agents };
+  const after = { events: history.events.filter((e) => e.ts >= midnight), agents: history.agents };
+  let state = applyBatch(emptyState(day(midnight - 1)), before, (midnight - 1) * 1000, day(midnight - 1));
+  state = applyBatch(state, after, nowS * 1000, day(nowS));
+  demoReplay = recordReplay(emptyReplay(), history, nowS * 1000);
+  apply({ t: "hello", ...view(state, demoReplay, Date.now()) });
+  setInterval(() => {
+    const now = Date.now();
+    const batch = sim.advance(Math.trunc(now / 1000));
+    state = applyBatch(state, batch, now, day(now / 1000));
+    demoReplay = recordReplay(demoReplay, batch, now);
+    apply({ t: "batch", events: batch.events, ...view(state, demoReplay, now) });
+  }, 2000);
+}
+
+// ---- replay: the last hour in a minute, the last day in two
+const replayButtons = [...document.querySelectorAll("[data-replay]")];
+async function startReplay(h) {
+  stopReplay();
+  const cfg = REPLAYS[h];
+  const to = Math.trunc(serverNow() / 1000), from = to - cfg.hours * 3600;
+  let data;
+  try {
+    data = DEMO ? replaySince(demoReplay, from) : await (await fetch(`/api/replay?h=${h}`, { cache: "no-store" })).json();
+  } catch {
+    $("now-sub").textContent = "The replay couldn't be loaded. Try again in a moment.";
+    return;
+  }
+  const show = plan(data, { from, to, durationMs: cfg.durationMs, maxPulses: cfg.maxPulses });
+  const work = show.filter((e) => e.kind === "github");
+  sky.clear();
+  $("replaying").hidden = false;
+  $("replay-what").textContent = show.length ? `Replaying the last ${h === 1 ? "hour" : "24 hours"}` : `Nothing happened in the last ${h === 1 ? "hour" : "24 hours"}`;
+  for (const b of replayButtons) if (b.closest(".controls")) b.setAttribute("aria-pressed", String(b.dataset.replay === String(h)));
+  const t0 = performance.now();
+  let i = 0;
+  const step = () => {
+    const ms = performance.now() - t0;
+    while (i < show.length && show[i].at <= ms) {
+      const e = show[i++];
+      const recent = work.filter((w) => w.ts < e.ts).reverse();
+      light(e, recent);
     }
-    feedEl.replaceChildren(...feed.map((f) => {
-      const li = document.createElement("li");
-      const who = document.createElement("b"); who.textContent = f.agent;
-      li.append(who, ` ${ACTION_TEXT[f.action] || "did something"}`);
-      if (f.repo) {
-        const a = document.createElement("a");
-        a.href = `https://github.com/setkernel/${encodeURIComponent(f.repo)}`;
-        a.textContent = f.repo;
-        a.rel = "noopener";
-        li.append(" in ", a);
-      }
-      const t = document.createElement("time"); t.textContent = ago(f.ts);
-      li.append(t);
-      return li;
-    }));
-  }
+    $("replay-at").textContent = clock(from + Math.min(1, ms / cfg.durationMs) * (to - from));
+    $("replay-progress").style.width = `${Math.min(100, (ms / cfg.durationMs) * 100)}%`;
+    if (ms >= cfg.durationMs + 1500) stopReplay();
+  };
+  replaying = setInterval(step, 100);
+  step();
+}
+function stopReplay() {
+  if (replaying) clearInterval(replaying);
+  replaying = null;
+  $("replaying").hidden = true;
+  for (const b of replayButtons) if (b.closest(".controls")) b.setAttribute("aria-pressed", "false");
+}
+for (const b of replayButtons) b.addEventListener("click", () => (b.getAttribute("aria-pressed") === "true" ? stopReplay() : startReplay(Number(b.dataset.replay))));
+$("replay-stop").addEventListener("click", stopReplay);
 
-  // ---- connection
-  const statusEl = document.getElementById("status"), statusText = document.getElementById("status-text");
-  const offlineEl = document.getElementById("offline"), offlineMin = document.getElementById("offline-min");
-  let lastIngest = 0, retry = 1000, ws;
-
-  function apply(msg) {
-    if (typeof msg.now === "number") skew = msg.now - Date.now();
-    if (typeof msg.lastIngest === "number") lastIngest = msg.lastIngest;
-    for (const name of AGENTS) showAgent(name, msg.agents?.[name]);
-    showCounts(msg.counts);
-    if (Array.isArray(msg.feed)) { feed = msg.feed; showFeed(); }
-    if (msg.t === "batch" && Array.isArray(msg.events)) {
-      const msgs = msg.events.filter((e) => e.t === "msg");
-      const first = msgs.length ? Math.min(...msgs.map((e) => e.ts || 0)) : 0;
-      for (const e of msgs) {
-        const key = e.kind === "claude" ? "claude" : e.kind === "chat" ? "chat" : "github";
-        const delay = Math.min(5000, Math.max(0, ((e.ts || first) - first) * 1000));
-        setTimeout(() => dot(e.agent, key), delay); // spread a 5 s batch the way it happened
-      }
-    }
-    tick();
+// ---- wall mode: ?wall, or the button (which also goes fullscreen where the browser allows)
+const wallBtn = $("wall-toggle");
+function setWall(on) {
+  document.documentElement.classList.toggle("wall", on);
+  wallBtn.setAttribute("aria-pressed", String(on));
+}
+wallBtn.addEventListener("click", async () => {
+  const on = !document.documentElement.classList.contains("wall");
+  setWall(on);
+  try {
+    if (on && document.fullscreenEnabled && !document.fullscreenElement) await document.documentElement.requestFullscreen();
+    if (!on && document.fullscreenElement) await document.exitFullscreen();
+  } catch {
+    // fullscreen refused (iOS, an iframe): wall mode still works in the window
   }
+});
+document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && !params.has("wall")) setWall(false); });
+if (params.has("wall")) setWall(true);
 
-  function tick() {
-    const quiet = !lastIngest || Date.now() + skew - lastIngest > OFFLINE_AFTER_MS;
-    offlineEl.hidden = !quiet || !lastIngest;
-    if (quiet && lastIngest) offlineMin.textContent = String(Math.round((Date.now() + skew - lastIngest) / 60000));
-    if (ws?.readyState === WebSocket.OPEN) {
-      statusEl.className = quiet ? "status down" : "status live";
-      statusText.textContent = quiet ? (lastIngest ? "Office offline" : "Waiting for the office") : "Live · about a minute behind";
-    }
-  }
-  setInterval(() => { tick(); if (feed.length) showFeed(); }, 30_000);
+// keep "quiet since", "offline" and the chart's hours moving even when nothing arrives
+setInterval(() => { showNow(); showStatus(DEMO || ws?.readyState === WebSocket.OPEN); }, 15_000);
 
-  function connect() {
-    ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
-    ws.onopen = () => { retry = 1000; tick(); };
-    ws.onmessage = (m) => {
-      try { apply(JSON.parse(m.data)); } catch (err) { console.error(err); }
-    };
-    ws.onclose = () => {
-      statusEl.className = "status down";
-      statusText.textContent = "Reconnecting…";
-      setTimeout(connect, retry);
-      retry = Math.min(retry * 2, 30_000);
-    };
-  }
-  showCounts();
-  connect();
-})();
+render(false);
+layoutSky();
+wake();
+if (DEMO) startDemo();
+else connect();
