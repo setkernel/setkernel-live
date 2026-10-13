@@ -9,7 +9,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { applyBatch, cleanBatch, emptyState } from "./logic.js";
 import { jwksFetcher, verifyAccessJwt } from "./access.js";
-import { EVENTS, cleanDelivery, cleanWebhook, emptyQueue, parseCursor, pushEvent, readCapped, readQueue, verifySignature } from "./github.js";
+import { EVENTS, cleanDelivery, cleanWebhook, emptyQueue, fetchHub, parseCursor, pushEvent, readCapped, readQueue, verifySignature } from "./github.js";
 
 const getKeys = jwksFetcher();
 const MAX_BODY = 256 * 1024;
@@ -41,7 +41,7 @@ export default {
       if (!ok) return new Response("Forbidden", { status: 403 });
       const since = parseCursor(new URL(request.url).searchParams.get("since"));
       if (since === null) return new Response("Bad cursor", { status: 400 });
-      return hub().fetch(`https://hub/github/queue?since=${since}`);
+      return fetchHub(() => hub().fetch(`https://hub/github/queue?since=${since}`));
     }
     return env.ASSETS.fetch(request);
   },
@@ -71,7 +71,8 @@ async function githubWebhook(request, env, hub) {
   }
   const cleaned = cleanWebhook(event, payload);
   if (!cleaned) return new Response("Ignored", { status: 202 });
-  return hub().fetch("https://hub/github/push", { method: "POST", body: JSON.stringify({ delivery, cleaned }) });
+  const push = JSON.stringify({ delivery, cleaned });
+  return fetchHub(() => hub().fetch("https://hub/github/push", { method: "POST", body: push }));
 }
 
 export class Hub extends DurableObject {
