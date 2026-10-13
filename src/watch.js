@@ -5,7 +5,10 @@
 // One alert per outage and one recovery message. A post that fails is tried again on the next
 // tick until Buzz takes it. Buzz runs in the office, so during a full office outage the alert
 // can't get through; then the recovery message is the first report, and says how long it lasted.
-// While muted (planned maintenance) nothing is posted, and recoveries are dropped, not queued.
+// While muted (planned maintenance) no alert is posted, and an outage nobody was told about ends
+// silently; only the recovery for an alert already posted still goes out, so #infra isn't left
+// with an alert that never resolves. Delivery is at least once: a post that timed out after the
+// relay stored it is posted again.
 
 export const STALE_MS = 5 * 60_000;
 const MAX_RECOVERIES = 10;
@@ -30,12 +33,9 @@ export function tick(watch, { lastIngest, now, muted, staleMs = STALE_MS }) {
   } else if (!w.down && stale) {
     Object.assign(w, { down: true, since: lastIngest, alerted: false });
   }
-  if (muted) {
-    w.recoveries = [];
-    return { watch: w, send: null };
-  }
+  if (muted) w.recoveries = w.recoveries.filter((r) => r.alerted);
   if (w.recoveries.length) return { watch: w, send: { type: "recovery", text: recoveryText(w.recoveries[0]) } };
-  if (w.down && !w.alerted) return { watch: w, send: { type: "alert", text: alertText(w.since, now) } };
+  if (w.down && !w.alerted && !muted) return { watch: w, send: { type: "alert", text: alertText(w.since, now) } };
   return { watch: w, send: null };
 }
 
@@ -68,7 +68,7 @@ export function recoveryText({ since, until, alerted }) {
   const range = `(${utc(since)} to ${utc(until)})`;
   if (alerted) return `✅ live.setkernel.com is getting updates again, after ${span} without ${range}.`;
   return (
-    `✅ live.setkernel.com is getting updates again. It had none for ${span} ${range}, and Buzz couldn't ` +
-    "be reached to say so while it lasted, which usually means the office was down."
+    `✅ live.setkernel.com is getting updates again. It had none for ${span} ${range}; the alert ` +
+    "didn't get through to Buzz while it lasted, usually because the office, where Buzz runs, was down."
   );
 }

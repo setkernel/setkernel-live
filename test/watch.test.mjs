@@ -66,7 +66,7 @@ test("a failed post is retried every minute until Buzz takes it, and only then",
 test("an office outage (Buzz unreachable the whole time) is reported on recovery", () => {
   const { posts } = run({ from: T0, to: T0 + 300 * MIN, lastUpdate: outage(10, 135), ok: (type, now) => now >= T0 + 135 * MIN });
   assert.deepEqual(posts.map((p) => [p.at, p.type]), [[135, "recovery"]]);
-  assert.match(posts[0].text, /had none for 2 h 6 min .*couldn't be reached to say so while it lasted/);
+  assert.match(posts[0].text, /had none for 2 h 6 min .*didn't get through to Buzz while it lasted/);
 });
 
 test("a recovery that fails is retried", () => {
@@ -85,9 +85,15 @@ test("muted: an outage still going when the mute ends is alerted then", () => {
   assert.deepEqual(posts.map((p) => [p.at, p.type]), [[30, "alert"], [50, "recovery"]]);
 });
 
-test("muted: a recovery due when the mute starts is dropped, not posted later", () => {
-  const { posts } = run({ from: T0, to: T0 + 60 * MIN, lastUpdate: outage(10, 20), ok: (type) => type === "alert" ? true : false, muted: (now) => now >= T0 + 22 * MIN && now < T0 + 30 * MIN });
-  assert.deepEqual(posts.map((p) => [p.at, p.type]), [[15, "alert"]]);
+test("muted: the recovery for an alert already posted still goes out", () => {
+  const { posts } = run({ from: T0, to: T0 + 60 * MIN, lastUpdate: outage(10, 30), muted: (now) => now >= T0 + 20 * MIN && now < T0 + 40 * MIN });
+  assert.deepEqual(posts.map((p) => [p.at, p.type]), [[15, "alert"], [30, "recovery"]]);
+});
+
+test("muted: a recovery for an alert that never got through is dropped, not posted later", () => {
+  const { posts, watch } = run({ from: T0, to: T0 + 60 * MIN, lastUpdate: outage(10, 20), ok: () => false, muted: (now) => now >= T0 + 20 * MIN && now < T0 + 30 * MIN });
+  assert.deepEqual(posts, []);
+  assert.deepEqual(watch, emptyWatch());
 });
 
 test("durations read naturally", () => {

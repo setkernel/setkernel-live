@@ -28,12 +28,14 @@ wall service ── filtered events ──▶  /ingest (Access: service token on
 A Cron Trigger asks the Durable Object once a minute when the last batch arrived. After more than
 5 minutes without one, the Worker posts to Buzz #infra; when batches come back, it posts once more
 with how long they were gone. One alert per outage. A post Buzz doesn't take is tried again every
-minute. Buzz runs in the office, so during a full office outage the alert can't get through; the
-recovery message is then the first report, and says how long it lasted.
+minute (so, rarely, a post that timed out after Buzz stored it appears twice). Buzz runs in the
+office, so during a full office outage the alert can't get through; the recovery message is then
+the first report, and says how long it lasted.
 
 - **Mute** for planned maintenance: set `ALERTS_MUTED` to `"true"` in `wrangler.jsonc` and deploy;
-  set it back to `"false"` afterwards. While muted nothing is posted, and an outage that ends
-  inside the mute is never reported. One still going when the mute ends is reported then.
+  set it back to `"false"` afterwards. While muted no alert is posted, and an outage that ends
+  inside the mute is never reported. One still going when the mute ends is alerted then. The
+  recovery for an alert posted before the mute still goes out.
 - **Identity:** the Worker posts as its own Buzz member, "live.setkernel.com watcher". Its key is the
   Worker secret `BUZZ_PRIVATE_KEY`, which the deploy workflow brings from Infisical (project
   `setkernel-live`, prod). It is never in this repo or in logs. The relay and the channel are
@@ -42,34 +44,26 @@ recovery message is then the first report, and says how long it lasted.
 ### Owner: create the identity (once)
 
 The deploy fails until `BUZZ_PRIVATE_KEY` is in Infisical, so do this before the next deploy. It
-makes the key on sk-obs01, as for the Grafana alerts identity (setkernel/hq
-`observability/README.md`), and runs from your Mac in an hq checkout. Only the public key is
+is the same procedure as the Grafana alerts identity in setkernel/hq `observability/README.md`;
+the private details (hosts, logins) are there, not in this public repo. Only the public key is
 ever printed.
 
-1. Make the key in a private file on sk-obs01 (the script the agent identities use):
-   ```sh
-   ssh raghav@sk-obs01.int.setkernel.net 'SK_BUZZ_CONF=$HOME/.config/live-watch/buzz.env SK_BUZZ_CHANNEL=fc80475f-c5f0-42b7-870f-44785c189566 bash -s' < buzz/agent-identity.sh
-   ```
-   It prints `sk-obs01 <public key hex> buzz=ok`.
-2. Make it a relay member:
-   `ssh buzz@sk-buzz01.int.setkernel.net '~/hq/buzz/buzzctl add-member <public key hex>'`.
-3. Name it and join #infra:
-   ```sh
-   ssh raghav@sk-obs01.int.setkernel.net 'set -a; . ~/.config/live-watch/buzz.env; set +a; ~/.local/bin/buzz users set-profile --name "live.setkernel.com watcher" >/dev/null; ~/.local/bin/buzz channels join --channel "$BUZZ_CHANNEL" >/dev/null && echo joined'
-   ```
-4. Copy the key to your clipboard without showing it, and paste it into the Infisical web UI as
-   `BUZZ_PRIVATE_KEY` (project `setkernel-live`, environment prod, path `/`):
-   ```sh
-   ssh raghav@sk-obs01.int.setkernel.net "sed -n 's/^BUZZ_PRIVATE_KEY=//p' ~/.config/live-watch/buzz.env" | tr -d '\n' | pbcopy
-   ```
-   Then clear the clipboard (copy something else).
-5. Delete the file, so Infisical holds the only copy:
-   `ssh raghav@sk-obs01.int.setkernel.net 'shred -u ~/.config/live-watch/buzz.env'`.
+1. On sk-obs01, make the key in a new private file with hq's `buzz/agent-identity.sh`, with
+   `SK_BUZZ_CONF` set to that file and `SK_BUZZ_CHANNEL` to the #infra channel id from
+   `wrangler.jsonc`. It prints only the public key (hex).
+2. Make that public key a relay member (`buzzctl add-member <hex>`, hq `buzz/README.md`).
+3. With that file's variables loaded (`set -a; . <file>; set +a`), name the identity
+   (`buzz users set-profile --name "live.setkernel.com watcher"`) and join #infra
+   (`buzz channels join --channel "$BUZZ_CHANNEL"`).
+4. Put the key in Infisical as `BUZZ_PRIVATE_KEY` (project `setkernel-live`, environment prod,
+   path `/`) without showing it: pipe the value straight to your clipboard
+   (`sed -n 's/^BUZZ_PRIVATE_KEY=//p' <file> | tr -d '\n' | pbcopy`, over SSH if need be), paste
+   it into the Infisical web UI, then copy something else.
+5. `shred -u <file>`, so Infisical holds the only copy.
 6. Run the Deploy workflow. To check the whole path, stop sk-obs01's publisher for 6 minutes: an
    alert should arrive in #infra, and a recovery message within a minute of restarting it.
 
-To silence it, use the mute. To retire the identity, remove its member on sk-buzz01
-(`buzzctl remove-member <hex>`), delete the Infisical secret and take the cron out of
-`wrangler.jsonc` in the same PR as the `secrets:` line of the deploy workflow.
+To retire the identity: remove its relay member, delete the Infisical secret, and in one PR take
+the cron out of `wrangler.jsonc` and `BUZZ_PRIVATE_KEY` out of the deploy workflow.
 
 Tracking: setkernel/hq#105.

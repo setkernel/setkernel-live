@@ -18,7 +18,7 @@
     // BUZZ_PRIVATE_KEY, is a Worker secret that the deploy workflow brings from Infisical.
     "BUZZ_RELAY_URL": "https://buzz.setkernel.net",
     "BUZZ_CHANNEL": "fc80475f-c5f0-42b7-870f-44785c189566", // #infra
-    // Mute switch for planned maintenance: "true" posts nothing (an outage that ends while muted
+    // Mute switch for planned maintenance: "true" posts no alerts (an outage that ends while muted
     // is never reported). Change it in a PR and deploy; set it back to "false" afterwards.
     "ALERTS_MUTED": "false"
   },
