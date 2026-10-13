@@ -143,3 +143,22 @@ export function parseCursor(v) {
   if (v === null || v === "") return 0;
   return /^\d{1,15}$/.test(v) ? Number(v) : null;
 }
+
+// Calls the Hub, riding out version skew after a deploy (setkernel-live#26). For a few minutes
+// the new Worker can reach a Hub still running older code, which answers 404 for routes it
+// doesn't know yet; this object never idles, so Cloudflare swaps it in its own time. A 404 is
+// retried after each delay (7.5 s in all, inside GitHub's 10 s delivery timeout); one that
+// lasts becomes 503, so GitHub's delivery log and sk-obs01's puller see a server error to retry
+// rather than a missing route. Only for idempotent calls: the push dedupes on the delivery id.
+export const SKEW_DELAYS = [500, 1000, 2000, 4000];
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export async function fetchHub(call, { delays = SKEW_DELAYS, sleep = wait } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    const res = await call();
+    if (res.status !== 404) return res;
+    await res.body?.cancel();
+    if (attempt >= delays.length) return new Response("Hub is updating, try again", { status: 503, headers: { "Retry-After": "30" } });
+    await sleep(delays[attempt]);
+  }
+}

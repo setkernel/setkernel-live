@@ -2,7 +2,7 @@
 // cursor. Run: npm test
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cleanDelivery, cleanWebhook, emptyQueue, MAX_WEBHOOK_BODY, parseCursor, pushEvent, readCapped, readQueue, verifySignature } from "../src/github.js";
+import { cleanDelivery, cleanWebhook, emptyQueue, fetchHub, MAX_WEBHOOK_BODY, parseCursor, pushEvent, readCapped, readQueue, verifySignature } from "../src/github.js";
 
 const SECRET = "test-secret-not-real";
 async function sign(body, secret = SECRET) {
@@ -173,4 +173,53 @@ test("the queue is capped, and a cursor behind the cap reports a gap", () => {
   assert.equal(readQueue(q, 1).gap, true);
   assert.equal(readQueue(q, 2).gap, false);
   assert.deepEqual(readQueue(q, 1).events.map((e) => e.cursor), [3, 4, 5, 6]);
+});
+
+// A Hub that answers 404 (older code after a deploy) a few times, then like the new code.
+function skewedHub(stale, answer) {
+  const calls = [];
+  const hub = async (url, init = {}) => {
+    calls.push({ url, method: init.method ?? "GET", body: init.body ?? null });
+    return calls.length <= stale ? new Response("Not found", { status: 404 }) : answer();
+  };
+  return { hub, calls };
+}
+const noSleep = { sleep: async () => {} };
+
+test("a push that meets an old Hub is retried until the new one queues it", async () => {
+  const { hub, calls } = skewedHub(2, () => new Response("Queued", { status: 202 }));
+  const body = JSON.stringify({ delivery: "d-1", cleaned: { key: "run:1" } });
+  const slept = [];
+  const res = await fetchHub(() => hub("https://hub/github/push", { method: "POST", body }), { sleep: async (ms) => slept.push(ms) });
+  assert.equal(res.status, 202);
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every((c) => c.method === "POST" && c.body === body)); // the same body every time
+  assert.deepEqual(slept, [500, 1000]);
+});
+
+test("a queue pull that meets an old Hub is retried until the new one answers", async () => {
+  const { hub, calls } = skewedHub(1, () => Response.json({ events: [], cursor: 0, more: false, gap: false }));
+  const res = await fetchHub(() => hub("https://hub/github/queue?since=0"), noSleep);
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { events: [], cursor: 0, more: false, gap: false });
+  assert.equal(calls.length, 2);
+});
+
+test("a Hub that stays old becomes 503 after about 7.5 s, never 404", async () => {
+  const { hub, calls } = skewedHub(Infinity, () => new Response("unreachable"));
+  const slept = [];
+  const res = await fetchHub(() => hub("https://hub/github/push", { method: "POST", body: "{}" }), { sleep: async (ms) => slept.push(ms) });
+  assert.equal(res.status, 503);
+  assert.equal(res.headers.get("Retry-After"), "30");
+  assert.equal(calls.length, 5);
+  assert.equal(slept.reduce((a, b) => a + b, 0), 7500); // inside GitHub's 10 s delivery timeout
+});
+
+test("only 404 is retried: other Hub answers pass straight through", async () => {
+  for (const status of [200, 202, 400, 500]) {
+    const { hub, calls } = skewedHub(0, () => new Response("x", { status }));
+    const res = await fetchHub(() => hub("https://hub/github/push", { method: "POST", body: "{}" }), noSleep);
+    assert.equal(res.status, status);
+    assert.equal(calls.length, 1);
+  }
 });

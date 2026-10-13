@@ -49,6 +49,15 @@ The office still accepts no connections: GitHub calls the Worker, and sk-obs01 p
 - This queue doesn't reach the public page by itself. What the page may show of it is decided on
   sk-obs01 and in `src/logic.js` (setkernel/hq#123, setkernel-live#14).
 
+### Deploys
+
+For a few minutes after a deploy, the new Worker can reach a Durable Object still running the old
+code, which doesn't know the newer routes and answers 404. The Worker retries those calls for
+about 7.5 s (inside GitHub's 10 s delivery timeout), and answers 503 if the old code is still
+there, so sk-obs01's puller tries again and GitHub's delivery log shows a server error.
+GitHub never retries a failed delivery on its own: after a deploy, check the webhook's recent
+deliveries (github.com/organizations/setkernel/settings/hooks) and redeliver any that failed.
+
 ### Owner steps
 
 1. Generate a webhook secret (for example `openssl rand -hex 32`) and store it in Infisical,
