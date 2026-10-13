@@ -82,7 +82,27 @@ test("refusals and errors throw, so the alert is retried", async () => {
   await assert.rejects(post(502, "bad gateway"), /HTTP 502/);
   await assert.rejects(post(200, '{"accepted":false,"message":"blocked"}'), /refused the message: blocked/);
   await assert.rejects(postMessage({ relay: RELAY, channel: CHANNEL, key: KEY, text: "x", fetchFn: async () => { throw new TypeError("fetch failed"); } }), /fetch failed/);
-  await post(200, "ok");
+  await post(200, JSON.stringify({ event_id: "x", accepted: true }));
+});
+
+test("a reply that is not the relay accepting the message throws", async () => {
+  const post = (status, reply, headers) =>
+    postMessage({ relay: RELAY, channel: CHANNEL, key: KEY, text: "x", fetchFn: async () => new Response(reply, { status, headers }) });
+  // a login page or proxy answering 200 with HTML
+  await assert.rejects(post(200, "<!doctype html><title>Sign in</title>"), /not a relay reply/);
+  await assert.rejects(post(200, ""), /not a relay reply/);
+  await assert.rejects(post(200, "{}"), /refused the message/);
+  await assert.rejects(post(200, '{"accepted":"true"}'), /refused the message/);
+  await assert.rejects(post(200, "null"), /refused the message/);
+  // a redirect is not followed and not counted as delivered
+  await assert.rejects(post(302, "", { Location: "https://login.example.test/" }), /HTTP 302/);
+  await assert.rejects(post(307, "", { Location: `${RELAY}/elsewhere` }), /HTTP 307/);
+});
+
+test("redirects are not followed", async () => {
+  const f = fakeFetch(200, JSON.stringify({ event_id: "x", accepted: true }));
+  await postMessage({ relay: RELAY, channel: CHANNEL, key: KEY, text: "x", fetchFn: f.fn });
+  assert.equal(f.calls[0].init.redirect, "manual");
 });
 
 test("only an https relay and a channel UUID are accepted", async () => {

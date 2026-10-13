@@ -47,6 +47,7 @@ export async function postMessage({ relay, channel, key, text, now = Date.now(),
     method: "POST",
     headers: { Authorization: await nip98(key, url, "POST", body, now), "Content-Type": "application/json" },
     body,
+    redirect: "manual", // a redirect (a login page, a proxy) is not the relay accepting the message
     signal: AbortSignal.timeout(timeoutMs),
   });
   const reply = await r.text();
@@ -55,8 +56,12 @@ export async function postMessage({ relay, channel, key, text, now = Date.now(),
   try {
     parsed = JSON.parse(reply);
   } catch {
-    // a 2xx without JSON: accepted
+    // not JSON: handled below
   }
-  if (parsed && parsed.accepted === false) throw new Error(`relay refused the message: ${String(parsed.message ?? "").slice(0, 200)}`);
+  // Only the relay's own {accepted: true} counts; anything else stays due and is retried.
+  if (parsed?.accepted !== true) {
+    const why = parsed && typeof parsed === "object" ? String(parsed.message ?? "") : `not a relay reply: ${reply}`;
+    throw new Error(`relay refused the message: ${why.slice(0, 200)}`);
+  }
   return event.id;
 }
