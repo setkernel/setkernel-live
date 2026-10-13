@@ -13,7 +13,7 @@ Public repo: everything here is visible to anyone.
 ## Commands
 ```sh
 # install:  npm ci
-# test:     npm test                 (node --test: allowlist, counters, Access token check)
+# test:     npm test                 (node --test: allowlist, counters, Access token check, page hosts)
 # lint:     npm run check            (node --check on every script)
 # validate: npm run validate         (check + test + wrangler deploy --dry-run; what CI runs)
 ```
@@ -39,5 +39,6 @@ a laptop.
 - `INGEST_AUD` in `wrangler.jsonc` is the audience tag of the "live ingest" Access app (not a
   secret). Empty means `/ingest` answers 503.
 - The page builds everything with `textContent`, never `innerHTML`; keep it that way. The CSP in
-  `public/_headers` allows only same-origin scripts and Google Fonts.
+  `public/_headers` allows only same-origin scripts, styles and fonts; the fonts are self-hosted in
+  `public/fonts/` (SIL OFL, licences beside them). Never add a third-party host.
 - The Durable Object migration tag `v1` creates `Hub`; never edit an applied migration, add a new tag.
