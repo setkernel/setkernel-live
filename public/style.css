@@ -57,7 +57,7 @@ footer p { margin: 0; max-width: 80ch; font-size: 13.5px; color: var(--ink-dim);
 
 /* SVG */
 .node { fill: var(--panel-2); stroke: var(--line); stroke-width: 1.2; }
-.tile { fill: var(--panel-2); stroke: var(--line); stroke-width: 1.2; transition: stroke .25s; }
+.tile { fill: var(--panel-2); stroke: var(--line); stroke-width: 1.2; transition: stroke .25s, filter .25s; }
 .n-name { font: 600 20px var(--font-display); letter-spacing: .05em; fill: var(--ink); }
 .n-sub { font: 400 12.5px var(--font-body); fill: var(--ink-dim); }
 .n-count { font: 400 11.5px var(--font-data); fill: var(--ink-dim); }
@@ -66,6 +66,7 @@ footer p { margin: 0; max-width: 80ch; font-size: 13.5px; color: var(--ink-dim);
 .a-doing { font: 400 13px var(--font-body); fill: var(--ink); }
 .a-repo { font: 400 12px var(--font-data); fill: var(--github); }
 .pill-text { font: 600 11px var(--font-display); letter-spacing: .1em; }
+.tile.glow { stroke: var(--ok); filter: drop-shadow(0 0 6px var(--ok)); }
 .pipe { fill: none; stroke: var(--line); stroke-width: 1.6; }
 .dot { filter: drop-shadow(0 0 4px currentColor); }
 @media (prefers-reduced-motion: reduce) { .tile { transition: none; } }

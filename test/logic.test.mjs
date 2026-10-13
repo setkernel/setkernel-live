@@ -41,13 +41,41 @@ test("counts and feed, reset each day", () => {
     { t: "msg", kind: "chat", agent: "Rigel", ts: 104 },
   ], agents: {} });
   let s = applyBatch(emptyState("2026-10-13"), batch, 1_000_000, "2026-10-13");
-  assert.deepEqual(s.counts, { claude: 1, chat: 1, prs: 1, reviews: 1, started: 1 });
+  assert.deepEqual(s.counts, { claude: 1, chat: 1, prs: 1, reviews: 1, started: 1, helpers: 0 });
   assert.deepEqual(s.feed[0], { agent: "Rigel", action: "approved", ts: 103 });
   assert.equal(s.feed.length, 3);
   assert.equal(s.lastIngest, 1_000_000);
   s = applyBatch(s, cleanBatch({ events: [], agents: {} }), 2_000_000, "2026-10-14");
-  assert.deepEqual(s.counts, { claude: 0, chat: 0, prs: 0, reviews: 0, started: 0 });
+  assert.deepEqual(s.counts, { claude: 0, chat: 0, prs: 0, reviews: 0, started: 0, helpers: 0 });
   assert.equal(s.feed.length, 3); // the feed carries over midnight
   const many = cleanBatch({ events: Array.from({ length: 50 }, (_, i) => ({ t: "msg", kind: "github", agent: "Lyra", action: "pushed", ts: i })), agents: {} });
   assert.equal(applyBatch(s, many, 3, "2026-10-14").feed.length, 30);
+});
+
+test("helper events: agent only, nothing else", () => {
+  assert.deepEqual(cleanEvent({ t: "msg", kind: "helper", agent: "Orion", ts: 7 }), { t: "msg", kind: "helper", agent: "Orion", ts: 7 });
+  assert.deepEqual(cleanEvent({ t: "msg", kind: "helper", agent: "Lyra", name: "setkernel:reviewer", type: "subagent", skill: "verify", repo: "hq", action: "opened_pr" }),
+    { t: "msg", kind: "helper", agent: "Lyra" });
+  for (const bad of [
+    { t: "msg", kind: "helper", agent: "Mallory" },
+    { t: "msg", kind: "helper", agent: "orion" },
+    { t: "msg", kind: "helper" },
+    { t: "agent", kind: "helper", agent: "Vega" },
+  ]) assert.equal(cleanEvent(bad), null, JSON.stringify(bad));
+});
+
+test("helpers are counted today, stay out of the feed and reset each day", () => {
+  const batch = cleanBatch({ events: [
+    { t: "msg", kind: "helper", agent: "Vega", ts: 100 },
+    { t: "msg", kind: "helper", agent: "Rigel", ts: 101 },
+    { t: "msg", kind: "helper", agent: "Mallory", ts: 102 },
+  ], agents: {} });
+  let s = applyBatch(emptyState("2026-10-13"), batch, 1_000_000, "2026-10-13");
+  assert.equal(s.counts.helpers, 2);
+  assert.equal(s.feed.length, 0);
+  s = applyBatch(s, cleanBatch({ events: [], agents: {} }), 2_000_000, "2026-10-14");
+  assert.equal(s.counts.helpers, 0);
+  // a state saved before helpers existed (same day, no counts.helpers) still counts from zero
+  const old = { ...emptyState("2026-10-13"), counts: { claude: 3, chat: 0, prs: 0, reviews: 0, started: 0 } };
+  assert.equal(applyBatch(old, batch, 1, "2026-10-13").counts.helpers, 2);
 });

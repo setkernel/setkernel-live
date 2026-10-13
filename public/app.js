@@ -104,6 +104,14 @@
     c.style.color = color;
     dots.push({ c, p, len: p.getTotalLength(), t0: performance.now(), dur: 1500 });
   }
+  // a helper (subagent or skill) lights up the agent's tile briefly; which helper is never sent
+  function glow(name) {
+    const a = agents[name];
+    if (!a || document.hidden) return;
+    a.rect.classList.add("glow");
+    clearTimeout(a.glowTimer);
+    a.glowTimer = setTimeout(() => a.rect.classList.remove("glow"), 900);
+  }
   function frame(now) {
     for (let i = dots.length - 1; i >= 0; i--) {
       const d = dots[i], f = (now - d.t0) / d.dur;
@@ -120,7 +128,7 @@
   // ---- counters and feed
   const countsEl = document.getElementById("counts");
   function showCounts(c = {}) {
-    const rows = [["Issues started", c.started], ["Pull requests opened", c.prs], ["Reviews", c.reviews], ["Claude requests", c.claude], ["Team-chat posts", c.chat]];
+    const rows = [["Issues started", c.started], ["Pull requests opened", c.prs], ["Reviews", c.reviews], ["Claude requests", c.claude], ["Team-chat posts", c.chat], ["Helpers used", c.helpers]];
     countsEl.replaceChildren(...rows.flatMap(([label, v]) => {
       const dt = document.createElement("dt"); dt.textContent = label;
       const dd = document.createElement("dd"); dd.textContent = String(v ?? 0);
@@ -178,7 +186,8 @@
       for (const e of msgs) {
         const key = e.kind === "claude" ? "claude" : e.kind === "chat" ? "chat" : "github";
         const delay = Math.min(5000, Math.max(0, ((e.ts || first) - first) * 1000));
-        setTimeout(() => dot(e.agent, key), delay); // spread a 5 s batch the way it happened
+        // spread a 5 s batch the way it happened
+        setTimeout(() => (e.kind === "helper" ? glow(e.agent) : dot(e.agent, key)), delay);
       }
     }
     tick();
