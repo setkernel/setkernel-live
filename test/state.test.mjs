@@ -54,8 +54,8 @@ test("replay: frequent kinds as one row per minute, GitHub actions one by one", 
   );
   const r = recordReplay(emptyReplay(), b, (T0 + 120) * 1000);
   const m = T0 / 60;
-  //                  Vega c ch h  Rigel     Lyra      Orion
-  assert.deepEqual(r.pulses, [[m, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [m + 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]]);
+  //                  Vega c ch h gh  Rigel       Lyra        Orion
+  assert.deepEqual(r.pulses, [[m, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [m + 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0]]);
   assert.deepEqual(r.work, [{ agent: "Rigel", action: "opened_pr", repo: "setkernel-live", ts: T0 + 62 }]);
   // a later batch adds to the same minute's row
   const r2 = recordReplay(r, batch(msg("Vega", "claude", T0 + 5)), (T0 + 130) * 1000);
@@ -79,6 +79,7 @@ test("replay drops anything older than 24 hours and counts a future clock as now
   // a day later the old rows fall out as new batches arrive
   r = recordReplay(r, batch(msg("Lyra", "chat", T0 + 86_400 + 500)), (T0 + 86_400 + 500) * 1000);
   assert.deepEqual(r.pulses.map((p) => p[0]), [(T0 + 86_400 + 480) / 60]);
+  assert.equal(r.pulses.length, 1);
   assert.deepEqual(r.work, []);
 });
 
@@ -125,6 +126,9 @@ test("hourly: 24 buckets per UTC hour from the replay buffer, gaps as zeros", ()
   assert.deepEqual(h.at(-1), { h: T0 / 3600 + 1, claude: 0, chat: 0, helper: 1, github: 0 });
   assert.deepEqual(h.at(-2), { h: T0 / 3600, claude: 2, chat: 0, helper: 0, github: 1 });
   assert.deepEqual(h.at(-3), { h: T0 / 3600 - 1, claude: 0, chat: 1, helper: 0, github: 0 });
+  // GitHub counts come from the rows, so they stay exact when the list of actions is capped
+  const capped = { ...r, work: [] };
+  assert.equal(hourly(capped, (T0 + 3700) * 1000).at(-2).github, 1);
   assert.ok(h.slice(0, -3).every((b) => b.claude + b.chat + b.helper + b.github === 0));
   // a long outage: still 24 buckets, all zero, ending at the current hour
   const later = hourly(r, (T0 + 100 * 3600) * 1000);

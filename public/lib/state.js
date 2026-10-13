@@ -7,10 +7,13 @@
 //   state   today's counts (overall and per agent), the recent-work feed, the agents' current
 //           state, and when each agent last did anything.
 //   replay  the last 24 hours, capped, for "replay the last hour / 24 h" and the hourly chart:
-//           one row of counts per minute for the frequent kinds, and each GitHub action.
+//           one row of counts per minute, and each GitHub action (capped).
 
 export const AGENTS = ["Vega", "Rigel", "Lyra", "Orion"];
 export const PULSE_KINDS = ["claude", "chat", "helper"]; // too frequent to keep one by one
+// Columns per agent in a minute row: the pulse kinds, then GitHub actions (counted there too, so
+// the hourly chart stays exact even when the list of actions is capped).
+export const ROW_KINDS = [...PULSE_KINDS, "github"];
 const FEED = 30;
 const DAY_S = 86_400;
 const REPLAY_MINUTES = 24 * 60; // one row per minute at most, so this is also the row cap
@@ -64,8 +67,8 @@ const workItem = (e, ts) => ({ agent: e.agent, action: e.action, ...(e.repo ? { 
 
 // Add a clean batch's events to the replay buffer (returns a new buffer). Only fields that passed
 // the allowlist go in, and nothing older than 24 hours stays. A row in `pulses` is
-// [minute since the epoch, then for each agent in AGENTS order its PULSE_KINDS counts], so a
-// full day is at most 1440 short rows. `work` holds GitHub actions in the feed's shape.
+// [minute since the epoch, then for each agent in AGENTS order its ROW_KINDS counts], so a full
+// day is at most 1440 short rows. `work` holds the latest GitHub actions in the feed's shape.
 export function recordReplay(replay, batch, now) {
   const nowS = Math.trunc(now / 1000);
   const oldest = nowS - DAY_S;
@@ -77,16 +80,13 @@ export function recordReplay(replay, batch, now) {
     if (ts < oldest) continue;
     const a = AGENTS.indexOf(e.agent);
     if (a < 0) continue;
-    if (e.kind === "github") {
-      work.push(workItem(e, ts));
-      continue;
-    }
-    const k = PULSE_KINDS.indexOf(e.kind);
+    if (e.kind === "github") work.push(workItem(e, ts));
+    const k = ROW_KINDS.indexOf(e.kind);
     if (k < 0) continue;
     const minute = Math.floor(ts / 60);
     let row = rows.get(minute);
-    if (!row) rows.set(minute, (row = [minute, ...Array(AGENTS.length * PULSE_KINDS.length).fill(0)]));
-    row[1 + a * PULSE_KINDS.length + k]++;
+    if (!row) rows.set(minute, (row = [minute, ...Array(AGENTS.length * ROW_KINDS.length).fill(0)]));
+    row[1 + a * ROW_KINDS.length + k]++;
   }
   const pulses = [...rows.values()]
     .filter((r) => r[0] * 60 >= oldest - 59)
@@ -116,12 +116,8 @@ export function hourly(replay, now) {
     const b = at(r[0] * 60);
     if (!b) continue;
     for (let a = 0; a < AGENTS.length; a++) {
-      PULSE_KINDS.forEach((k, i) => { b[k] += r[1 + a * PULSE_KINDS.length + i]; });
+      ROW_KINDS.forEach((k, i) => { b[k] += r[1 + a * ROW_KINDS.length + i] || 0; });
     }
-  }
-  for (const w of replay?.work ?? []) {
-    const b = at(w.ts);
-    if (b) b.github++;
   }
   return out;
 }
