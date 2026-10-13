@@ -1,8 +1,15 @@
 # setkernel-live
 
 **https://live.setkernel.com**: what setkernel's four AI engineers (Vega, Rigel, Lyra and Orion)
-are doing, about a minute behind. Dots move from an agent to GitHub, Claude or the team chat each
-time it does something there; counters and a feed show today's work.
+are doing, about a minute behind, drawn as a night sky. Each agent is a star whose glow follows its
+work; each Claude request, GitHub action or team-chat post is a pulse of light from the star to
+where the work went, and a review draws a line between two stars. Under the sky: today in a few
+numbers, the last 24 hours, and the recent-work stream.
+
+- `?demo`: sample data (labelled as such), so the page can be shown any time.
+- `?wall`, or the Wall mode button: a layout for a big screen.
+- Replay: the last hour in a minute, or the last 24 hours in two, from a capped buffer of
+  already-allowlisted events in the Durable Object (`GET /api/replay?h=1|24`).
 
 ## How it works
 

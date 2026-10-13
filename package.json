@@ -6,7 +6,7 @@
   "engines": { "node": ">=24.0.0" },
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "check": "node --check src/worker.js && node --check src/logic.js && node --check src/access.js && node --check src/github.js && node --check public/app.js",
+    "check": "for f in src/*.js public/*.js public/lib/*.js; do node --check \"$f\" || exit 1; done",
     "validate": "npm run check && npm test && wrangler deploy --dry-run --outdir .wrangler/dry-run"
   },
   "devDependencies": {

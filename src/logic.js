@@ -3,8 +3,13 @@
 //
 // sk-obs01 already filters (setkernel/hq observability/wall/public.py). This checks again, with
 // the same allowlist, so a bug or a compromised publisher still can't put anything else on the page.
+//
+// The state built from clean batches lives in public/lib/state.js, because ?demo mode on the page
+// runs the same code; it is re-exported here.
+import { AGENTS } from "../public/lib/state.js";
 
-export const AGENTS = ["Vega", "Rigel", "Lyra", "Orion"];
+export { AGENTS };
+export { applyBatch, emptyReplay, emptyState, hourly, recordReplay, replaySince, view } from "../public/lib/state.js";
 export const STATES = ["WORKING", "REVIEW", "DISCUSS", "IDLE", "PAUSED"];
 export const WORK = ["issue", "review", "changes", "discussion", "decision"];
 export const ACTIONS = ["picked_up", "opened_pr", "approved", "requested_changes", "pushed", "posted_round", "decision_pr"];
@@ -21,7 +26,6 @@ export const NEVER = new Set([
 ]);
 const REPO = /^[A-Za-z0-9._-]{1,100}$/;
 const MAX_EVENTS = 500;
-const FEED = 30;
 
 // Does v carry a NEVER field anywhere inside it?
 export function hasNever(v) {
@@ -60,7 +64,8 @@ function eventFields(e) {
     return info ? { t: "agent", agent: e.agent, ...info, ...(ts ? { ts } : {}) } : null;
   }
   if (e.t !== "msg") return null;
-  if (e.kind === "claude" || e.kind === "chat") return { t: "msg", kind: e.kind, agent: e.agent, ...(ts ? { ts } : {}) };
+  // "helper": the agent used a subagent or a skill. Which one is never accepted or shown.
+  if (e.kind === "claude" || e.kind === "chat" || e.kind === "helper") return { t: "msg", kind: e.kind, agent: e.agent, ...(ts ? { ts } : {}) };
   if (e.kind === "github" && ACTIONS.includes(e.action)) {
     const out = { t: "msg", kind: "github", agent: e.agent, action: e.action, ...(ts ? { ts } : {}) };
     if (typeof e.repo === "string" && REPO.test(e.repo)) out.repo = e.repo;
@@ -79,28 +84,4 @@ export function cleanBatch(body) {
     if (info) agents[name] = info;
   }
   return { events, agents };
-}
-
-export function emptyState(day) {
-  return { day, agents: {}, counts: { claude: 0, chat: 0, prs: 0, reviews: 0, started: 0 }, feed: [], lastIngest: 0 };
-}
-
-// Apply a clean batch to the state (returns a new state). Counts reset each UTC day.
-export function applyBatch(state, batch, now, day) {
-  const s = state && state.day === day ? structuredClone(state) : { ...emptyState(day), feed: state?.feed ?? [] };
-  s.agents = batch.agents;
-  for (const e of batch.events) {
-    if (e.t !== "msg") continue;
-    if (e.kind === "claude") s.counts.claude++;
-    else if (e.kind === "chat") s.counts.chat++;
-    else if (e.kind === "github") {
-      if (e.action === "opened_pr") s.counts.prs++;
-      if (e.action === "approved" || e.action === "requested_changes") s.counts.reviews++;
-      if (e.action === "picked_up") s.counts.started++;
-      s.feed.unshift({ agent: e.agent, action: e.action, ...(e.repo ? { repo: e.repo } : {}), ts: e.ts ?? Math.trunc(now / 1000) });
-    }
-  }
-  s.feed = s.feed.slice(0, FEED);
-  s.lastIngest = now;
-  return s;
 }

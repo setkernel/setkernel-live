@@ -3,44 +3,96 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>setkernel Live</title>
-  <meta name="description" content="What setkernel's four AI engineers are doing right now, about a minute behind.">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <title>setkernel Live: four AI engineers at work</title>
+  <meta name="description" content="Four AI engineers, Vega, Rigel, Lyra and Orion, building real software right now. A live night sky of their work, about a minute behind.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#0b0e13">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="setkernel">
+  <meta property="og:url" content="https://live.setkernel.com/">
+  <meta property="og:title" content="setkernel Live: four AI engineers at work">
+  <meta property="og:description" content="Vega, Rigel, Lyra and Orion are building real software right now. Watch their work as a living night sky, about a minute behind.">
+  <meta property="og:image" content="https://live.setkernel.com/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="setkernel Live: four stars named Vega, Rigel, Lyra and Orion, with pulses of light travelling to Claude, GitHub and the team chat.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="setkernel Live: four AI engineers at work">
+  <meta name="twitter:description" content="Vega, Rigel, Lyra and Orion are building real software right now. Watch their work as a living night sky, about a minute behind.">
+  <meta name="twitter:image" content="https://live.setkernel.com/og.png">
+  <meta name="twitter:image:alt" content="setkernel Live: four stars named Vega, Rigel, Lyra and Orion, with pulses of light travelling to Claude, GitHub and the team chat.">
+  <link rel="preload" href="/fonts/barlow-condensed-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/barlow-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/ibm-plex-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css">
+  <script src="/early.js"></script>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <h1>setkernel <span>Live</span></h1>
-      <span class="status" id="status"><i></i><span id="status-text">Connecting…</span></span>
+  <main class="page">
+    <header class="bar">
+      <p class="mark"><a href="https://setkernel.com">setkernel</a> <span>live</span></p>
+      <p class="status" id="status" role="status"><i aria-hidden="true"></i><span id="status-text">Connecting…</span></p>
+      <p class="asof" id="asof"><span class="wide-only">Data </span>as of <time id="asof-time">--:--</time> UTC</p>
+      <div class="controls" role="group" aria-label="Replay and display">
+        <span class="controls-label" id="replay-label">Replay</span>
+        <button type="button" data-replay="1" aria-describedby="replay-label">Last hour</button>
+        <button type="button" data-replay="24" aria-describedby="replay-label">24 h</button>
+        <button type="button" id="wall-toggle" aria-pressed="false">Wall mode</button>
+      </div>
     </header>
 
-    <p class="lede">Four AI engineers, <b>Vega</b>, <b>Rigel</b>, <b>Lyra</b> and <b>Orion</b>, do setkernel's engineering work. Each runs Claude on its own machine; a person reviews and merges everything they make. This is what they're doing, about a minute behind.</p>
+    <section class="now" aria-labelledby="now-main">
+      <h1 id="now-main">Connecting to the office…</h1>
+      <p id="now-sub"></p>
+    </section>
 
-    <div class="offline" id="offline" hidden>No updates from the office for <b id="offline-min">a few</b> minutes. The agents may still be working; this page catches up by itself.</div>
-
-    <div class="main">
-      <div class="stage">
-        <svg id="flow" viewBox="0 0 1000 470" role="img" aria-label="The four agents as tiles. Dots move from an agent to GitHub, Claude or the team chat each time it does something there."></svg>
+    <section class="sky" aria-label="The four agents as stars. Each pulse of light is one Claude request, GitHub action or team-chat post travelling to where the work went. A line between two stars means one reviewed the other's work.">
+      <div class="sky-field" id="sky">
+        <canvas id="sky-canvas" aria-hidden="true"></canvas>
+        <ul class="stars" id="stars"></ul>
+        <ul class="places" id="places"></ul>
+        <p class="demo-note" id="demo-note" hidden><strong>Demo:</strong> sample data, not the real office. <a href="/">Live page</a></p>
       </div>
-      <aside>
-        <section class="card">
-          <h2>Today <small>(UTC)</small></h2>
-          <dl class="counts" id="counts"></dl>
-        </section>
-        <section class="card">
-          <h2>Recent work</h2>
-          <ul class="feed" id="feed"><li class="empty">Nothing yet today.</li></ul>
-        </section>
-      </aside>
-    </div>
+      <div class="sky-foot">
+        <div class="replaying" id="replaying" hidden>
+          <p><span id="replay-what">Replaying the last hour</span> · <time id="replay-at"></time> UTC</p>
+          <div class="replay-track" aria-hidden="true"><i id="replay-progress"></i></div>
+          <button type="button" id="replay-stop">Back to live</button>
+        </div>
+        <p class="offer" id="offer" hidden>While it's quiet: <button type="button" data-replay="24">Replay the last 24 hours</button> <a href="/?demo">or watch the demo</a></p>
+      </div>
+    </section>
 
-    <footer>
-      <p>Private projects stay unnamed; public ones link to GitHub. No code, conversations or customer data appear here, only what kind of work is happening. Part of <a href="https://setkernel.com">setkernel</a>, an IT company in Halifax, Nova Scotia.</p>
-    </footer>
-  </div>
-  <script src="/app.js"></script>
+    <section class="today" aria-labelledby="today-h">
+      <h2 id="today-h">Today <span>since midnight UTC</span></h2>
+      <dl class="numbers" id="numbers"></dl>
+      <p class="minor" id="minor"></p>
+      <figure class="hours">
+        <figcaption>Last 24 hours, per hour <span>UTC</span></figcaption>
+        <div id="hours" class="hours-rows"></div>
+        <p class="visually-hidden" id="hours-desc"></p>
+      </figure>
+    </section>
+
+    <section class="stream" aria-labelledby="stream-h">
+      <h2 id="stream-h">Recent work <span>times UTC</span></h2>
+      <ol class="feed" id="feed"><li class="empty">Nothing yet.</li></ol>
+    </section>
+
+    <section class="about" aria-labelledby="about-h">
+      <h2 id="about-h">What you're looking at</h2>
+      <ul>
+        <li><strong>Real events.</strong> Vega, Rigel, Lyra and Orion are AI engineers, each running Claude on its own machine and doing setkernel's engineering work.</li>
+        <li><strong>About a minute behind.</strong> The office sends what happened with a short delay; the page never connects to the office.</li>
+        <li><strong>Private projects stay unnamed.</strong> Public repositories are named and linked. No code, conversations, titles or customer data appear here, only what kind of work is happening.</li>
+        <li><strong>A person reviews everything.</strong> Every change the agents make is reviewed and merged by a person.</li>
+      </ul>
+      <p class="foot">Part of <a href="https://setkernel.com">setkernel</a>, an IT company in Halifax, Nova Scotia. Add <a href="/?demo">?demo</a> for sample data or <a href="/?wall">?wall</a> for a big screen.</p>
+    </section>
+
+    <p class="visually-hidden" id="announce" aria-live="polite"></p>
+  </main>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>
