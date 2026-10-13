@@ -161,6 +161,49 @@
     }));
   }
 
+  // ---- last 24 hours: one row per kind, each on its own scale (Claude requests run far higher
+  // than the rest), so position and the row label say which is which, not colour alone
+  const hoursSvg = document.getElementById("hours"), hoursDesc = document.getElementById("hours-desc");
+  const ROWS = [["claude", "Claude requests"], ["github", "GitHub actions"], ["chat", "Team-chat posts"]];
+  const H_X0 = 170, H_SLOT = (1000 - H_X0) / 24, H_BAR = 24, H_ROW = 62, H_MAX = 42;
+  const hourLabel = (h) => String(new Date(h * 3_600_000).getUTCHours()).padStart(2, "0") + ":00";
+  let hours = [];
+  function showHours() {
+    const end = Math.floor((Date.now() + skew) / 3_600_000); // roll here too, so a quiet office still moves on
+    const have = new Map(hours.map((b) => [b.h, b]));
+    const slots = Array.from({ length: 24 }, (_, i) => have.get(end - 23 + i) || { h: end - 23 + i });
+    hoursSvg.replaceChildren();
+    const said = [];
+    ROWS.forEach(([key, name], r) => {
+      const base = 10 + r * H_ROW + H_MAX + 6;
+      const vals = slots.map((b) => (Number.isFinite(b[key]) && b[key] > 0 ? b[key] : 0));
+      const peak = Math.max(...vals), total = vals.reduce((a, v) => a + v, 0);
+      text(name, { x: 0, y: base - 26, class: "h-name" }, hoursSvg);
+      text(peak ? `peak ${peak} an hour` : "none", { x: 0, y: base - 8, class: "h-peak" }, hoursSvg);
+      el("line", { x1: H_X0, x2: 1000, y1: base + 0.5, y2: base + 0.5, class: "h-base" }, hoursSvg);
+      slots.forEach((b, i) => {
+        const g = el("g", { class: "h-slot" }, hoursSvg);
+        const t = el("title", {}, g);
+        t.textContent = `${hourLabel(b.h)} UTC: ${vals[i]} ${name}`;
+        el("rect", { x: H_X0 + i * H_SLOT, y: base - H_MAX - 4, width: H_SLOT, height: H_MAX + 4, class: "h-hit" }, g);
+        if (!vals[i]) return;
+        const x = H_X0 + i * H_SLOT + (H_SLOT - H_BAR) / 2, h = Math.max(1, (vals[i] / peak) * H_MAX), top = base - h, rr = Math.min(3, h);
+        el("path", { d: `M${x},${base}V${top + rr}Q${x},${top} ${x + rr},${top}H${x + H_BAR - rr}Q${x + H_BAR},${top} ${x + H_BAR},${top + rr}V${base}Z`, class: `h-bar bar-${key}` }, g);
+      });
+      if (!total) said.push(`${name}: none.`);
+      else {
+        const busiest = slots[vals.indexOf(peak)];
+        said.push(`${name}: ${total} in total, busiest hour ${hourLabel(busiest.h)} with ${peak}.`);
+      }
+    });
+    slots.forEach((b, i) => {
+      if (new Date(b.h * 3_600_000).getUTCHours() % 3 === 0) {
+        text(hourLabel(b.h).slice(0, 2), { x: H_X0 + (i + 0.5) * H_SLOT, y: 10 + 3 * H_ROW + 8, class: "h-hour", "text-anchor": "middle" }, hoursSvg);
+      }
+    });
+    hoursDesc.textContent = `Activity per hour over the last 24 hours, ${hourLabel(slots[0].h)} to ${hourLabel(end)} UTC. ${said.join(" ")}`;
+  }
+
   // ---- connection
   const statusEl = document.getElementById("status"), statusText = document.getElementById("status-text");
   const offlineEl = document.getElementById("offline"), offlineMin = document.getElementById("offline-min");
@@ -172,6 +215,7 @@
     for (const name of AGENTS) showAgent(name, msg.agents?.[name]);
     showCounts(msg.counts);
     if (Array.isArray(msg.feed)) { feed = msg.feed; showFeed(); }
+    if (Array.isArray(msg.hours)) { hours = msg.hours.filter((b) => b && Number.isInteger(b.h)); showHours(); }
     if (msg.t === "batch" && Array.isArray(msg.events)) {
       const msgs = msg.events.filter((e) => e.t === "msg");
       const first = msgs.length ? Math.min(...msgs.map((e) => e.ts || 0)) : 0;
@@ -193,7 +237,7 @@
       statusText.textContent = quiet ? (lastIngest ? "Office offline" : "Waiting for the office") : "Live · about a minute behind";
     }
   }
-  setInterval(() => { tick(); if (feed.length) showFeed(); }, 30_000);
+  setInterval(() => { tick(); if (feed.length) showFeed(); showHours(); }, 30_000);
 
   function connect() {
     ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
@@ -209,5 +253,6 @@
     };
   }
   showCounts();
+  showHours();
   connect();
 })();

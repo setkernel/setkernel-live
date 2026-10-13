@@ -22,8 +22,17 @@
     <div class="offline" id="offline" hidden>No updates from the office for <b id="offline-min">a few</b> minutes. The agents may still be working; this page catches up by itself.</div>
 
     <div class="main">
-      <div class="stage">
-        <svg id="flow" viewBox="0 0 1000 470" role="img" aria-label="The four agents as tiles. Dots move from an agent to GitHub, Claude or the team chat each time it does something there."></svg>
+      <div class="left">
+        <div class="stage">
+          <svg id="flow" viewBox="0 0 1000 470" role="img" aria-label="The four agents as tiles. Dots move from an agent to GitHub, Claude or the team chat each time it does something there."></svg>
+        </div>
+        <section class="card">
+          <h2>Last 24 hours <small>(per hour, UTC)</small></h2>
+          <div class="hours-scroll">
+            <svg id="hours" viewBox="0 0 1000 214" role="img" aria-labelledby="hours-desc"></svg>
+          </div>
+          <p class="sr-only" id="hours-desc">No activity in the last 24 hours.</p>
+        </section>
       </div>
       <aside>
         <section class="card">
