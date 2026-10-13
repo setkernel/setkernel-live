@@ -23,4 +23,44 @@ wall service ── filtered events ──▶  /ingest (Access: service token on
 - `/ingest` sits behind a Cloudflare Access app that admits only the `live-ingest` service token
   (setkernel/setkernel-cloudflare, access stack). The Worker checks the Access token again.
 
+## GitHub Actions results
+
+```
+GitHub (org webhook) ── workflow_run, deployment_status ──▶  /github/webhook  ──▶  queue in the
+                                                                                  Durable Object
+sk-obs01 ◀── pulls ── /github/queue?since=<cursor> (Access: live-queue service token only) ◀──┘
+```
+
+The office still accepts no connections: GitHub calls the Worker, and sk-obs01 pulls from it.
+
+- `POST /github/webhook` is public, because GitHub calls it. The Worker caps the body at 512 KB,
+  checks `X-Hub-Signature-256` against `GITHUB_WEBHOOK_SECRET`, ignores repeated
+  `X-GitHub-Delivery` ids, and accepts only completed `workflow_run` and finished
+  (`success`, `failure`, `error`) `deployment_status` events. Every other event is ignored.
+- Each run or deployment is one queued event; a re-run replaces it. Only the repo name, whether
+  the repo is private (anything unclear counts as private), the workflow name, the conclusion and
+  the time are kept. Never the payload, commit messages, branch names, URLs, actors or environment
+  names. The queue keeps the latest 500 events.
+- `GET /github/queue?since=<cursor>` returns `{ events, cursor, more, gap }`: up to 200 events
+  after the cursor, oldest first, each with its own `cursor`. Send the returned `cursor` next
+  time. `more` means pull again now; `gap` means events after your cursor were dropped by the cap.
+  It sits behind its own Access app (setkernel-cloudflare#54) and the Worker checks the token
+  again against `QUEUE_AUD`. Until `QUEUE_AUD` is set it answers 503.
+- This queue doesn't reach the public page by itself. What the page may show of it is decided on
+  sk-obs01 and in `src/logic.js` (setkernel/hq#123, setkernel-live#14).
+
+### Owner steps
+
+1. Generate a webhook secret (for example `openssl rand -hex 32`) and store it in Infisical,
+   project `setkernel-live`, environment `prod`, as `GITHUB_WEBHOOK_SECRET`. Do this before the
+   next deploy: the deploy fails while it is missing.
+2. Run the Deploy workflow on `main`. It sets the secret on the Worker; until then
+   `/github/webhook` answers 503.
+3. Create the org webhook (github.com/organizations/setkernel/settings/hooks): payload URL
+   `https://live.setkernel.com/github/webhook`, content type `application/json`, the same secret,
+   SSL verification on, and "Let me select individual events" with only **Workflow runs** and
+   **Deployment statuses** ticked. GitHub's ping should get `200 pong`.
+4. After setkernel-cloudflare#54 is applied, put its audience tag in `QUEUE_AUD` in
+   `wrangler.jsonc` (a PR) and deploy again.
+
 Tracking: setkernel/hq#105.
