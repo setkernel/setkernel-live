@@ -11,6 +11,8 @@ export const ACTIONS = ["picked_up", "opened_pr", "approved", "requested_changes
 const REPO = /^[A-Za-z0-9._-]{1,100}$/;
 const MAX_EVENTS = 500;
 const FEED = 30;
+const HOURS = 24;
+const HOUR_MS = 3_600_000;
 
 function cleanAgentInfo(v) {
   if (!v || typeof v !== "object" || !STATES.includes(v.state)) return null;
@@ -51,15 +53,33 @@ export function cleanBatch(body) {
 }
 
 export function emptyState(day) {
-  return { day, agents: {}, counts: { claude: 0, chat: 0, prs: 0, reviews: 0, started: 0 }, feed: [], lastIngest: 0 };
+  return { day, agents: {}, counts: { claude: 0, chat: 0, prs: 0, reviews: 0, started: 0 }, feed: [], hours: [], lastIngest: 0 };
+}
+
+// The last 24 hours of activity: exactly 24 buckets, oldest first, the last one the UTC hour that
+// `now` (ms) falls in. `h` is hours since the epoch. Buckets older than 24 hours fall off; hours
+// with no events (including gaps since the last batch) come back as zeros.
+export function rollHours(hours, now) {
+  const end = Math.floor(now / HOUR_MS);
+  const have = new Map((Array.isArray(hours) ? hours : []).map((b) => [b.h, b]));
+  return Array.from({ length: HOURS }, (_, i) => {
+    const h = end - HOURS + 1 + i;
+    const b = have.get(h);
+    return { h, claude: b?.claude ?? 0, github: b?.github ?? 0, chat: b?.chat ?? 0 };
+  });
 }
 
 // Apply a clean batch to the state (returns a new state). Counts reset each UTC day.
 export function applyBatch(state, batch, now, day) {
-  const s = state && state.day === day ? structuredClone(state) : { ...emptyState(day), feed: state?.feed ?? [] };
+  const s = state && state.day === day ? structuredClone(state) : { ...emptyState(day), feed: state?.feed ?? [], hours: state?.hours ?? [] };
   s.agents = batch.agents;
+  s.hours = rollHours(s.hours, now);
+  const first = s.hours[0].h;
   for (const e of batch.events) {
     if (e.t !== "msg") continue;
+    // the hour the event happened (events arrive about a minute late); a clock ahead of ours counts now
+    const i = Math.min(HOURS - 1, Math.floor((e.ts ? e.ts * 1000 : now) / HOUR_MS) - first);
+    if (i >= 0) s.hours[i][e.kind]++;
     if (e.kind === "claude") s.counts.claude++;
     else if (e.kind === "chat") s.counts.chat++;
     else if (e.kind === "github") {

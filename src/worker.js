@@ -5,7 +5,7 @@
 //   POST /ingest     batches from sk-obs01 (Access service token at the edge, checked again here)
 // One Durable Object ("live") holds the picture and fans batches out to every open WebSocket.
 import { DurableObject } from "cloudflare:workers";
-import { applyBatch, cleanBatch, emptyState } from "./logic.js";
+import { applyBatch, cleanBatch, emptyState, rollHours } from "./logic.js";
 import { jwksFetcher, verifyAccessJwt } from "./access.js";
 
 const getKeys = jwksFetcher();
@@ -47,7 +47,8 @@ export class Hub extends DurableObject {
 
   view() {
     const { agents, counts, feed, lastIngest } = this.state;
-    return { agents, counts, feed, lastIngest, now: Date.now() };
+    const now = Date.now();
+    return { agents, counts, feed, hours: rollHours(this.state.hours, now), lastIngest, now }; // rolled on read too, so quiet hours show
   }
 
   async fetch(request) {
