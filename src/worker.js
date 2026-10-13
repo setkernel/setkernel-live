@@ -2,10 +2,12 @@
 // adds three routes:
 //   GET  /ws         a WebSocket that gets the current picture, then every batch as it arrives
 //   GET  /api/state  the current picture as JSON
+//   GET  /api/replay the last hour (?h=1) or 24 hours (?h=24) of allowlisted events, for the replay
 //   POST /ingest     batches from sk-obs01 (Access service token at the edge, checked again here)
-// One Durable Object ("live") holds the picture and fans batches out to every open WebSocket.
+// One Durable Object ("live") holds the picture and a capped 24-hour replay buffer, and fans
+// batches out to every open WebSocket.
 import { DurableObject } from "cloudflare:workers";
-import { applyBatch, cleanBatch, emptyState } from "./logic.js";
+import { applyBatch, cleanBatch, emptyReplay, emptyState, recordReplay, replaySince, view } from "./logic.js";
 import { jwksFetcher, verifyAccessJwt } from "./access.js";
 
 const getKeys = jwksFetcher();
@@ -21,6 +23,10 @@ export default {
       return hub().fetch(request); // the upgrade request itself, so the object can answer 101
     }
     if (pathname === "/api/state") return hub().fetch("https://hub/state");
+    if (pathname === "/api/replay") {
+      const h = new URL(request.url).searchParams.get("h") === "24" ? 24 : 1;
+      return hub().fetch(`https://hub/replay?h=${h}`);
+    }
     if (pathname === "/ingest") {
       if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
       if (!env.INGEST_AUD) return new Response("Ingest is not configured", { status: 503 });
@@ -38,16 +44,18 @@ export class Hub extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.state = emptyState(today());
+    this.replay = emptyReplay();
     this.lastSaved = 0;
     this.lastBroadcast = 0;
     ctx.blockConcurrencyWhile(async () => {
-      this.state = (await ctx.storage.get("state")) ?? this.state;
+      const saved = await ctx.storage.get(["state", "replay"]);
+      this.state = saved.get("state") ?? this.state;
+      this.replay = saved.get("replay") ?? this.replay;
     });
   }
 
   view() {
-    const { agents, counts, feed, lastIngest } = this.state;
-    return { agents, counts, feed, lastIngest, now: Date.now() };
+    return view(this.state, this.replay, Date.now());
   }
 
   async fetch(request) {
@@ -61,6 +69,12 @@ export class Hub extends DurableObject {
     if (pathname === "/state") {
       return Response.json(this.view(), { headers: { "Cache-Control": "no-store" } });
     }
+    if (pathname === "/replay") {
+      const hours = new URL(request.url).searchParams.get("h") === "24" ? 24 : 1;
+      const now = Date.now();
+      const body = { ...replaySince(this.replay, Math.trunc(now / 1000) - hours * 3600), now };
+      return Response.json(body, { headers: { "Cache-Control": "public, max-age=30" } });
+    }
     if (pathname === "/ingest" && request.method === "POST") {
       let body;
       try {
@@ -72,10 +86,12 @@ export class Hub extends DurableObject {
       if (!batch) return new Response("Not a batch", { status: 400 });
       const now = Date.now();
       this.state = applyBatch(this.state, batch, now, today());
+      if (batch.events.length) this.replay = recordReplay(this.replay, batch, now);
       if (now - this.lastSaved > 60_000) {
-        // at most once a minute: a restart loses under a minute of counts, and storage writes stay low
+        // at most once a minute: a restart loses under a minute of counts, and storage writes stay low.
+        // The replay buffer is capped (public/lib/state.js), so it stays far below the value limit.
         this.lastSaved = now;
-        await this.ctx.storage.put("state", this.state);
+        await this.ctx.storage.put({ state: this.state, replay: this.replay });
       }
       if (batch.events.length || now - this.lastBroadcast > 30_000) {
         // events right away; otherwise a heartbeat every 30 s so pages know the house is online
