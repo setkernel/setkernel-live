@@ -41,13 +41,53 @@ test("counts and feed, reset each day", () => {
     { t: "msg", kind: "chat", agent: "Rigel", ts: 104 },
   ], agents: {} });
   let s = applyBatch(emptyState("2026-10-13"), batch, 1_000_000, "2026-10-13");
-  assert.deepEqual(s.counts, { claude: 1, chat: 1, prs: 1, reviews: 1, started: 1 });
+  assert.deepEqual(s.counts, { claude: 1, chat: 1, prs: 1, reviews: 1, started: 1, ci: 0, ciPass: 0 });
   assert.deepEqual(s.feed[0], { agent: "Rigel", action: "approved", ts: 103 });
   assert.equal(s.feed.length, 3);
   assert.equal(s.lastIngest, 1_000_000);
   s = applyBatch(s, cleanBatch({ events: [], agents: {} }), 2_000_000, "2026-10-14");
-  assert.deepEqual(s.counts, { claude: 0, chat: 0, prs: 0, reviews: 0, started: 0 });
+  assert.deepEqual(s.counts, { claude: 0, chat: 0, prs: 0, reviews: 0, started: 0, ci: 0, ciPass: 0 });
   assert.equal(s.feed.length, 3); // the feed carries over midnight
   const many = cleanBatch({ events: Array.from({ length: 50 }, (_, i) => ({ t: "msg", kind: "github", agent: "Lyra", action: "pushed", ts: i })), agents: {} });
   assert.equal(applyBatch(s, many, 3, "2026-10-14").feed.length, 30);
+});
+
+test("CI results: the accepted shape, extra fields dropped, no repo unless sent", () => {
+  assert.deepEqual(cleanEvent({ t: "msg", kind: "ci", result: "pass", repo: "setkernel-live", ts: 7 }), { t: "msg", kind: "ci", result: "pass", repo: "setkernel-live", ts: 7 });
+  assert.deepEqual(cleanEvent({ t: "msg", kind: "ci", result: "fail" }), { t: "msg", kind: "ci", result: "fail" });
+  // never branch, commit message, run URL, actor or anything else, and no agent either
+  assert.deepEqual(cleanEvent({ t: "msg", kind: "ci", result: "fail", agent: "Vega", branch: "main", message: "fix: x", url: "https://github.com/x", actor: "someone", workflow: "deploy", environment: "prod" }),
+    { t: "msg", kind: "ci", result: "fail" });
+  assert.equal(cleanEvent({ t: "msg", kind: "ci", result: "pass", repo: "a/b" }).repo, undefined);
+  for (const bad of [
+    { t: "msg", kind: "ci" },
+    { t: "msg", kind: "ci", result: "cancelled" },
+    { t: "msg", kind: "ci", result: "PASS" },
+    { t: "agent", kind: "ci", result: "pass" },
+    { t: "msg", kind: "claude" }, // other kinds still need an agent
+  ]) assert.equal(cleanEvent(bad), null, JSON.stringify(bad));
+});
+
+test("CI counts, pass count and recent results", () => {
+  const ci = (result, repo, ts) => ({ t: "msg", kind: "ci", result, ...(repo ? { repo } : {}), ts });
+  const batch = cleanBatch({ events: [ci("pass", "setkernel-live", 1), ci("fail", undefined, 2), ci("pass", undefined, 3)], agents: {} });
+  let s = applyBatch(emptyState("2026-10-13"), batch, 1_000_000, "2026-10-13");
+  assert.equal(s.counts.ci, 3);
+  assert.equal(s.counts.ciPass, 2);
+  assert.deepEqual(s.ci, [{ result: "pass", ts: 3 }, { result: "fail", ts: 2 }, { result: "pass", repo: "setkernel-live", ts: 1 }]);
+  assert.equal(s.feed.length, 0); // CI runs aren't agent work
+  s = applyBatch(s, cleanBatch({ events: Array.from({ length: 20 }, (_, i) => ci("pass", undefined, 10 + i)), agents: {} }), 2_000_000, "2026-10-13");
+  assert.equal(s.ci.length, 12);
+  assert.equal(s.counts.ci, 23);
+  s = applyBatch(s, cleanBatch({ events: [], agents: {} }), 3_000_000, "2026-10-14");
+  assert.equal(s.counts.ci, 0);
+  assert.equal(s.counts.ciPass, 0);
+  assert.equal(s.ci.length, 12); // recent results carry over midnight, like the feed
+});
+
+test("a state saved before CI existed still counts CI", () => {
+  const old = { day: "2026-10-13", agents: {}, counts: { claude: 4, chat: 0, prs: 0, reviews: 0, started: 0 }, feed: [], lastIngest: 1 };
+  const s = applyBatch(old, cleanBatch({ events: [{ t: "msg", kind: "ci", result: "pass", ts: 1 }], agents: {} }), 2, "2026-10-13");
+  assert.deepEqual(s.counts, { claude: 4, chat: 0, prs: 0, reviews: 0, started: 0, ci: 1, ciPass: 1 });
+  assert.deepEqual(s.ci, [{ result: "pass", ts: 1 }]);
 });

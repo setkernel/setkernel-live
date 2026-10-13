@@ -46,8 +46,8 @@ export class Hub extends DurableObject {
   }
 
   view() {
-    const { agents, counts, feed, lastIngest } = this.state;
-    return { agents, counts, feed, lastIngest, now: Date.now() };
+    const { agents, counts, feed, ci, lastIngest } = this.state;
+    return { agents, counts, feed, ci: ci ?? [], lastIngest, now: Date.now() };
   }
 
   async fetch(request) {

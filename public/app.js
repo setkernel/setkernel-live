@@ -1,5 +1,6 @@
 // live.setkernel.com page. Connects to /ws, draws the four agents and the places their work goes,
-// and moves a dot along a pipe for each event. Everything shown is built with textContent and
+// and moves a dot along a pipe for each event. The CI node shows the latest runs as a row of dots;
+// public repos are named, private ones are "a private project". Everything shown is built with textContent and
 // attributes, never innerHTML, so nothing in a batch can inject markup.
 (() => {
   "use strict";
@@ -40,18 +41,21 @@
   };
 
   const nodes = {
-    github: { x: 70, label: "GitHub", sub: "issues, pull requests, reviews", color: "github" },
-    claude: { x: 380, label: "Claude", sub: "the model doing the work", color: "claude" },
-    chat: { x: 690, label: "Team chat", sub: "status updates", color: "chat" },
+    github: { x: 22, label: "GitHub", sub: "issues, pull requests, reviews", color: "github" },
+    claude: { x: 268, label: "Claude", sub: "the model doing the work", color: "claude" },
+    chat: { x: 514, label: "Team chat", sub: "status updates", color: "chat" },
+    ci: { x: 760, label: "CI", sub: "No runs yet", color: "ok" },
   };
+  const PIPED = ["github", "claude", "chat"]; // CI runs have no agent, so no pipes
   const pipeLayer = el("g");
   const nodeLayer = el("g");
   const dotLayer = el("g");
   for (const n of Object.values(nodes)) {
-    n.y = 24; n.w = 240; n.h = 76;
-    el("rect", { x: n.x, y: n.y, width: n.w, height: n.h, rx: 6, class: "node" }, nodeLayer);
+    n.y = 24; n.w = 215; n.h = 88;
+    n.rect =
+el("rect", { x: n.x, y: n.y, width: n.w, height: n.h, rx: 6, class: "node" }, nodeLayer);
     text(n.label, { x: n.x + 16, y: n.y + 32, class: "n-name" }, nodeLayer);
-    text(n.sub, { x: n.x + 16, y: n.y + 54, class: "n-sub" }, nodeLayer);
+    n.subEl = text(n.sub, { x: n.x + 16, y: n.y + 54, class: "n-sub" }, nodeLayer);
     n.count = text("", { x: n.x + n.w - 14, y: n.y + 28, class: "n-count", "text-anchor": "end" }, nodeLayer);
   }
 
@@ -61,8 +65,9 @@
     agents[name] = a;
     const cx = a.x + a.w / 2;
     const offsets = { github: -30, claude: 0, chat: 30 };
-    for (const [key, n] of Object.entries(nodes)) {
-      const x1 = cx + offsets[key], y1 = a.y, x2 = n.x + 40 + i * 53, y2 = n.y + n.h, m = (y1 + y2) / 2;
+    for (const key of PIPED) {
+      const n = nodes[key];
+      const x1 = cx + offsets[key], y1 = a.y, x2 = n.x + 30 + i * 50, y2 = n.y + n.h, m = (y1 + y2) / 2;
       a["pipe_" + key] = el("path", { d: `M${x1},${y1} C${x1},${m} ${x2},${m} ${x2},${y2}`, class: "pipe" }, pipeLayer);
     }
     a.rect = el("rect", { x: a.x, y: a.y, width: a.w, height: a.h, rx: 6, class: "tile" }, nodeLayer);
@@ -117,10 +122,32 @@
   }
   requestAnimationFrame(frame);
 
+  // ---- CI
+  const ciDots = el("g", {}, nodeLayer);
+  const short = (s, max = 22) => (s.length > max ? s.slice(0, max - 1) + "…" : s);
+  function showCi(runs) {
+    const n = nodes.ci;
+    if (!Array.isArray(runs)) return;
+    const last = runs[0];
+    n.subEl.textContent = last ? `Last: ${short(last.repo || "a private project")} ${last.result === "pass" ? "passed" : "failed"}` : "No runs yet";
+    ciDots.replaceChildren();
+    runs.slice(0, 12).forEach((r, i) => {
+      const c = el("circle", { cx: n.x + 21 + i * 15, cy: n.y + 72, r: 5, fill: C(r.result === "pass" ? "ok" : "fail") }, ciDots);
+      const t = el("title", {}, c);
+      t.textContent = `${r.repo || "A private project"}: ${r.result === "pass" ? "passed" : "failed"}`;
+    });
+  }
+  function flashCi(result) {
+    if (document.hidden) return;
+    nodes.ci.rect.style.stroke = C(result === "pass" ? "ok" : "fail");
+    setTimeout(() => { nodes.ci.rect.style.stroke = ""; }, 600);
+  }
+
   // ---- counters and feed
   const countsEl = document.getElementById("counts");
   function showCounts(c = {}) {
-    const rows = [["Issues started", c.started], ["Pull requests opened", c.prs], ["Reviews", c.reviews], ["Claude requests", c.claude], ["Team-chat posts", c.chat]];
+    const rate = c.ci ? `${Math.round((100 * (c.ciPass ?? 0)) / c.ci)}%` : "–";
+    const rows = [["Issues started", c.started], ["Pull requests opened", c.prs], ["Reviews", c.reviews], ["Claude requests", c.claude], ["Team-chat posts", c.chat], ["CI runs", c.ci], ["CI pass rate", rate]];
     countsEl.replaceChildren(...rows.flatMap(([label, v]) => {
       const dt = document.createElement("dt"); dt.textContent = label;
       const dd = document.createElement("dd"); dd.textContent = String(v ?? 0);
@@ -129,6 +156,7 @@
     nodes.claude.count.textContent = `${c.claude ?? 0} today`;
     nodes.github.count.textContent = `${(c.started ?? 0) + (c.prs ?? 0) + (c.reviews ?? 0)} today`;
     nodes.chat.count.textContent = `${c.chat ?? 0} today`;
+    nodes.ci.count.textContent = c.ci ? `${c.ci} today · ${rate} pass` : "0 today";
   }
 
   let skew = 0; // server clock minus ours
@@ -172,8 +200,11 @@
     for (const name of AGENTS) showAgent(name, msg.agents?.[name]);
     showCounts(msg.counts);
     if (Array.isArray(msg.feed)) { feed = msg.feed; showFeed(); }
+    showCi(msg.ci);
     if (msg.t === "batch" && Array.isArray(msg.events)) {
-      const msgs = msg.events.filter((e) => e.t === "msg");
+      const runs = msg.events.filter((e) => e.t === "msg" && e.kind === "ci");
+      if (runs.length) flashCi(runs.some((e) => e.result === "fail") ? "fail" : "pass");
+      const msgs = msg.events.filter((e) => e.t === "msg" && e.kind !== "ci");
       const first = msgs.length ? Math.min(...msgs.map((e) => e.ts || 0)) : 0;
       for (const e of msgs) {
         const key = e.kind === "claude" ? "claude" : e.kind === "chat" ? "chat" : "github";
