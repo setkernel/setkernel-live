@@ -14,7 +14,7 @@ Public repo: everything here is visible to anyone.
 ```sh
 # install:  npm ci
 # test:     npm test                 (node --test: allowlist, state and replay buffer, Access token
-#                                    check, page wording/demo/replay/layout, page hosts and contrast)
+#                                    check, GitHub receiver, page wording/demo/replay/layout, page hosts and contrast)
 # lint:     npm run check            (node --check on every script)
 # validate: npm run validate         (check + test + wrangler deploy --dry-run; what CI runs)
 ```
@@ -27,9 +27,10 @@ Public repo: everything here is visible to anyone.
 a laptop.
 
 ## Layout
-- `src/worker.js`: routes (`/ws`, `/api/state`, `/api/replay`, `/ingest`) and the `Hub` Durable Object.
+- `src/worker.js`: routes (`/ws`, `/api/state`, `/api/replay`, `/ingest`, `/github/webhook`, `/github/queue`) and the `Hub` Durable Object.
 - `src/logic.js`: the allowlist (pure, tested); re-exports the state from `public/lib/state.js`.
-- `src/access.js`: checks the Cloudflare Access token on `/ingest` (pure, tested).
+- `src/access.js`: checks the Cloudflare Access token on `/ingest` and `/github/queue` (pure, tested).
+- `src/github.js`: the GitHub Actions webhook check, the fields it keeps, and the pull queue (pure, tested).
 - `public/`: the page (`index.html`, `app.js`, `style.css`), its security headers (`_headers`),
   `favicon.svg`, `og.png` (the share preview) and `fonts/`.
 - `public/lib/`: ES modules for the page. `state.js` is the public state and the 24-hour replay
@@ -42,6 +43,10 @@ a laptop.
 - Anything added to what the page shows must be added to the allowlist on **both** sides
   (setkernel/hq `observability/wall/public.py` and `src/logic.js`) and to both test suites. Never
   show issue or PR titles or numbers, usernames, hostnames, private repo names or costs.
+- `/github/webhook` is public; the HMAC check is its only gate. Never store or log the payload,
+  and never widen what `cleanWebhook` keeps without the same review as the page allowlist.
+- `QUEUE_AUD` works like `INGEST_AUD` below, for the "live queue" Access app. `GITHUB_WEBHOOK_SECRET`
+  is a Worker secret set by the deploy workflow from Infisical; never put it in `vars`.
 - `INGEST_AUD` in `wrangler.jsonc` is the audience tag of the "live ingest" Access app (not a
   secret). Empty means `/ingest` answers 503.
 - `public/lib/state.js` is served to visitors (demo mode runs it) and bundled into the Worker.
