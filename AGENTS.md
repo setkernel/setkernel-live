@@ -13,7 +13,8 @@ Public repo: everything here is visible to anyone.
 ## Commands
 ```sh
 # install:  npm ci
-# test:     npm test                 (node --test: allowlist, counters, Access token check)
+# test:     npm test                 (node --test: allowlist, counters, Access token check, live
+#                                    summary, page contrast and share tags)
 # lint:     npm run check            (node --check on every script)
 # validate: npm run validate         (check + test + wrangler deploy --dry-run; what CI runs)
 ```
@@ -29,7 +30,9 @@ a laptop.
 - `src/worker.js`: routes (`/ws`, `/api/state`, `/ingest`) and the `Hub` Durable Object.
 - `src/logic.js`: the allowlist and the public state (pure, tested).
 - `src/access.js`: checks the Cloudflare Access token on `/ingest` (pure, tested).
-- `public/`: the page (`index.html`, `app.js`, `style.css`) and its security headers (`_headers`).
+- `public/`: the page (`index.html`, `app.js`, `style.css`), its security headers (`_headers`),
+  `announce.js` (feed wording and the aria-live summary, pure, tested), `favicon.svg` and `og.png`.
+- `assets/og.svg`: the source of `public/og.png`, the 1200×630 share preview; not served.
 - `test/`: `node --test` suites.
 
 ## Traps and don't-touch
@@ -38,6 +41,7 @@ a laptop.
   show issue or PR titles or numbers, usernames, hostnames, private repo names or costs.
 - `INGEST_AUD` in `wrangler.jsonc` is the audience tag of the "live ingest" Access app (not a
   secret). Empty means `/ingest` answers 503.
+- Text colours are checked for WCAG AA in `test/page.test.mjs`; a new colour pair goes in its list.
 - The page builds everything with `textContent`, never `innerHTML`; keep it that way. The CSP in
   `public/_headers` allows only same-origin scripts and Google Fonts.
 - The Durable Object migration tag `v1` creates `Hub`; never edit an applied migration, add a new tag.
