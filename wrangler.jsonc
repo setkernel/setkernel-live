@@ -13,7 +13,11 @@
   "vars": {
     // Audience tag of the "live ingest" Access app (setkernel-cloudflare, access stack, output
     // live_ingest_aud): not a secret. Empty would make /ingest answer 503.
-    "INGEST_AUD": "bb04c4eb6d240c2c7a294a0dcc0f52595851f9f319e354397699f9b11d621160"
+    "INGEST_AUD": "bb04c4eb6d240c2c7a294a0dcc0f52595851f9f319e354397699f9b11d621160",
+    // Audience tag of the "live queue" Access app for /github/queue (setkernel-cloudflare, access
+    // stack, output live_queue_aud; #54): not a secret. Empty would make /github/queue answer 503.
+    "QUEUE_AUD": "cea94643c81566d341aa12cbbdaf56b27563781d7537206839b80812af302104"
   },
+  // GITHUB_WEBHOOK_SECRET is a Worker secret, set by .github/workflows/deploy.yml from Infisical.
   "observability": { "enabled": true }
 }
