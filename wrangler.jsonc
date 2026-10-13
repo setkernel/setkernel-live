@@ -11,9 +11,9 @@
   "durable_objects": { "bindings": [{ "name": "HUB", "class_name": "Hub" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Hub"] }],
   "vars": {
-    // Audience tag of the "live ingest" Access app (setkernel-cloudflare, access stack): not a
-    // secret. Until it's set, /ingest answers 503 and the page shows the office offline.
-    "INGEST_AUD": ""
+    // Audience tag of the "live ingest" Access app (setkernel-cloudflare, access stack, output
+    // live_ingest_aud): not a secret. Empty would make /ingest answer 503.
+    "INGEST_AUD": "bb04c4eb6d240c2c7a294a0dcc0f52595851f9f319e354397699f9b11d621160"
   },
   "observability": { "enabled": true }
 }
