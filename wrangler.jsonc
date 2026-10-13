@@ -13,7 +13,16 @@
   "vars": {
     // Audience tag of the "live ingest" Access app (setkernel-cloudflare, access stack, output
     // live_ingest_aud): not a secret. Empty would make /ingest answer 503.
-    "INGEST_AUD": "bb04c4eb6d240c2c7a294a0dcc0f52595851f9f319e354397699f9b11d621160"
+    "INGEST_AUD": "bb04c4eb6d240c2c7a294a0dcc0f52595851f9f319e354397699f9b11d621160",
+    // "Updates stopped" alerts (setkernel-live#9): where they go (not secrets). The identity's key,
+    // BUZZ_PRIVATE_KEY, is a Worker secret that the deploy workflow brings from Infisical.
+    "BUZZ_RELAY_URL": "https://buzz.setkernel.net",
+    "BUZZ_CHANNEL": "fc80475f-c5f0-42b7-870f-44785c189566", // #infra
+    // Mute switch for planned maintenance: "true" posts nothing (an outage that ends while muted
+    // is never reported). Change it in a PR and deploy; set it back to "false" afterwards.
+    "ALERTS_MUTED": "false"
   },
+  // Once a minute: has live.setkernel.com stopped getting updates? (Hub.watch)
+  "triggers": { "crons": ["* * * * *"] },
   "observability": { "enabled": true }
 }

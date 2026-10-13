@@ -13,7 +13,7 @@ Public repo: everything here is visible to anyone.
 ## Commands
 ```sh
 # install:  npm ci
-# test:     npm test                 (node --test: allowlist, counters, Access token check)
+# test:     npm test                 (node --test: allowlist, counters, Access token check, Buzz alert)
 # lint:     npm run check            (node --check on every script)
 # validate: npm run validate         (check + test + wrangler deploy --dry-run; what CI runs)
 ```
@@ -29,6 +29,8 @@ a laptop.
 - `src/worker.js`: routes (`/ws`, `/api/state`, `/ingest`) and the `Hub` Durable Object.
 - `src/logic.js`: the allowlist and the public state (pure, tested).
 - `src/access.js`: checks the Cloudflare Access token on `/ingest` (pure, tested).
+- `src/watch.js`: when to post "updates stopped" and "updates resumed" to Buzz (pure, tested).
+- `src/buzz.js`: signs and posts a Buzz message as the Worker's own identity (tested).
 - `public/`: the page (`index.html`, `app.js`, `style.css`) and its security headers (`_headers`).
 - `test/`: `node --test` suites.
 
@@ -40,4 +42,6 @@ a laptop.
   secret). Empty means `/ingest` answers 503.
 - The page builds everything with `textContent`, never `innerHTML`; keep it that way. The CSP in
   `public/_headers` allows only same-origin scripts and Google Fonts.
+- `BUZZ_PRIVATE_KEY` is a Worker secret from Infisical (README, "When updates stop"); never put it
+  in `wrangler.jsonc`, a log line or an error message.
 - The Durable Object migration tag `v1` creates `Hub`; never edit an applied migration, add a new tag.

@@ -4,9 +4,12 @@
 //   GET  /api/state  the current picture as JSON
 //   POST /ingest     batches from sk-obs01 (Access service token at the edge, checked again here)
 // One Durable Object ("live") holds the picture and fans batches out to every open WebSocket.
+// A Cron Trigger asks it once a minute whether updates have stopped, and it tells Buzz #infra.
 import { DurableObject } from "cloudflare:workers";
 import { applyBatch, cleanBatch, emptyState } from "./logic.js";
 import { jwksFetcher, verifyAccessJwt } from "./access.js";
+import { delivered, emptyWatch, tick } from "./watch.js";
+import { postMessage } from "./buzz.js";
 
 const getKeys = jwksFetcher();
 const MAX_BODY = 256 * 1024;
@@ -32,6 +35,10 @@ export default {
     }
     return env.ASSETS.fetch(request);
   },
+
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(env.HUB.get(env.HUB.idFromName("live")).watch());
+  },
 };
 
 export class Hub extends DurableObject {
@@ -40,9 +47,46 @@ export class Hub extends DurableObject {
     this.state = emptyState(today());
     this.lastSaved = 0;
     this.lastBroadcast = 0;
+    this.watchState = emptyWatch();
+    this.watching = false;
     ctx.blockConcurrencyWhile(async () => {
       this.state = (await ctx.storage.get("state")) ?? this.state;
+      this.watchState = (await ctx.storage.get("watch")) ?? this.watchState;
     });
+  }
+
+  // Called by the Cron Trigger once a minute (setkernel-live#9). Posts at most one message per
+  // tick; one that fails stays due and is tried again next tick.
+  async watch() {
+    const { BUZZ_RELAY_URL: relay, BUZZ_CHANNEL: channel, BUZZ_PRIVATE_KEY: key, ALERTS_MUTED } = this.env;
+    if (!relay || !channel || !key) {
+      console.log("watch: Buzz is not configured (BUZZ_RELAY_URL, BUZZ_CHANNEL, BUZZ_PRIVATE_KEY); not checking");
+      return;
+    }
+    if (this.watching) return; // the previous tick is still posting
+    this.watching = true;
+    try {
+      const now = Date.now();
+      const muted = String(ALERTS_MUTED) === "true";
+      const { watch, send } = tick(this.watchState, { lastIngest: this.state.lastIngest, now, muted });
+      await this.saveWatch(watch);
+      if (!send) return;
+      try {
+        await postMessage({ relay, channel, key, text: send.text, now });
+        await this.saveWatch(delivered(this.watchState, send.type));
+        console.log(`watch: posted the ${send.type} to Buzz`);
+      } catch (e) {
+        console.error(`watch: posting the ${send.type} to Buzz failed, retrying next minute: ${e.message}`);
+      }
+    } finally {
+      this.watching = false;
+    }
+  }
+
+  async saveWatch(watch) {
+    if (JSON.stringify(watch) === JSON.stringify(this.watchState)) return;
+    this.watchState = watch;
+    await this.ctx.storage.put("watch", watch);
   }
 
   view() {
