@@ -14,7 +14,7 @@ const MAX_LINES = 6;
 
 export function createSky(canvas, { reduced = false, colors }) {
   const ctx = canvas.getContext("2d");
-  let L = null, dpr = 1, field = null, running = false, raf = 0, lastFrame = 0, prevDraw = 0;
+  let L = null, dpr = 1, field = null, running = false, raf = 0, slowTimer = 0, lastFrame = 0, prevDraw = 0;
   const energy = Object.fromEntries(AGENTS.map((n) => [n, { base: BASE.IDLE, kick: 0 }]));
   const flash = Object.fromEntries(PLACES.map((k) => [k, 0]));
   const rings = []; // helper flares: { agent, t0 }
@@ -231,13 +231,14 @@ export function createSky(canvas, { reduced = false, colors }) {
       running = true;
       if (reduced) {
         // no animation loop: redraw a few times a second so brightness changes still show
-        const slow = () => { if (!running) return; draw(performance.now()); setTimeout(slow, 250); };
+        const slow = () => { if (!running) return; draw(performance.now()); slowTimer = setTimeout(slow, 250); };
         slow();
       } else if (!raf) raf = requestAnimationFrame(loop);
     },
     stop() {
       running = false;
       if (raf) cancelAnimationFrame(raf);
+      clearTimeout(slowTimer);
       raf = 0;
     },
     clear() {

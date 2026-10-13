@@ -44,7 +44,7 @@ export function applyBatch(state, batch, now, day) {
   for (const e of batch.events) {
     if (e.t !== "msg") continue;
     const mine = (s.byAgent[e.agent] = { ...zeroCounts(), ...s.byAgent[e.agent] });
-    const ts = e.ts ?? nowS;
+    const ts = Math.min(e.ts ?? nowS, nowS); // a clock ahead of ours counts as now
     if (!(s.seen[e.agent] >= ts)) s.seen[e.agent] = ts;
     for (const c of [s.counts, mine]) {
       if (e.kind === "claude") c.claude++;

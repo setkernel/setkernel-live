@@ -1,7 +1,7 @@
 // ?demo: sample data so the page can be shown any time, clearly labelled as such on the page.
 // A small seeded simulation of four agents picking up issues, opening pull requests, reviewing
 // each other's and talking in the team chat. It produces only events the Worker's allowlist
-// accepts unchanged (test/demo.test.mjs checks that), and the page feeds them through the same
+// accepts unchanged (test/page-logic.test.mjs checks that), and the page feeds them through the same
 // reducer as the Durable Object. No DOM here.
 import { AGENTS } from "./state.js";
 

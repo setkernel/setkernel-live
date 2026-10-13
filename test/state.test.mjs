@@ -30,9 +30,10 @@ test("per-agent counts: only the four agents, reset each UTC day", () => {
   assert.deepEqual(s.seen, { Vega: T0 + 2, Rigel: T0 + 5 }, "when each agent was last seen carries over midnight");
 });
 
-test("seen keeps the latest time, and an event without ts counts as now", () => {
+test("seen keeps the latest time; no ts, or a clock ahead of ours, counts as now", () => {
   let s = applyBatch(emptyState("d"), batch(msg("Lyra", "chat", T0 + 50), msg("Lyra", "chat", T0 + 10)), T0 * 1000 + 99_000, "d");
   assert.equal(s.seen.Lyra, T0 + 50);
+  assert.equal(applyBatch(emptyState("d"), batch(msg("Vega", "chat", T0 + 9999)), T0 * 1000, "d").seen.Vega, T0);
   s = applyBatch(s, cleanBatch({ events: [{ t: "msg", kind: "claude", agent: "Lyra" }], agents: {} }), (T0 + 200) * 1000, "d");
   assert.equal(s.seen.Lyra, T0 + 200);
 });
@@ -93,14 +94,15 @@ test("replay is capped: a full day of heavy traffic stays far below the storage 
         for (let i = 0; i < 120; i++) events.push(msg(agent, "claude", s));
         events.push(msg(agent, "chat", s), msg(agent, "helper", s));
       }
-      events.push(msg("Vega", "github", s, { action: "pushed", repo: "a-public-repo-with-a-long-name" }));
+      events.push(msg("Vega", "github", s, { action: "pushed", repo: "r".repeat(100) })); // the longest name the allowlist takes
     }
     r = recordReplay(r, { events: events.map((e) => ({ ...e })), agents: {} }, (t + 600) * 1000);
   }
   assert.equal(r.pulses.length, 1440);
   assert.equal(r.work.length, 300);
   const bytes = Buffer.byteLength(JSON.stringify(r));
-  assert.ok(bytes < 100 * 1024, `${bytes} bytes; a Durable Object storage value may be up to 128 KiB`);
+  // under 128 KiB (the key-value backend's value limit), so far below the 2 MB of a SQLite-backed object
+  assert.ok(bytes < 128 * 1024, `${bytes} bytes`);
   assert.ok(r.pulses.every((row, i) => i === 0 || row[0] > r.pulses[i - 1][0]), "rows stay in time order");
 });
 

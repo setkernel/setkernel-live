@@ -263,17 +263,20 @@ function startDemo() {
 
 // ---- replay: the last hour in a minute, the last day in two
 const replayButtons = [...document.querySelectorAll("[data-replay]")];
+let replayGen = 0; // bumped on every start and stop, so a replay whose data arrives late is dropped
 async function startReplay(h) {
   stopReplay();
+  const gen = ++replayGen;
   const cfg = REPLAYS[h];
   const to = Math.trunc(serverNow() / 1000), from = to - cfg.hours * 3600;
   let data;
   try {
     data = DEMO ? replaySince(demoReplay, from) : await (await fetch(`/api/replay?h=${h}`, { cache: "no-store" })).json();
   } catch {
-    $("now-sub").textContent = "The replay couldn't be loaded. Try again in a moment.";
+    if (gen === replayGen) $("now-sub").textContent = "The replay couldn't be loaded. Try again in a moment.";
     return;
   }
+  if (gen !== replayGen) return; // another click, or Back to live, came first
   const show = plan(data, { from, to, durationMs: cfg.durationMs, maxPulses: cfg.maxPulses });
   const work = show.filter((e) => e.kind === "github");
   sky.clear();
@@ -291,12 +294,17 @@ async function startReplay(h) {
     }
     $("replay-at").textContent = clock(from + Math.min(1, ms / cfg.durationMs) * (to - from));
     $("replay-progress").style.width = `${Math.min(100, (ms / cfg.durationMs) * 100)}%`;
-    if (ms >= cfg.durationMs + 1500) stopReplay();
+    if (ms >= cfg.durationMs + 1500) {
+      if (replaying === id) stopReplay();
+      else clearInterval(id);
+    }
   };
-  replaying = setInterval(step, 100);
+  const id = setInterval(step, 100);
+  replaying = id;
   step();
 }
 function stopReplay() {
+  replayGen++;
   if (replaying) clearInterval(replaying);
   replaying = null;
   $("replaying").hidden = true;

@@ -46,7 +46,7 @@ a laptop.
   secret). Empty means `/ingest` answers 503.
 - `public/lib/state.js` is served to visitors (demo mode runs it) and bundled into the Worker.
   It must stay pure and hold nothing private. The replay buffer is capped so the stored value
-  stays under 100 KiB (`test/state.test.mjs`); keep that test passing if you add a column.
+  stays under 128 KiB even at its worst (`test/state.test.mjs`); keep that test passing if you add a column.
 - `?demo` data must pass `cleanEvent` unchanged (`test/page-logic.test.mjs`). If the allowlist
   changes, the demo changes with it.
 - Text colours are checked for contrast in `test/page.test.mjs`; a new colour goes in its list.
