@@ -1,6 +1,8 @@
 // live.setkernel.com page. Connects to /ws, draws the four agents and the places their work goes,
 // and moves a dot along a pipe for each event. Everything shown is built with textContent and
 // attributes, never innerHTML, so nothing in a batch can inject markup.
+import { ACTION_TEXT, createAnnouncer } from "/announce.js";
+
 (() => {
   "use strict";
   const NS = "http://www.w3.org/2000/svg";
@@ -11,15 +13,6 @@
   const AGENTS = ["Vega", "Rigel", "Lyra", "Orion"];
   const OFFLINE_AFTER_MS = 120_000;
 
-  const ACTION_TEXT = {
-    picked_up: "started on an issue",
-    opened_pr: "opened a pull request",
-    approved: "approved a teammate's pull request",
-    requested_changes: "asked for changes on a teammate's pull request",
-    pushed: "pushed fixes to a pull request",
-    posted_round: "posted in a design discussion",
-    decision_pr: "wrote up a decision",
-  };
   const DOING = {
     issue: "Working on an issue", changes: "Addressing review feedback", decision: "Writing up a decision",
     review: "Reviewing a pull request", discussion: "In a design discussion",
@@ -69,7 +62,7 @@
     text(name, { x: a.x + 16, y: a.y + 34, class: "a-name" }, nodeLayer);
     text("AI engineer", { x: a.x + 16, y: a.y + 54, class: "a-role" }, nodeLayer);
     a.pillBg = el("rect", { x: a.x + a.w - 92, y: a.y + 16, width: 78, height: 20, rx: 10, fill: C("line") }, nodeLayer);
-    a.pill = text("IDLE", { x: a.x + a.w - 53, y: a.y + 30, class: "pill-text", "text-anchor": "middle", fill: C("ink-dim") }, nodeLayer);
+    a.pill = text("IDLE", { x: a.x + a.w - 53, y: a.y + 30, class: "pill-text", "text-anchor": "middle", fill: C("ink") }, nodeLayer);
     a.doing = text("Waiting for work", { x: a.x + 16, y: a.y + 92, class: "a-doing" }, nodeLayer);
     a.repo = text("", { x: a.x + 16, y: a.y + 114, class: "a-repo" }, nodeLayer);
   });
@@ -80,7 +73,7 @@
     const state = info?.state || "IDLE";
     const [label, color] = PILL[state] || PILL.IDLE;
     a.pill.textContent = label;
-    a.pill.setAttribute("fill", color === "line" ? C("ink-dim") : C("bg"));
+    a.pill.setAttribute("fill", color === "line" ? C("ink") : C("bg"));
     a.pillBg.setAttribute("fill", C(color));
     a.doing.textContent = state === "IDLE" ? "Waiting for work" : state === "PAUSED" ? "Paused" : DOING[info.work] || "Working";
     a.repo.textContent = info?.repo && state !== "IDLE" ? info.repo : "";
@@ -161,6 +154,10 @@
     }));
   }
 
+  // ---- spoken summary: at most one aria-live update every 30 s
+  const announceEl = document.getElementById("announce");
+  const announcer = createAnnouncer({ say: (t) => { announceEl.textContent = t; } });
+
   // ---- connection
   const statusEl = document.getElementById("status"), statusText = document.getElementById("status-text");
   const offlineEl = document.getElementById("offline"), offlineMin = document.getElementById("offline-min");
@@ -173,6 +170,7 @@
     showCounts(msg.counts);
     if (Array.isArray(msg.feed)) { feed = msg.feed; showFeed(); }
     if (msg.t === "batch" && Array.isArray(msg.events)) {
+      announcer.add(msg.events);
       const msgs = msg.events.filter((e) => e.t === "msg");
       const first = msgs.length ? Math.min(...msgs.map((e) => e.ts || 0)) : 0;
       for (const e of msgs) {

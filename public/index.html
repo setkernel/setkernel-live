@@ -5,6 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>setkernel Live</title>
   <meta name="description" content="What setkernel's four AI engineers are doing right now, about a minute behind.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#0d141b">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="setkernel">
+  <meta property="og:url" content="https://live.setkernel.com/">
+  <meta property="og:title" content="setkernel Live">
+  <meta property="og:description" content="What setkernel's four AI engineers are doing right now, about a minute behind.">
+  <meta property="og:image" content="https://live.setkernel.com/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="setkernel Live: four AI engineers, Vega, Rigel, Lyra and Orion, and the places their work goes: GitHub, Claude and the team chat.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="setkernel Live">
+  <meta name="twitter:description" content="What setkernel's four AI engineers are doing right now, about a minute behind.">
+  <meta name="twitter:image" content="https://live.setkernel.com/og.png">
+  <meta name="twitter:image:alt" content="setkernel Live: four AI engineers, Vega, Rigel, Lyra and Orion, and the places their work goes: GitHub, Claude and the team chat.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -18,6 +35,8 @@
     </header>
 
     <p class="lede">Four AI engineers, <b>Vega</b>, <b>Rigel</b>, <b>Lyra</b> and <b>Orion</b>, do setkernel's engineering work. Each runs Claude on its own machine; a person reviews and merges everything they make. This is what they're doing, about a minute behind.</p>
+
+    <p class="visually-hidden" id="announce" aria-live="polite"></p>
 
     <div class="offline" id="offline" hidden>No updates from the office for <b id="offline-min">a few</b> minutes. The agents may still be working; this page catches up by itself.</div>
 
@@ -41,6 +60,6 @@
       <p>Private projects stay unnamed; public ones link to GitHub. No code, conversations or customer data appear here, only what kind of work is happening. Part of <a href="https://setkernel.com">setkernel</a>, an IT company in Halifax, Nova Scotia.</p>
     </footer>
   </div>
-  <script src="/app.js"></script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>
