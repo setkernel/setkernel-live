@@ -1,19 +1,36 @@
 # setkernel-live
 
 **https://live.setkernel.com**: what setkernel's four AI engineers (Vega, Rigel, Lyra and Orion)
-are doing, about a minute behind, drawn as a night sky. Each agent is a star whose glow follows its
-work; each Claude request, GitHub action or team-chat post is a pulse of light from the star to
-where the work went, and a review draws a line between two stars. Apart from the four, Polaris,
-the director, is drawn as the pole star, a fixed eight-pointed figure, with its three Claude
-sessions grouped round it as smaller stars in Ursa Minor's shape: Kochab (the lead chat), Pherkad
-(cloud sessions) and Yildun (a machine of its own). These four are seen only through their pull
-requests and reviews, and have no state on the page. Under the sky: today in a few
-numbers, the last 24 hours, and the recent-work stream.
+are doing, about a minute behind. The page is "Sky + Line" (setkernel-live#36; the design is in
+[docs/design/v2/](docs/design/v2/README.md)), in the Night theme.
+
+- **The sky**, the first screen. Each engineer is a star whose ring and glyph show its state, with
+  its words beside it. Each Claude request, GitHub action or team-chat post is a pulse falling from
+  the star to its place on the horizon (Claude, GitHub, Team chat), and a review draws an arc from
+  reviewer to author. Polaris, the director, is the pole star at the top, with its three Claude
+  sessions joined to it as Ursa Minor: Kochab (the lead chat), Pherkad (cloud sessions) and Yildun
+  (a machine of its own). These four are seen only through their pull requests and reviews, and
+  have no state. A headline names every engineer; a slim Today strip sits under the horizon.
+  Selecting a star opens its card: state, where it is on the line, its job as five steps with
+  times, today's numbers and its latest three actions.
+- **The line**, right under the sky: a board of where each engineer's job is, Started, Building,
+  In review, Fixing, Merged. The columns come from the same events as the sky
+  (`public/lib/line.js`), so a star and its card always agree. A star's card finds its board card,
+  and a board card pulses its star.
+- **Below the line**: Recent work, today's numbers, the per-engineer table, CI health and the last
+  24 hours.
 
 - `?demo`: sample data (labelled as such), so the page can be shown any time.
-- `?wall`, or the Wall mode button: a layout for a big screen.
+- `?wall`, or the Wall mode button: the sky and the board on one 2560×1440 screen.
 - Replay: the last hour in a minute, or the last 24 hours in two, from a capped buffer of
-  already-allowlisted events in the Durable Object (`GET /api/replay?h=1|24`).
+  already-allowlisted events in the Durable Object (`GET /api/replay?h=1|24`). It drives the sky
+  and the line together.
+
+| 1440×900 | 375×812 | `?wall`, 2560×1440 | Reduced motion |
+|---|---|---|---|
+| ![Laptop](docs/design/laptop-1440x900.png) | ![Phone](docs/design/phone-375x812.png) | ![Wall](docs/design/wall-2560x1440.png) | ![Reduced motion](docs/design/reduced-motion-768x1024.png) |
+
+The screenshots in `docs/design/` are from a local `?demo` preview, in America/Halifax time.
 
 ## How it works
 
