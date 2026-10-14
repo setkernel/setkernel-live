@@ -11,7 +11,15 @@ export const ACTION_TEXT = {
   pushed: "pushed fixes to a pull request",
   posted_round: "posted in a design discussion",
   decision_pr: "wrote up a decision",
+  merged: "had a pull request merged",
 };
+
+// Who a star is, when its name alone doesn't say: shown under the name.
+export const STAR_NOTE = { Polaris: "the director" };
+
+// Where a GitHub action happened, when the event names no repo: a private one. A design-discussion
+// post isn't in a repo, so it says nothing.
+export const whereWork = (e) => e?.repo || (e?.action === "posted_round" ? "" : "a private project");
 
 const DOING = {
   issue: "working on an issue",
@@ -85,9 +93,11 @@ export function tally(c) {
   return parts.length ? parts.join(" · ") : "nothing yet today";
 }
 
-// One GitHub event -> "Vega opened a pull request in lafka-plugin."
+// One GitHub event -> "Vega opened a pull request in lafka-plugin.", "Pherkad opened a pull
+// request in a private project."
 export function sentence(e) {
-  return `${e.agent} ${ACTION_TEXT[e.action] || "did something"}${e.repo ? ` in ${e.repo}` : ""}.`;
+  const where = whereWork(e);
+  return `${e.agent} ${ACTION_TEXT[e.action] || "did something"}${where ? ` in ${where}` : ""}.`;
 }
 
 // ---- CI runs (setkernel-live#14). A run has no agent; a public repo is named, a private one is not.
@@ -123,7 +133,7 @@ export function headline({ agents = {}, seen = {}, feed = [], lastIngest = 0, no
   }
   const last = Math.max(0, ...Object.values(seen).filter(Number.isFinite));
   return {
-    main: last ? `All four are quiet, since ${clock(last, timeZone)}.` : "All four are quiet. Nothing yet today.",
+    main: last ? `All quiet, since ${clock(last, timeZone)}.` : "All quiet. Nothing yet today.",
     sub: feed[0] ? `Last: ${sentence(feed[0])}` : "",
     mood: "quiet",
   };

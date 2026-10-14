@@ -24,7 +24,23 @@ test("repo names must look like repo names", () => {
   for (const bad of ["<script>", "a/b", "x".repeat(101), "", 7]) assert.equal(e(bad).repo, undefined, String(bad));
 });
 
-test("a batch keeps the four agents only and caps the event count", () => {
+test("Polaris and its three Claudes: their GitHub actions only, never a state; merged is an action", () => {
+  for (const agent of ["Polaris", "Kochab", "Pherkad", "Yildun"]) {
+    for (const action of ["opened_pr", "merged", "approved", "requested_changes"]) {
+      assert.deepEqual(cleanEvent({ t: "msg", kind: "github", agent, action, repo: "hq", ts: 9, title: "secret", number: 12, branch: "claude/x", login: "realRaghavGupta" }),
+        { t: "msg", kind: "github", agent, action, repo: "hq", ts: 9 });
+    }
+    // no state, and no Claude requests, chat posts or helpers: only GitHub sees them
+    assert.equal(cleanEvent({ t: "agent", agent, state: "WORKING", work: "issue", repo: "hq" }), null, `${agent} state`);
+    for (const kind of ["claude", "chat", "helper"]) assert.equal(cleanEvent({ t: "msg", kind, agent, ts: 1 }), null, `${agent} ${kind}`);
+  }
+  assert.deepEqual(cleanEvent({ t: "msg", kind: "github", agent: "Vega", action: "merged" }), { t: "msg", kind: "github", agent: "Vega", action: "merged" });
+  // the names the page never shows, as an agent
+  for (const name of ["Claude", "claude", "Raghav", "raghav-dev", "realRaghavGupta", "polaris"]) assert.equal(cleanEvent({ t: "msg", kind: "github", agent: name, action: "opened_pr" }), null, name);
+  assert.deepEqual(cleanBatch({ events: [], agents: { Polaris: { state: "IDLE" }, Pherkad: { state: "WORKING" }, Claude: { state: "IDLE" }, Vega: { state: "IDLE" } } }).agents, { Vega: { state: "IDLE" } });
+});
+
+test("a batch keeps the four engineers' states only and caps the event count", () => {
   const b = cleanBatch({ events: Array.from({ length: 600 }, () => ({ t: "msg", kind: "claude", agent: "Orion" })), agents: { Vega: { state: "WORKING", work: "issue" }, Mallory: { state: "IDLE" } } });
   assert.equal(b.events.length, 500);
   assert.deepEqual(b.agents, { Vega: { state: "WORKING", work: "issue" } });

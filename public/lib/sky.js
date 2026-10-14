@@ -1,13 +1,18 @@
-// The night sky, drawn on a canvas. Each agent is a star whose glow follows its activity; each
+// The night sky, drawn on a canvas. Each engineer is a star whose glow follows its activity; each
 // event is a pulse of light from the star to where the work went; a review draws a line between
-// two stars. Text never goes on the canvas (app.js puts real, accessible text over it), and the
+// two stars. Polaris, the director, is a fixed eight-pointed figure inside a faint ring, and its
+// three Claudes (Kochab, Pherkad, Yildun) are smaller, steady stars joined to it as Ursa Minor;
+// they have no state, so only their own events brighten them. Text never goes on the canvas (app.js puts real, accessible text over it), and the
 // canvas is aria-hidden. Stops drawing when the tab is hidden or the sky is off screen; with
 // prefers-reduced-motion nothing travels: stars and places brighten and fade in place.
-import { AGENTS } from "./state.js";
+import { AGENTS, ENGINEERS, POLE } from "./state.js";
 import { PLACES } from "./layout.js";
 import { seeded } from "./demo.js";
 
 const BASE = { WORKING: 0.55, REVIEW: 0.5, DISCUSS: 0.45, PAUSED: 0.18, IDLE: 0.1 };
+const POLE_BASE = { Polaris: 0.42, Kochab: 0.22, Pherkad: 0.22, Yildun: 0.22 }; // fixed: no state
+// Ursa Minor's line, simplified: the handle from Polaris to Yildun, then the bowl.
+const URSA_MINOR = ["Polaris", "Yildun", "Kochab", "Pherkad", "Yildun"];
 const KICK = { claude: 0.08, chat: 0.14, helper: 0.12, github: 0.3 };
 const MAX_PULSES = 160;
 const MAX_LINES = 6;
@@ -15,7 +20,7 @@ const MAX_LINES = 6;
 export function createSky(canvas, { reduced = false, colors }) {
   const ctx = canvas.getContext("2d");
   let L = null, dpr = 1, field = null, running = false, raf = 0, slowTimer = 0, lastFrame = 0, prevDraw = 0;
-  const energy = Object.fromEntries(AGENTS.map((n) => [n, { base: BASE.IDLE, kick: 0 }]));
+  const energy = Object.fromEntries(AGENTS.map((n) => [n, { base: POLE_BASE[n] ?? BASE.IDLE, kick: 0 }]));
   const flash = Object.fromEntries(PLACES.map((k) => [k, 0]));
   const rings = []; // helper flares: { agent, t0 }
   const pulses = []; // { agent, place, t0, dur, bend }
@@ -38,7 +43,8 @@ export function createSky(canvas, { reduced = false, colors }) {
     return (sprites[color] = s);
   }
 
-  // Background: faint fixed stars and the dotted figure joining the four, like a star chart.
+  // Background: faint fixed stars, the dotted figure joining the four engineers like a star chart,
+  // and Ursa Minor with the ring round Polaris.
   function drawField() {
     const { w, h } = L;
     field = document.createElement("canvas");
@@ -58,14 +64,24 @@ export function createSky(canvas, { reduced = false, colors }) {
     g.strokeStyle = "rgba(236,231,220,0.13)";
     g.lineWidth = 1;
     g.setLineDash([2, 6]);
-    g.beginPath();
-    AGENTS.forEach((name, i) => {
-      const s = L.stars[name];
-      if (i) g.lineTo(s.x, s.y);
-      else g.moveTo(s.x, s.y);
-    });
-    g.stroke();
+    const figure = (names) => {
+      g.beginPath();
+      names.forEach((name, i) => {
+        const s = L.stars[name];
+        if (i) g.lineTo(s.x, s.y);
+        else g.moveTo(s.x, s.y);
+      });
+      g.stroke();
+    };
+    figure(ENGINEERS);
+    g.strokeStyle = "rgba(255,236,190,0.28)";
+    figure(URSA_MINOR);
     g.setLineDash([]);
+    const p = L.stars.Polaris;
+    g.strokeStyle = "rgba(255,236,190,0.22)";
+    g.beginPath();
+    g.arc(p.x, p.y, 26 * starScale(), 0, Math.PI * 2);
+    g.stroke();
     // the routes light takes, barely there until a pulse runs along one
     g.strokeStyle = "rgba(236,231,220,0.045)";
     for (const name of AGENTS) for (const key of PLACES) {
@@ -84,6 +100,7 @@ export function createSky(canvas, { reduced = false, colors }) {
     const k = 0.18 + bend;
     return [a, { x: mx - dy * k, y: my + dx * k }, b];
   }
+  const starScale = () => Math.min(1.25, Math.max(0.8, Math.min(L.w, L.h) / 520));
   const at = ([a, c, b], f) => {
     const u = 1 - f;
     return { x: u * u * a.x + 2 * u * f * c.x + f * f * b.x, y: u * u * a.y + 2 * u * f * c.y + f * f * b.y };
@@ -97,6 +114,38 @@ export function createSky(canvas, { reduced = false, colors }) {
     canvas.height = Math.round(layout.h * dpr);
     drawField();
     draw(performance.now());
+  }
+
+  // A star's brightness now, its kick fading over a few seconds.
+  function levelOf(name, dt) {
+    const en = energy[name];
+    en.kick *= Math.exp(-dt / 4000);
+    return Math.min(1.3, en.base + en.kick);
+  }
+  function glow(s, color, r, alpha) {
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(sprite(color), s.x - r, s.y - r, r * 2, r * 2);
+    ctx.globalAlpha = 1;
+  }
+  // a cross of `long` spikes, and when `short` is set a second, diagonal one; alpha is 0 to 255
+  function spikes(s, color, long, short, alpha) {
+    ctx.strokeStyle = color + Math.round(Math.min(255, alpha)).toString(16).padStart(2, "0");
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(s.x - long, s.y); ctx.lineTo(s.x + long, s.y);
+    ctx.moveTo(s.x, s.y - long); ctx.lineTo(s.x, s.y + long);
+    if (short) {
+      const d = short / Math.SQRT2;
+      ctx.moveTo(s.x - d, s.y - d); ctx.lineTo(s.x + d, s.y + d);
+      ctx.moveTo(s.x - d, s.y + d); ctx.lineTo(s.x + d, s.y - d);
+    }
+    ctx.stroke();
+  }
+  function core(s, r) {
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   function draw(now) {
@@ -158,27 +207,26 @@ export function createSky(canvas, { reduced = false, colors }) {
     }
 
     // stars: glow and a slow breath that quickens with work; cross spikes when busy
-    for (const name of AGENTS) {
-      const s = L.stars[name], en = energy[name];
-      en.kick *= Math.exp(-dt / 4000);
-      const level = Math.min(1.3, en.base + en.kick);
+    const scale = starScale();
+    for (const name of ENGINEERS) {
+      const s = L.stars[name], level = levelOf(name, dt);
       const breath = reduced ? 1 : 1 + 0.08 * Math.sin(now / (1400 - 700 * Math.min(1, level)) + s.x);
-      const scale = Math.min(1.25, Math.max(0.8, Math.min(L.w, L.h) / 520));
-      const r = (14 + 46 * level) * breath * scale;
-      ctx.globalAlpha = 0.35 + 0.5 * Math.min(1, level);
-      ctx.drawImage(sprite(colors[name]), s.x - r, s.y - r, r * 2, r * 2);
-      ctx.globalAlpha = 1;
-      const spike = (8 + 34 * level) * scale;
-      ctx.strokeStyle = colors[name] + Math.round(Math.min(1, level) * 110).toString(16).padStart(2, "0");
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(s.x - spike, s.y); ctx.lineTo(s.x + spike, s.y);
-      ctx.moveTo(s.x, s.y - spike); ctx.lineTo(s.x, s.y + spike);
-      ctx.stroke();
-      ctx.fillStyle = "#fff";
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, (2 + 2.2 * Math.min(1, level)) * scale, 0, Math.PI * 2);
-      ctx.fill();
+      glow(s, colors[name], (14 + 46 * level) * breath * scale, 0.35 + 0.5 * Math.min(1, level));
+      spikes(s, colors[name], (8 + 34 * level) * scale, 0, Math.min(1, level) * 110);
+      core(s, (2 + 2.2 * Math.min(1, level)) * scale);
+    }
+    // Polaris: the fixed pole star. It doesn't breathe; eight points, the long ones always there.
+    {
+      const s = L.stars.Polaris, level = levelOf("Polaris", dt);
+      glow(s, colors.Polaris, (16 + 40 * level) * scale, 0.45 + 0.4 * Math.min(1, level));
+      spikes(s, colors.Polaris, (24 + 14 * level) * scale, (9 + 6 * level) * scale, 150 + 60 * Math.min(1, level));
+      core(s, 3.4 * scale);
+    }
+    // its three Claudes: smaller and steady, a little glow and no spikes
+    for (const name of POLE.slice(1)) {
+      const s = L.stars[name], level = levelOf(name, dt);
+      glow(s, colors[name], (7 + 26 * level) * scale, 0.4 + 0.5 * Math.min(1, level));
+      core(s, (1.4 + 1.2 * Math.min(1, level)) * scale);
     }
 
     // helper flares: a thin ring leaving the star
@@ -210,7 +258,7 @@ export function createSky(canvas, { reduced = false, colors }) {
   return {
     resize,
     setAgents(agents) {
-      for (const n of AGENTS) energy[n].base = BASE[agents?.[n]?.state] ?? BASE.IDLE;
+      for (const n of ENGINEERS) energy[n].base = BASE[agents?.[n]?.state] ?? BASE.IDLE;
     },
     // An event: kind is claude, chat, helper or github.
     event(agent, kind) {

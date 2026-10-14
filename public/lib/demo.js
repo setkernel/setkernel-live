@@ -1,15 +1,21 @@
 // ?demo: sample data so the page can be shown any time, clearly labelled as such on the page.
 // A small seeded simulation of four agents picking up issues, opening pull requests, reviewing
 // each other's and talking in the team chat, with a test run each time they open or push to a pull
-// request. It produces only events the Worker's allowlist accepts unchanged
+// request, and a merge a while after each approval. Polaris and its three Claudes are seen only
+// through GitHub, as on the live page: Polaris reviews a waiting pull request now and then, and
+// Kochab, Pherkad and Yildun each open one now and then, merged later. It produces only events the
+// Worker's allowlist accepts unchanged
 // (test/page-logic.test.mjs checks that), and the page feeds them through the same reducer as the
 // Durable Object. No DOM here.
-import { AGENTS } from "./state.js";
+import { AGENTS, ENGINEERS, POLE } from "./state.js";
 
 // Public repos are named on the live page and private ones never are; null stands for private.
 const REPOS = ["setkernel-live", null, null, "example-site", null];
 
 const CI_PASS = 0.85; // share of test runs that pass
+
+// Seconds between a pole star's pull requests (or, for Polaris, its reviews): [shortest, longest].
+const POLE_GAP = { Polaris: [1500, 4800], Kochab: [3600, 9000], Pherkad: [1800, 6000], Yildun: [3000, 8400] };
 
 // Events per second while busy, per kind.
 const RATE = {
@@ -48,14 +54,42 @@ export function createDemo(seed = 17, startS = Math.trunc(Date.now() / 1000)) {
   let t = startS;
   const a = Object.fromEntries(AGENTS.map((n, i) => [n, { state: "IDLE", until: t + 5 + i * between(6, 20), todo: null }]));
   const waiting = []; // pull requests waiting for a review: { author, repo }
+  const merging = []; // approved pull requests waiting for a person to merge them: { author, repo, at }
 
   const gh = (agent, action, repo, ts) => ({ t: "msg", kind: "github", agent, action, ...(repo ? { repo } : {}), ts });
   // a test run has no agent: only the result, and the repo when it is public
   const ci = (repo, ts) => ({ t: "msg", kind: "ci", result: ciRand() < CI_PASS ? "pass" : "fail", ...(repo ? { repo } : {}), ts });
   const set = (agent, state, work, repo, until) => Object.assign(a[agent], { state, work, repo, until });
 
+  // A pole star's turn. Polaris reviews a waiting pull request when there is one. Its Claudes work
+  // on one of their own for a while, then open it; it is merged later (they share Polaris's
+  // account, which can't approve its own pull requests).
+  function nextPole(name, at, out) {
+    const me = a[name];
+    const [lo, hi] = POLE_GAP[name];
+    if (name === "Polaris") {
+      const pr = waiting.findIndex((p) => ENGINEERS.includes(p.author));
+      if (pr >= 0 && rand() < 0.6) {
+        const { author, repo } = waiting.splice(pr, 1)[0];
+        const ok = rand() < 0.85;
+        out.push(gh(name, ok ? "approved" : "requested_changes", repo, at));
+        if (ok) merging.push({ author, repo, at: at + between(60, 600) });
+        else a[author].todo = { repo };
+      }
+      return set(name, "IDLE", undefined, undefined, at + between(lo, hi));
+    }
+    if (me.state === "WORKING") {
+      out.push(gh(name, "opened_pr", me.repo, at));
+      out.push(ci(me.repo, at));
+      merging.push({ author: name, repo: me.repo, at: at + between(600, 2400) });
+      return set(name, "IDLE", undefined, undefined, at + between(lo, hi));
+    }
+    return set(name, "WORKING", "issue", pick(REPOS), at + between(900, 2400));
+  }
+
   // An agent's current task ends at time `at`: what it did, then what it does next.
   function next(name, at, out) {
+    if (POLE.includes(name)) return nextPole(name, at, out);
     const me = a[name];
     if (me.state === "WORKING") {
       if (me.work === "changes") out.push(gh(name, "pushed", me.repo, at));
@@ -67,6 +101,7 @@ export function createDemo(seed = 17, startS = Math.trunc(Date.now() / 1000)) {
     if (me.state === "REVIEW") {
       const ok = rand() < 0.7;
       out.push(gh(name, ok ? "approved" : "requested_changes", me.repo, at));
+      if (ok && me.reviewing) merging.push({ author: me.reviewing, repo: me.repo, at: at + between(120, 1200) });
       if (!ok && me.reviewing) a[me.reviewing].todo = { repo: me.repo };
       me.reviewing = null;
       return set(name, "IDLE", undefined, undefined, at + between(60, 300));
@@ -99,7 +134,7 @@ export function createDemo(seed = 17, startS = Math.trunc(Date.now() / 1000)) {
 
   function picture() {
     const out = {};
-    for (const n of AGENTS) {
+    for (const n of ENGINEERS) { // the pole stars have no state on the page
       const { state, work, repo } = a[n];
       out[n] = { state, ...(work ? { work } : {}), ...(repo ? { repo } : {}) };
     }
@@ -113,13 +148,19 @@ export function createDemo(seed = 17, startS = Math.trunc(Date.now() / 1000)) {
         const step = Math.min(5, toS - t); // fine enough that tasks end close to when they're due
         for (const n of AGENTS) {
           const me = a[n];
-          const rate = RATE[me.state];
+          const rate = POLE.includes(n) ? null : RATE[me.state]; // the pole stars' own requests never reach the page
           if (rate) {
             for (const [kind, r] of Object.entries(rate)) {
               for (let i = poisson(rand, r * step); i > 0; i--) out.push({ t: "msg", kind, agent: n, ts: Math.trunc(t + rand() * step) });
             }
           }
           if (me.until <= t + step) next(n, Math.trunc(Math.max(t, me.until)), out);
+        }
+        for (let i = merging.length - 1; i >= 0; i--) {
+          const m = merging[i];
+          if (m.at > t + step) continue;
+          merging.splice(i, 1);
+          out.push(gh(m.author, "merged", m.repo, Math.trunc(Math.max(t, m.at))));
         }
         t += step;
       }

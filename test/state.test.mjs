@@ -8,7 +8,7 @@ const T0 = 490_000 * 3600; // seconds, on an hour boundary
 const batch = (...events) => cleanBatch({ events, agents: {} });
 const msg = (agent, kind, ts, extra = {}) => ({ t: "msg", kind, agent, ts, ...extra });
 
-test("per-agent counts: only the four agents, reset each UTC day", () => {
+test("per-agent counts: only the known agents, reset each UTC day", () => {
   const b = batch(
     msg("Vega", "github", T0, { action: "picked_up" }),
     msg("Vega", "github", T0 + 1, { action: "opened_pr", repo: "lafka-plugin" }),
@@ -55,13 +55,32 @@ test("replay: frequent kinds as one row per minute, GitHub actions one by one", 
   );
   const r = recordReplay(emptyReplay(), b, (T0 + 120) * 1000);
   const m = T0 / 60;
-  //                  Vega c ch h gh  Rigel       Lyra        Orion
-  assert.deepEqual(r.pulses, [[m, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [m + 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0]]);
+  // trailing zeros are left off:  Vega c ch h gh  Rigel       Lyra        Orion       (the pole stars)
+  assert.deepEqual(r.pulses, [[m, 2, 1], [m + 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1]]);
   assert.deepEqual(r.work, [{ agent: "Rigel", action: "opened_pr", repo: "setkernel-live", ts: T0 + 62 }]);
   // a later batch adds to the same minute's row
   const r2 = recordReplay(r, batch(msg("Vega", "claude", T0 + 5)), (T0 + 130) * 1000);
   assert.equal(r2.pulses[0][1], 3);
   assert.equal(r.pulses[0][1], 2, "the old buffer is not changed");
+});
+
+test("replay: the pole stars' GitHub actions share the last column; rows saved with four agents still add up", () => {
+  const m = T0 / 60;
+  const r = recordReplay(emptyReplay(), batch(msg("Yildun", "github", T0 + 1, { action: "merged", repo: "hq" })), (T0 + 60) * 1000);
+  // the pole stars have one column between them, their GitHub actions, after the 4 x 4 engineers'
+  assert.deepEqual(r.pulses, [[m, ...Array(16).fill(0), 1]]);
+  assert.deepEqual(r.work, [{ agent: "Yildun", action: "merged", repo: "hq", ts: T0 + 1 }], "which star it was stays in `work`");
+  const p = recordReplay(r, batch(...["Polaris", "Kochab", "Pherkad"].map((a) => msg(a, "github", T0 + 2, { action: "approved" }))), (T0 + 60) * 1000);
+  assert.deepEqual(p.pulses, [[m, ...Array(16).fill(0), 4]]);
+  assert.deepEqual(p.work.map((w) => w.agent), ["Yildun", "Polaris", "Kochab", "Pherkad"]);
+  assert.equal(hourly(p, (T0 + 60) * 1000).at(-1).github, 4);
+  // a row stored with four agents: 1 + 4 x 4 columns, all of them written out
+  const old = { pulses: [[m, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], work: [] };
+  const r2 = recordReplay(old, batch(msg("Kochab", "github", T0 + 2, { action: "opened_pr" }), msg("Vega", "claude", T0 + 3)), (T0 + 60) * 1000);
+  assert.deepEqual(r2.pulses, [[m, 3, 1, ...Array(14).fill(0), 1]]);
+  assert.ok(r2.pulses[0].every(Number.isInteger), "no NaN from the missing columns");
+  assert.deepEqual(hourly(old, (T0 + 60) * 1000).at(-1), { h: T0 / 3600, claude: 2, chat: 1, helper: 0, github: 0 });
+  assert.equal(hourly(r2, (T0 + 60) * 1000).at(-1).github, 1);
 });
 
 test("replay holds only allowlisted fields: what cleanEvent let through", () => {
@@ -95,11 +114,14 @@ test("replay is capped: a full day of heavy traffic stays far below the storage 
         events.push(msg(agent, "chat", s), msg(agent, "helper", s));
       }
       events.push(msg("Vega", "github", s, { action: "pushed", repo: "r".repeat(100) })); // the longest name the allowlist takes
+      // the pole stars, which have only GitHub actions, each act every minute too
+      for (const pole of ["Polaris", "Kochab", "Pherkad", "Yildun"]) events.push(msg(pole, "github", s, { action: "merged", repo: "r".repeat(100) }));
     }
     r = recordReplay(r, { events: events.map((e) => ({ ...e })), agents: {} }, (t + 600) * 1000);
   }
   assert.equal(r.pulses.length, 1440);
   assert.equal(r.work.length, 300);
+  assert.ok(r.pulses.every((row) => row.length === 18), "every row full width: 1 + 4 engineers x 4 kinds + the pole stars' column");
   const bytes = Buffer.byteLength(JSON.stringify(r));
   // under 128 KiB (the key-value backend's value limit), so far below the 2 MB of a SQLite-backed object
   assert.ok(bytes < 128 * 1024, `${bytes} bytes`);
