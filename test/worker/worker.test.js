@@ -8,6 +8,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import worker from "../../src/worker.js";
 import { CERTS, ISSUER } from "../../src/access.js";
 import { OFFLINE_AFTER_MS } from "../../public/lib/words.js"; // the page says "Office offline" after this
+import { STATE_KEYS } from "../../scripts/smoke.mjs"; // what the post-deploy smoke check expects
 
 const BASE = "https://live.setkernel.com";
 const hub = () => env.HUB.get(env.HUB.idFromName("live"));
@@ -238,6 +239,17 @@ describe("a quiet office", () => {
     await ingest(batch([], { Lyra: { state: "REVIEW" } }));
     // The next message is the late heartbeat, so the one in between was held back.
     expect(await v.next()).toMatchObject({ t: "batch", events: [], agents: { Lyra: { state: "REVIEW" } } });
+  });
+});
+
+describe("version", () => {
+  it("answers /api/state with every key the smoke check wants, and the Hub's version", async () => {
+    const res = await exports.default.fetch(`${BASE}/api/state`);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const s = await res.json();
+    expect(Object.keys(s).sort()).toEqual([...STATE_KEYS].sort());
+    expect(s.version).toBe(env.VERSION); // "dev" from wrangler.jsonc; the deploy sets the commit
+    expect(s.version).toBe("dev");
   });
 });
 

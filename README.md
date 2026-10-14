@@ -31,6 +31,44 @@ wall service ── filtered events ──▶  /ingest (Access: service token on
 - `/ingest` sits behind a Cloudflare Access app that admits only the `live-ingest` service token
   (setkernel/setkernel-cloudflare, access stack). The Worker checks the Access token again.
 
+## Deploy
+
+Every merge to `main` deploys: the Deploy workflow (`.github/workflows/deploy.yml`) runs
+`npm run validate`, deploys with `wrangler deploy --var VERSION:<commit>`, then runs the smoke
+check. It can still be started by hand on `main`. Never deploy from a laptop.
+
+`node scripts/smoke.mjs --expect <commit>` first polls `/api/state` until its `version` is the
+deployed commit. That field comes from the Durable Object's own code, and for a few minutes after a
+deploy the object can still run the previous version, so the check waits up to 10 minutes. Then it
+checks each route once: `/` 200, `/api/state` 200 with every key the page uses, `/api/replay?h=1`
+200, `GET /github/webhook` 405 (POST only) and `GET /github/queue` 401 (Access answers first). It
+prints status codes, key names and the version, never a response body, and exits 1 on failure.
+
+### A failed smoke
+
+If the smoke fails, the workflow rolls the Worker back to the previous version
+(`wrangler rollback`) and opens an `agent-ready` issue here with the smoke output. Read it from
+the top:
+
+- `FAIL the Durable Object still serves version X`: the new code never reached the object in
+  10 minutes. `version unknown` means `/api/state` never answered with a version at all (look at
+  the `waiting:` lines for its status: 404 or 5xx is the old code or a crash).
+- `FAIL GET /api/state: 200, missing keys: …`: the page's data changed shape; the page and
+  `STATE_KEYS` in `scripts/smoke.mjs` must agree.
+- `FAIL GET /…: 404, want 200` and the like: that route is broken in the new code. `0 (TimeoutError)`
+  means no answer within 15 s.
+- `GET /github/queue: 403, want 401` or a 302: Access no longer sits in front of the queue; check
+  the "live queue" Access app (setkernel-cloudflare) before anything else.
+
+The rollback brings back the previous code, but the Durable Object again takes a few minutes to
+follow it. Check with `node scripts/smoke.mjs --expect <previous commit>`.
+
+### Rolling back by hand
+
+In the Cloudflare dashboard: Workers & Pages, `setkernel-live`, Deployments, pick the last good
+version and "Rollback". Then revert the bad change in a PR; its merge deploys again. Cloudflare
+won't roll back across a Durable Object migration: if the bad deploy added one, fix forward.
+
 ## GitHub Actions results
 
 ```

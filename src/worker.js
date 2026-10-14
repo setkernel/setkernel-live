@@ -1,7 +1,7 @@
 // live.setkernel.com (setkernel/hq#105). The page and its files are static assets; this Worker
 // adds these routes:
 //   GET  /ws              a WebSocket that gets the current picture, then every batch as it arrives
-//   GET  /api/state       the current picture as JSON
+//   GET  /api/state       the current picture as JSON, plus the deployed commit (VERSION) of the Hub's code
 //   GET  /api/replay      the last hour (?h=1) or 24 hours (?h=24) of allowlisted events, for the replay
 //   POST /ingest          batches from sk-obs01 (Access service token at the edge, checked again here)
 //   POST /github/webhook  GitHub Actions events from the org webhook (public; HMAC-signed)
@@ -110,7 +110,10 @@ export class Hub extends DurableObject {
       return new Response(null, { status: 101, webSocket: client });
     }
     if (pathname === "/state") {
-      return Response.json(this.view(), { headers: { "Cache-Control": "no-store" } });
+      // version comes from the object's own env, so it names the code the object runs: right after
+      // a deploy it can still be the old one for a few minutes (scripts/smoke.mjs waits for it).
+      const body = { ...this.view(), version: this.env.VERSION || "dev" };
+      return Response.json(body, { headers: { "Cache-Control": "no-store" } });
     }
     if (pathname === "/replay") {
       const hours = new URL(request.url).searchParams.get("h") === "24" ? 24 : 1;
