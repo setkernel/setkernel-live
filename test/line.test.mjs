@@ -86,6 +86,47 @@ test("Building counts every job that got under way: a request, a pull request st
   assert.equal(s.counts.building, 2, "counted once");
 });
 
+test("a later batch with older events never rewinds a lane", () => {
+  const b = (events, agents = {}) => cleanBatch({ events, agents });
+  let s = applyBatch(emptyState("d"), b([gh("Vega", "opened_pr", T0 + 200, "hq")]), (T0 + 210) * 1000, "d");
+  assert.equal(column(s.line.Vega, undefined, T0 + 210), "review");
+  assert.equal(s.counts.building, 0);
+  s = applyBatch(s, b([gh("Vega", "picked_up", T0 + 100, "hq")], { Vega: WORKING }), (T0 + 400) * 1000, "d");
+  assert.equal(column(s.line.Vega, WORKING, T0 + 400), "review", "the pick-up came before the pull request");
+  assert.equal(s.counts.building, 0);
+  assert.equal(s.counts.started, 1, "it still counts");
+  // a duplicate or late opened_pr after the merge
+  s = applyBatch(s, b([gh("Vega", "merged", T0 + 500, "hq")]), (T0 + 510) * 1000, "d");
+  for (const late of [gh("Vega", "opened_pr", T0 + 200, "hq"), gh("Vega", "pushed", T0 + 300, "hq"), gh("Vega", "merged", T0 + 500, "hq")]) {
+    const after = applyBatch(s, b([late]), (T0 + 600) * 1000, "d");
+    assert.deepEqual(after.line.Vega, s.line.Vega, late.action);
+  }
+  // an old review doesn't send the pull request back, or clear a newer request
+  const open = lanes([gh("Orion", "opened_pr", T0 + 100, "hq"), gh("Rigel", "requested_changes", T0 + 300, "hq")]);
+  for (const late of [gh("Rigel", "requested_changes", T0 + 50, "hq"), gh("Rigel", "approved", T0 + 200, "hq"), gh("Orion", "pushed", T0 + 250, "hq")]) {
+    assert.equal(stepLines(open, [late], ENGINEERS).lines.Orion.asked, T0 + 300, late.action);
+  }
+});
+
+test("a merge that arrives before its own pull request: the card goes on to Merged once it turns up", () => {
+  let l = lanes([gh("Lyra", "picked_up", T0, "hq"), claude("Lyra", T0 + 5)]);
+  l = stepLines(l, [gh("Lyra", "merged", T0 + 900, "hq")], ENGINEERS).lines;
+  assert.equal(column(l.Lyra, WORKING, T0 + 901), "building", "no pull request seen yet");
+  l = stepLines(l, [gh("Lyra", "opened_pr", T0 + 600, "hq")], ENGINEERS).lines;
+  assert.equal(column(l.Lyra, undefined, T0 + 1000), "merged");
+  assert.deepEqual(l.Lyra.steps, { started: T0, building: T0 + 5, review: T0 + 600, merged: T0 + 900 });
+  assert.equal(l.Lyra.merge, undefined);
+  // the same as when the two came in order
+  const inOrder = lanes([gh("Lyra", "picked_up", T0, "hq"), claude("Lyra", T0 + 5), gh("Lyra", "opened_pr", T0 + 600, "hq"), gh("Lyra", "merged", T0 + 900, "hq")]);
+  assert.deepEqual(l.Lyra, inOrder.Lyra);
+  // a merge for an earlier pull request doesn't carry over to the next one
+  l = lanes([gh("Vega", "picked_up", T0, "hq"), gh("Vega", "merged", T0 + 50, "hq"), gh("Vega", "opened_pr", T0 + 400, "hq")]);
+  assert.equal(column(l.Vega, undefined, T0 + 500), "review");
+  // nor does one from another repo
+  l = stepLines(lanes([gh("Vega", "picked_up", T0, "hq")]), [gh("Vega", "merged", T0 + 900, "example-site")], ENGINEERS).lines;
+  assert.equal(stepLines(l, [gh("Vega", "opened_pr", T0 + 600, "hq")], ENGINEERS).lines.Vega.job, "review");
+});
+
 test("no job seen yet: the card waits in Started, or Building when the state says it works on an issue", () => {
   assert.equal(column(undefined, { state: "IDLE" }, T0), "started");
   assert.equal(column(undefined, WORKING, T0), "building");
