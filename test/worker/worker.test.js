@@ -181,6 +181,18 @@ describe("fan-out", () => {
     expect(msg.events).toEqual([{ t: "msg", kind: "claude", agent: "Vega", ts: expect.any(Number) }]);
     expect(JSON.stringify(msg)).not.toMatch(/secret|box.example.test|Mallory/);
   });
+
+  it("keeps each engineer's lane on the line, with nothing beyond actions, times and public repos", async () => {
+    const ts = Math.floor(Date.now() / 1000) - 30;
+    await ingest(batch([
+      { t: "msg", kind: "github", agent: "Vega", action: "picked_up", repo: "setkernel-live", ts, title: "secret issue title", number: 77, branch: "agent/77-secret" },
+      { ...claude(), ts: ts + 5 },
+    ]));
+    const s = await state();
+    expect(s.line.Vega).toEqual({ job: "started", at: ts, built: true, repo: "setkernel-live", steps: { started: ts, building: ts + 5 } });
+    expect(s.counts).toMatchObject({ started: 1, building: 1 });
+    expect(JSON.stringify(s.line)).not.toMatch(/secret|title|number|branch/); // the number by key: its digits could be in a time
+  });
 });
 
 describe("eviction", () => {

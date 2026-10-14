@@ -3,32 +3,62 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { COLUMNS, POLE, cleanBatch, cleanEvent, emptyReplay, emptyState, recordReplay, applyBatch } from "../src/logic.js";
-import { STAR_NOTE, ciSummary, ciWhere, ciWord, clock, createAnnouncer, doing, freshness, headline, reviewTarget, sentence, starLabel, summarise, tally, todaySince, whereWork, zoneName } from "../public/lib/words.js";
+import { ENGINEERS } from "../src/logic.js";
+import { STAR_NOTE, ciSummary, ciWhere, ciWord, clock, createAnnouncer, deed, doing, fitHeadline, freshness, headline, headlineForms, plain, reviewTarget, sentence, stateWords, summarise, tally, todaySince, whereWork, zoneName } from "../public/lib/words.js";
+import { SESSION_NOTE, cardText, cardWords, starCard, tokenPile } from "../public/lib/card.js";
+import { stepLines } from "../public/lib/line.js";
 import { createDemo, seeded } from "../public/lib/demo.js";
-import { plan } from "../public/lib/replay.js";
+import { eventsBefore, plan } from "../public/lib/replay.js";
 import { skyLayout } from "../public/lib/layout.js";
 
 const T0 = 490_000 * 3600; // seconds; 2025-11-23 16:00 UTC
 
-test("headline: who is doing what, most recently active first", () => {
-  const now = T0 * 1000;
-  const h = headline({
-    agents: { Rigel: { state: "WORKING", work: "issue", repo: "setkernel-live" }, Lyra: { state: "REVIEW", work: "review" }, Vega: { state: "IDLE" }, Orion: { state: "PAUSED" } },
-    seen: { Rigel: T0 - 5, Lyra: T0 - 50 }, lastIngest: now - 5000, now,
-  });
-  assert.equal(h.main, "Rigel is working on an issue in setkernel-live.");
-  assert.equal(h.sub, "Lyra is reviewing a pull request. Orion is paused.");
-  assert.equal(h.mood, "live");
+const AG = {
+  Rigel: { state: "REVIEW", work: "review", repo: "setkernel-live" }, Orion: { state: "WORKING", work: "issue" },
+  Lyra: { state: "DISCUSS", work: "discussion" }, Vega: { state: "IDLE" },
+};
+
+test("headline: one sentence naming every engineer, then shorter forms", () => {
+  const forms = headlineForms(AG, ["Rigel", "Orion", "Lyra", "Vega"], { Rigel: "Lyra" }).map(plain);
+  assert.deepEqual(forms, [
+    "Rigel is reviewing Lyra's pull request, Orion is working on an issue, Lyra is in a design discussion and Vega is idle.",
+    "Orion is working, Rigel is reviewing, Lyra is in a discussion and Vega is idle.",
+    "Three engineers are at work: Rigel, Orion and Lyra.",
+  ]);
+  // every name is its own part, so the page can underline it in its colour
+  const names = headlineForms(AG, ["Rigel", "Orion", "Lyra", "Vega"], { Rigel: "Lyra" })[0].filter((p) => typeof p === "object").map((p) => p.name);
+  assert.deepEqual(names, ["Rigel", "Lyra", "Orion", "Lyra", "Vega"]);
+  // a review the page can't tie to an author says so; the same kind of thing is grouped; idle goes last
+  const two = { Vega: { state: "IDLE" }, Rigel: { state: "REVIEW" }, Orion: { state: "WORKING", work: "issue" }, Lyra: { state: "WORKING", work: "issue" } };
+  assert.equal(plain(headlineForms(two, ["Vega", "Orion", "Rigel", "Lyra"])[0]), "Orion and Lyra are working on issues, Rigel is reviewing a pull request and Vega is idle.");
+  assert.equal(plain(headlineForms(two, ["Vega", "Orion", "Rigel", "Lyra"])[1]), "Orion and Lyra are working, Rigel is reviewing and Vega is idle.");
+  const quiet = { Vega: { state: "IDLE" }, Rigel: { state: "PAUSED" } };
+  assert.deepEqual(headlineForms(quiet, ["Vega", "Rigel", "Lyra", "Orion"]).map(plain), [
+    "Vega, Lyra and Orion are idle and Rigel is paused.", "Vega, Lyra and Orion are idle and Rigel is paused.", "The engineers are between tasks.",
+  ]);
+  const all = Object.fromEntries(ENGINEERS.map((n) => [n, { state: "WORKING", work: "changes" }]));
+  assert.equal(plain(headlineForms(all, ENGINEERS)[2]), "All four engineers are at work: Vega, Rigel, Lyra and Orion.");
+  assert.equal(plain(headlineForms({ Vega: { state: "WORKING" } }, ["Vega"])[0]), "Vega is working.");
 });
 
-test("headline: quiet says since when and what came last; offline and waiting say so", () => {
+test("headline shortens itself: the first form that fits in three lines, else the last", () => {
+  const forms = headlineForms(AG, ["Rigel", "Orion", "Lyra", "Vega"], { Rigel: "Lyra" });
+  const lines = (f) => Math.ceil(plain(f).length / 36); // a narrow column, 36 characters a line
+  assert.equal(fitHeadline(forms, (f) => lines(f) <= 3), forms[1], "the long form needs four lines here");
+  assert.equal(fitHeadline(forms, () => true), forms[0]);
+  assert.equal(fitHeadline(forms, () => false), forms[2]);
+});
+
+test("headline block: most recently active first, the Latest line, and waiting or offline", () => {
   const now = T0 * 1000;
-  const feed = [{ agent: "Vega", action: "opened_pr", repo: "lafka-plugin", ts: T0 - 600 }];
-  const quiet = headline({ agents: { Vega: { state: "IDLE" } }, seen: { Vega: T0 - 600, Rigel: T0 - 900 }, feed, lastIngest: now - 5000, now, timeZone: "UTC" });
-  assert.deepEqual(quiet, { main: "All quiet, since 15:50.", sub: "Last: Vega opened a pull request in lafka-plugin.", mood: "quiet" });
-  assert.equal(headline({ agents: {}, lastIngest: now, now }).main, "All quiet. Nothing yet today.");
-  assert.equal(headline({ lastIngest: now - 10 * 60_000, now, timeZone: "UTC" }).main, "No word from the office since 15:50.");
-  assert.equal(headline({ lastIngest: now - 10 * 60_000, now, timeZone: "America/Halifax" }).main, "No word from the office since 11:50.");
+  const feed = [{ agent: "Orion", action: "approved", repo: "agent-plugins", ts: T0 - 60 }];
+  const h = headline({ agents: AG, seen: { Vega: T0 - 5, Orion: T0 - 50 }, feed, lastIngest: now - 5000, now, timeZone: "America/Halifax", names: ENGINEERS, targets: { Rigel: "Lyra" } });
+  assert.equal(h.mood, "live");
+  assert.equal(plain(h.forms[0]), "Rigel is reviewing Lyra's pull request, Orion is working on an issue, Lyra is in a design discussion and Vega is idle.");
+  assert.equal(plain(h.latest), "Latest, 11:59 AST: Orion approved a teammate's pull request in agent-plugins.");
+  assert.ok(h.latest.some((p) => p.name === "Orion"));
+  assert.equal(headline({ agents: { Vega: { state: "IDLE" } }, lastIngest: now, now, names: ENGINEERS }).mood, "quiet");
+  assert.equal(plain(headline({ lastIngest: now - 10 * 60_000, now, timeZone: "UTC" }).forms[0]), "No word from the office since 15:50.");
   assert.equal(headline({ lastIngest: 0, now }).mood, "waiting");
 });
 
@@ -36,11 +66,13 @@ test("labels, tallies and feed sentences", () => {
   assert.equal(doing({ state: "DISCUSS" }), "in a design discussion");
   assert.equal(doing({ state: "WORKING", work: "changes", repo: "hq" }), "addressing review feedback in hq");
   assert.equal(doing({ state: "IDLE", work: "issue" }), "idle");
-  assert.deepEqual(starLabel({ state: "WORKING", work: "issue", repo: "setkernel-live" }), { state: "Working", detail: "on an issue · setkernel-live" });
-  assert.deepEqual(starLabel({ state: "REVIEW", work: "review" }), { state: "Reviewing", detail: "a pull request" });
-  assert.deepEqual(starLabel({ state: "DISCUSS", work: "discussion", repo: "hq" }), { state: "Discussing", detail: "hq" });
-  assert.deepEqual(starLabel({ state: "IDLE", repo: "x" }), { state: "Idle", detail: "" });
-  assert.deepEqual(starLabel(undefined), { state: "Idle", detail: "" });
+  assert.deepEqual(stateWords({ state: "WORKING", work: "issue", repo: "setkernel-live" }), { glyph: "●", state: "Working", words: "working on an issue", repo: "setkernel-live" });
+  assert.deepEqual(stateWords({ state: "REVIEW", work: "review" }), { glyph: "◎", state: "Reviewing", words: "reviewing a pull request", repo: "" });
+  assert.deepEqual(stateWords({ state: "DISCUSS", work: "discussion", repo: "hq" }), { glyph: "⋯", state: "Discussing", words: "in a design discussion", repo: "hq" });
+  assert.deepEqual(stateWords({ state: "IDLE", repo: "x" }), { glyph: "○", state: "Idle", words: "idle", repo: "" });
+  assert.deepEqual(stateWords({ state: "PAUSED" }), { glyph: "‖", state: "Paused", words: "paused", repo: "" });
+  assert.deepEqual(stateWords(undefined), { glyph: "○", state: "Idle", words: "idle", repo: "" });
+  assert.equal(deed({ agent: "Vega", action: "opened_pr", repo: "hq" }), "opened a pull request in hq");
   assert.equal(tally({ prs: 2, reviews: 4, claude: 130, started: 3, helpers: 1 }), "2 PRs · 4 reviews · 130 Claude");
   assert.equal(tally({ prs: 1, reviews: 1, started: 1 }), "1 PR · 1 review");
   assert.equal(tally(undefined), "nothing yet today");
@@ -172,7 +204,7 @@ test("demo state comes from the real reducer and stays inside the replay cap", (
   const ci = events.filter((e) => e.kind === "ci");
   assert.equal(s.counts.ci, ci.length);
   assert.ok(s.counts.ciPass > 0 && s.counts.ciPass < s.counts.ci, "the demo shows passes and failures");
-  assert.equal(s.ci.length, 12);
+  assert.equal(s.ci.length, 20);
   assert.ok(r.pulses.length <= 1440 && r.work.length <= 300);
 });
 
@@ -192,23 +224,104 @@ test("replay plan: an hour in a minute, thinned evenly, GitHub actions all kept"
   assert.deepEqual(plan(undefined, { from: 0, to: 1, durationMs: 1, maxPulses: 1 }), []);
 });
 
-test("sky layout: every star and place inside the sky at every size, never crowded", () => {
-  const sizes = [[320, 520], [375, 560], [812, 300], [768, 560], [1440, 620], [2560, 900], [3840, 1600], [1024, 700], [600, 640]];
+test("sky layout: every star inside the sky at every size, the engineers never crowded", () => {
+  const sizes = [[320, 500], [343, 500], [375, 500], [812, 351], [768, 560], [1024, 600], [1440, 724], [1536, 1340], [2560, 1300], [3840, 1600]];
   for (const [w, h] of sizes) {
     const L = skyLayout(w, h);
-    assert.equal(L.mode, w / h >= 1.1 ? "wide" : "tall", `${w}x${h}`);
-    const points = [...Object.values(L.stars), ...Object.values(L.places)];
-    for (const p of points) assert.ok(p.x >= 16 && p.x <= w - 16 && p.y >= 16 && p.y <= h - 16, `${w}x${h}: ${JSON.stringify(p)}`);
-    // an engineer has room for its words from every other star; the pole group, whose words are
-    // short, sits closer together
-    const names = Object.keys(L.stars);
-    for (let i = 0; i < names.length; i++) {
-      for (let j = i + 1; j < names.length; j++) {
-        const [a, b] = [names[i], names[j]], d = Math.hypot(L.stars[a].x - L.stars[b].x, L.stars[a].y - L.stars[b].y);
-        const min = POLE.includes(a) && POLE.includes(b) ? 44 : 80;
-        assert.ok(d >= min, `${w}x${h}: ${a} and ${b} are ${Math.round(d)} px apart`);
+    const points = [...Object.values(L.stars), ...Object.values(L.faint)];
+    for (const p of points) assert.ok(p.x >= 16 && p.x <= w - 16 && p.y >= 16 && p.y < L.horizon, `${w}x${h}: ${JSON.stringify(p)}`);
+    for (let i = 0; i < ENGINEERS.length; i++) {
+      for (let j = i + 1; j < ENGINEERS.length; j++) {
+        const [a, b] = [L.stars[ENGINEERS[i]], L.stars[ENGINEERS[j]]];
+        assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= 80, `${w}x${h}: ${ENGINEERS[i]} and ${ENGINEERS[j]}`);
       }
     }
+    // Ursa Minor keeps its shape: Polaris at the top, the bowl to its right
+    assert.ok(L.stars.Polaris.y < Math.min(...ENGINEERS.map((n) => L.stars[n].y)), `${w}x${h}: Polaris above the engineers`);
+    assert.ok(L.stars.Kochab.x > L.stars.Yildun.x && L.stars.Pherkad.y > L.stars.Kochab.y);
   }
-  assert.equal(skyLayout(375, 560).places.github.label, "below");
+});
+
+test("sky layout: Polaris and its group clear the headline and the controls over the sky", () => {
+  const hud = { right: 560, bottom: 300 }, status = { left: 1100, bottom: 140 };
+  const L = skyLayout(1440, 724, { hud, status });
+  assert.ok(L.stars.Polaris.x - 1.9 * 16 - 9 * 16 > hud.right, "its label is right of the headline");
+  for (const n of ENGINEERS) assert.ok(L.stars[n].y > hud.bottom, `${n} under the headline`);
+  for (const n of ["Yildun", "Kochab", "Pherkad"]) {
+    const p = L.stars[n];
+    assert.ok(p.x + 7.8 * 16 < status.left || p.y > status.bottom, `${n} and its label clear the controls`);
+  }
+});
+
+test("star card: state, column, five steps with times, today's numbers and the latest three", () => {
+  const events = [
+    { t: "msg", kind: "github", agent: "Vega", action: "picked_up", repo: "hq", ts: T0 },
+    { t: "msg", kind: "claude", agent: "Vega", ts: T0 + 60 },
+    { t: "msg", kind: "github", agent: "Vega", action: "opened_pr", repo: "hq", ts: T0 + 900 },
+  ];
+  const v = {
+    agents: { Vega: { state: "REVIEW", work: "review", repo: "setkernel-live" } },
+    byAgent: { Vega: { prs: 2, reviews: 6, claude: 340 }, Kochab: { prs: 4, merged: 1 }, Polaris: { reviews: 3 } },
+    line: stepLines({}, events, ENGINEERS).lines,
+    feed: [
+      { agent: "Kochab", action: "opened_pr", ts: T0 + 950 },
+      ...events.filter((e) => e.kind === "github").reverse().map(({ agent, action, repo, ts }) => ({ agent, action, repo, ts })),
+      { agent: "Vega", action: "merged", ts: T0 - 99 }, { agent: "Vega", action: "pushed", ts: T0 - 100 },
+    ],
+  };
+  const c = starCard("Vega", v, T0 + 1000, { Vega: "Lyra" });
+  assert.equal(c.director, false);
+  assert.deepEqual(c.state, { glyph: "◎", state: "Reviewing", words: "reviewing Lyra's pull request", repo: "setkernel-live" });
+  assert.equal(c.column, "In review", "its own pull request is open while it reviews a teammate's");
+  assert.equal(c.task, "Current task");
+  assert.deepEqual(c.steps.map((s) => [s.stage, s.status, s.ts]), [["started", "done", T0], ["building", "done", T0 + 60], ["review", "now", T0 + 900], ["fixing", "todo", null], ["merged", "todo", null]]);
+  assert.deepEqual(c.numbers, [[2, "PRs opened"], [6, "reviews"], [340, "Claude requests"]]);
+  assert.deepEqual(c.latest.map((l) => l.text), ["opened a pull request in hq", "started on an issue in hq", "had a pull request merged in a private project"], "its own three, newest first");
+  const k = starCard("Kochab", v, T0 + 1000);
+  assert.equal(k.director, true);
+  assert.equal(k.column, "the director strip");
+  assert.match(k.note, /^the lead chat · /);
+  assert.deepEqual(k.numbers, [[4, "PRs opened"], [1, "merged"]]);
+  assert.equal(k.steps, undefined, "no state, so no steps");
+  assert.deepEqual(starCard("Polaris", v, T0).numbers, [[3, "reviews"], [0, "PRs opened"]]);
+  assert.equal(starCard("Mallory", v, T0), null);
+  assert.deepEqual(SESSION_NOTE, { Kochab: "the lead chat", Pherkad: "cloud sessions", Yildun: "its own machine" });
+});
+
+test("board card words: the state, then what and where, private projects unnamed", () => {
+  assert.equal(cardText(cardWords({ state: "WORKING", work: "issue", repo: "hq" }, undefined, "building")), "Working · on an issue · hq");
+  assert.equal(cardText(cardWords({ state: "WORKING", work: "changes" }, undefined, "fixing")), "Working · addressing review feedback · private project");
+  assert.equal(cardText(cardWords({ state: "REVIEW", repo: "hq" }, undefined, "review", "Lyra")), "Reviewing · Lyra's pull request · hq");
+  assert.equal(cardText(cardWords({ state: "REVIEW" }, undefined, "merged")), "Reviewing · a pull request · private project");
+  assert.equal(cardText(cardWords({ state: "IDLE" }, { job: "review", repo: "hq" }, "review")), "Idle · pull request open · hq");
+  assert.equal(cardText(cardWords({ state: "IDLE" }, { job: "merged" }, "merged")), "Idle · last job merged");
+  assert.equal(cardText(cardWords(undefined, undefined, "started")), "Idle · between jobs");
+  assert.equal(cardText(cardWords({ state: "DISCUSS", work: "discussion", repo: "hq" }, undefined, "started")), "Discussing · in a design discussion");
+  assert.equal(cardText(cardWords({ state: "PAUSED" }, undefined, "started")), "Paused");
+});
+
+test("the Merged pile: a token per merge up to the cap, then every author in proportion", () => {
+  assert.deepEqual(tokenPile([["Vega", 2], ["Rigel", 0], ["Lyra", 1]], 36), ["Vega", "Vega", "Lyra"]);
+  const pile = tokenPile([["Rigel", 23], ["Orion", 20], ["Lyra", 18], ["Kochab", 1]], 10);
+  assert.equal(pile.length, 10);
+  for (const n of ["Rigel", "Orion", "Lyra", "Kochab"]) assert.ok(pile.includes(n), `${n} keeps a token`);
+  assert.ok(pile.filter((n) => n === "Rigel").length >= pile.filter((n) => n === "Kochab").length);
+  const skewed = tokenPile([["Rigel", 100], ["Orion", 1], ["Lyra", 1], ["Vega", 1], ["Polaris", 1], ["Kochab", 1], ["Pherkad", 1], ["Yildun", 1]], 10);
+  assert.equal(skewed.length, 10, "one each for the small ones doesn't push it past the cap");
+  assert.equal(new Set(skewed).size, 8);
+  assert.equal(skewed.filter((n) => n === "Rigel").length, 3);
+});
+
+test("replay: the events before the show, so the line can catch up first", () => {
+  const { events, agents } = createDemo(17, T0).advance(T0 + 7200);
+  const r = recordReplay(emptyReplay(), { events, agents }, (T0 + 7200) * 1000);
+  const pre = eventsBefore(r, T0 + 3600);
+  assert.ok(pre.length > 0 && pre.every((e) => e.ts < T0 + 3600 && cleanEvent(e)), "clean events, all before the start");
+  assert.ok(pre.every((e, i) => i === 0 || e.ts >= pre[i - 1].ts), "in time order");
+  assert.equal(pre.filter((e) => e.kind === "github").length, r.work.filter((w) => w.ts < T0 + 3600).length);
+  assert.deepEqual(eventsBefore(undefined, 0), []);
+  // a show starting mid-minute: that minute's row is the show's, not the catch-up's too
+  const mid = { pulses: [[(T0 + 3600) / 60, 2]], work: [] };
+  assert.equal(plan(mid, { from: T0 + 3630, to: T0 + 7200, durationMs: 60_000, maxPulses: 900, rand: () => 0.5 }).length, 2);
+  assert.deepEqual(eventsBefore(mid, T0 + 3630), []);
 });

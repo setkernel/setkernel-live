@@ -28,7 +28,6 @@ const DOING = {
   review: "reviewing a pull request",
   discussion: "in a design discussion",
 };
-const SHORT = { issue: "on an issue", changes: "on review feedback", decision: "on a decision", review: "a pull request", discussion: "" };
 const STATE_WORD = { WORKING: "Working", REVIEW: "Reviewing", DISCUSS: "Discussing", PAUSED: "Paused", IDLE: "Idle" };
 const ACTIVE = new Set(["WORKING", "REVIEW", "DISCUSS"]);
 export const OFFLINE_AFTER_MS = 120_000;
@@ -80,13 +79,6 @@ export function doing(info) {
   return info.repo ? `${what} in ${info.repo}` : what;
 }
 
-// The words beside a star: { state: "Working", detail: "on an issue · setkernel-live" }.
-export function starLabel(info) {
-  const state = STATE_WORD[info?.state] || "Idle";
-  if (!isActive(info)) return { state, detail: "" };
-  return { state, detail: [SHORT[info.work], info.repo].filter(Boolean).join(" · ") };
-}
-
 // Today's numbers for one agent -> "2 PRs · 4 reviews · 130 Claude", leaving out zeros.
 export function tally(c) {
   const parts = [[c?.prs, "PR", "PRs"], [c?.reviews, "review", "reviews"], [c?.claude, "Claude", "Claude"]].filter(([n]) => n > 0).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
@@ -96,8 +88,13 @@ export function tally(c) {
 // One GitHub event -> "Vega opened a pull request in lafka-plugin.", "Pherkad opened a pull
 // request in a private project."
 export function sentence(e) {
+  return `${e.agent} ${deed(e)}.`;
+}
+
+// The same without the name or the full stop -> "opened a pull request in lafka-plugin".
+export function deed(e) {
   const where = whereWork(e);
-  return `${e.agent} ${ACTION_TEXT[e.action] || "did something"}${where ? ` in ${where}` : ""}.`;
+  return `${ACTION_TEXT[e.action] || "did something"}${where ? ` in ${where}` : ""}`;
 }
 
 // ---- CI runs (setkernel-live#14). A run has no agent; a public repo is named, a private one is not.
@@ -113,30 +110,132 @@ export function ciSummary(c) {
   return `${runs} run${runs === 1 ? "" : "s"} today · ${Math.floor((100 * pass) / runs)}% passed`;
 }
 
-// The one line at the top: what's happening now. Returns { main, sub, mood } where mood is
-// "live", "quiet", "offline" or "waiting".
-export function headline({ agents = {}, seen = {}, feed = [], lastIngest = 0, now = Date.now(), timeZone } = {}) {
-  if (!lastIngest) return { main: "Waiting for the office to report in.", sub: "Nothing has arrived yet. Replay the last 24 hours below the sky, or watch the demo.", mood: "waiting" };
+// ---- the headline (setkernel-live#36): one sentence naming every engineer, each name shown
+// in its colour. A form is a list of parts: strings, and { name } where a name goes, so the page
+// can underline each name without building markup. Three forms, longest first; the page shows
+// the first that fits in three lines (fitHeadline).
+
+// Each state as a glyph too, so the colour of a ring is never the only way to tell.
+export const GLYPH = { WORKING: "●", REVIEW: "◎", DISCUSS: "⋯", IDLE: "○", PAUSED: "‖" };
+export const STATE_WORDS = STATE_WORD;
+
+// "Vega", "Vega and Rigel", "Vega, Rigel and Lyra", as parts.
+export function nameList(names) {
+  const out = [];
+  names.forEach((name, i) => {
+    if (i) out.push(i === names.length - 1 ? " and " : ", ");
+    out.push({ name });
+  });
+  return out;
+}
+
+// [one, many] for each kind of thing an engineer can be doing, in the long form.
+const LONG = {
+  changes: ["is addressing review feedback", "are addressing review feedback"],
+  issue: ["is working on an issue", "are working on issues"],
+  decision: ["is writing up a decision", "are writing up decisions"],
+  review: ["is reviewing a pull request", "are reviewing pull requests"],
+  discussion: ["is in a design discussion", "are in a design discussion"],
+  working: ["is working", "are working"],
+  idle: ["is idle", "are idle"],
+  paused: ["is paused", "are paused"],
+};
+const SHORT_VERB = {
+  WORKING: ["is working", "are working"],
+  REVIEW: ["is reviewing", "are reviewing"],
+  DISCUSS: ["is in a discussion", "are in a discussion"],
+  IDLE: ["is idle", "are idle"],
+  PAUSED: ["is paused", "are paused"],
+};
+const COUNT = ["No", "One", "Two", "Three", "All four"];
+
+// What kind of thing an engineer is doing, as a key of LONG.
+function kindOf(info) {
+  if (!isActive(info)) return info?.state === "PAUSED" ? "paused" : "idle";
+  if (info.work && LONG[info.work]) return info.work;
+  return info.state === "REVIEW" ? "review" : info.state === "DISCUSS" ? "discussion" : "working";
+}
+
+// Join groups of parts into one sentence: "A, B and C."
+function sentenceOf(groups) {
+  const out = [];
+  groups.forEach((g, i) => {
+    if (i) out.push(i === groups.length - 1 ? " and " : ", ");
+    out.push(...g);
+  });
+  out.push(".");
+  return merge(out);
+}
+
+// Adjacent strings become one, so the page makes fewer nodes and tests read easily.
+function merge(parts) {
+  const out = [];
+  for (const p of parts) {
+    if (typeof p === "string" && typeof out.at(-1) === "string") out[out.length - 1] += p;
+    else out.push(p);
+  }
+  return out;
+}
+
+// The three forms of the headline. names: the engineers, most recently active first; targets:
+// { reviewer: author } where the page knows whose pull request is being reviewed.
+export function headlineForms(agents = {}, names = [], targets = {}) {
+  const groups = new Map();
+  const add = (key, name) => (groups.get(key) ?? groups.set(key, []).get(key)).push(name);
+  const own = [];
+  const rank = (k) => (k === "idle" ? 1 : k === "paused" ? 2 : 0); // the busy first, idle and paused last
+  for (const name of names) {
+    const info = agents[name];
+    if (info?.state === "REVIEW" && targets[name]) own.push([{ name }, " is reviewing ", { name: targets[name] }, "'s pull request"]);
+    else add(kindOf(info), name);
+  }
+  const keys = [...groups.keys()].sort((a, b) => rank(a) - rank(b));
+  const long = [...own, ...keys.map((k) => { const g = groups.get(k); return [...nameList(g), ` ${LONG[k][g.length > 1 ? 1 : 0]}`]; })];
+  const byState = new Map();
+  for (const name of names) {
+    const st = SHORT_VERB[agents[name]?.state] ? agents[name].state : "IDLE";
+    (byState.get(st) ?? byState.set(st, []).get(st)).push(name);
+  }
+  const order = ["WORKING", "REVIEW", "DISCUSS", "IDLE", "PAUSED"].filter((k) => byState.has(k));
+  const short = order.map((k) => { const g = byState.get(k); return [...nameList(g), ` ${SHORT_VERB[k][g.length > 1 ? 1 : 0]}`]; });
+  const active = names.filter((n) => isActive(agents[n]));
+  const count = active.length
+    ? merge([`${COUNT[Math.min(active.length, 4)]} ${active.length === 1 ? "engineer is" : "engineers are"} at work: `, ...nameList(active), "."])
+    : ["The engineers are between tasks."];
+  return [sentenceOf(long), sentenceOf(short), count];
+}
+
+// The first form that fits, by the page's measure; the last if none does.
+export function fitHeadline(forms, fits) {
+  return forms.find(fits) ?? forms.at(-1);
+}
+
+// The parts as plain text, for screen readers and tests.
+export const plain = (parts) => parts.map((p) => (typeof p === "string" ? p : p.name)).join("");
+
+// The headline block: { forms, latest, mood }. mood is "live", "quiet", "offline" or "waiting";
+// latest is the "Latest" line as parts ("Latest, 14:07 ADT: Orion approved …"). names: the
+// engineers in order; targets as for headlineForms.
+export function headline({ agents = {}, seen = {}, feed = [], lastIngest = 0, now = Date.now(), timeZone, names = [], targets = {} } = {}) {
+  const last = feed[0];
+  const latest = last ? merge([`Latest, ${clock(last.ts, timeZone)} ${zoneName(last.ts, timeZone)}`.trimEnd() + ": ", { name: last.agent }, ` ${deed(last)}.`]) : [];
+  if (!lastIngest) {
+    return { forms: [["Waiting for the office to report in."]], latest: ["Nothing has arrived yet. Replay the last 24 hours, or watch the demo."], mood: "waiting" };
+  }
   if (now - lastIngest > OFFLINE_AFTER_MS) {
-    return {
-      main: `No word from the office since ${clock(lastIngest, timeZone)}.`,
-      sub: "The agents may still be working. This page catches up by itself.",
-      mood: "offline",
-    };
+    return { forms: [[`No word from the office since ${clock(lastIngest, timeZone)}.`]], latest: ["The engineers may still be working. This page catches up by itself."], mood: "offline" };
   }
-  const active = AGENTS.filter((n) => isActive(agents[n])).sort((a, b) => (seen[b] ?? 0) - (seen[a] ?? 0));
-  const paused = AGENTS.filter((n) => agents[n]?.state === "PAUSED");
-  if (active.length) {
-    const [first, ...rest] = active;
-    const sub = [...rest.map((n) => `${n} is ${doing(agents[n])}.`), ...paused.map((n) => `${n} is paused.`)];
-    return { main: `${first} is ${doing(agents[first])}.`, sub: sub.join(" "), mood: "live" };
-  }
-  const last = Math.max(0, ...Object.values(seen).filter(Number.isFinite));
-  return {
-    main: last ? `All quiet, since ${clock(last, timeZone)}.` : "All quiet. Nothing yet today.",
-    sub: feed[0] ? `Last: ${sentence(feed[0])}` : "",
-    mood: "quiet",
-  };
+  const order = [...names].sort((a, b) => (seen[b] ?? 0) - (seen[a] ?? 0));
+  const mood = names.some((n) => isActive(agents[n])) ? "live" : "quiet";
+  return { forms: headlineForms(agents, order, targets), latest, mood };
+}
+
+// The words beside a star, and on its card: { glyph, state: "Working", words: "working on an
+// issue", repo } where repo is a public repo's name or "".
+export function stateWords(info) {
+  const st = STATE_WORD[info?.state] ? info.state : "IDLE";
+  const words = doing({ ...info, repo: undefined });
+  return { glyph: GLYPH[st], state: STATE_WORD[st], words, repo: isActive(info) && info.repo ? info.repo : "" };
 }
 
 // Whose work a review was about, when the page can tell: an approval or change request in a
