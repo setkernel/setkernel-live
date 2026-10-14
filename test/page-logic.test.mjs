@@ -172,7 +172,7 @@ test("demo state comes from the real reducer and stays inside the replay cap", (
   const ci = events.filter((e) => e.kind === "ci");
   assert.equal(s.counts.ci, ci.length);
   assert.ok(s.counts.ciPass > 0 && s.counts.ciPass < s.counts.ci, "the demo shows passes and failures");
-  assert.equal(s.ci.length, 12);
+  assert.equal(s.ci.length, 20);
   assert.ok(r.pulses.length <= 1440 && r.work.length <= 300);
 });
 

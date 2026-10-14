@@ -5,9 +5,12 @@
 //
 // Two parts, stored under two keys:
 //   state   today's counts (overall and per agent), the recent-work feed, the recent CI
-//           results, the agents' current state, and when each agent last did anything.
+//           results, the agents' current state, when each agent last did anything, and each
+//           engineer's lane on the line (public/lib/line.js).
 //   replay  the last 24 hours, capped, for "replay the last hour / 24 h" and the hourly chart:
 //           one row of counts per minute, and each GitHub action (capped).
+
+import { settleLines, stepLines } from "./line.js";
 
 // The four AI engineers, then Polaris (the director) and the three Claudes grouped around it:
 // Kochab, Pherkad and Yildun, after Ursa Minor (setkernel-live#33). The pole stars are seen only
@@ -31,17 +34,19 @@ const COLUMN = new Map([
 // Where an agent's count of a kind sits in a minute row (after the minute itself), or -1.
 export const columnOf = (agent, kind) => COLUMN.get(`${agent} ${kind}`) ?? -1;
 const FEED = 30;
-const CI_RECENT = 12;
+const CI_RECENT = 20;
 const DAY_S = 86_400;
 const REPLAY_MINUTES = 24 * 60; // one row per minute at most, so this is also the row cap
 const REPLAY_WORK = 300; // GitHub actions kept for the replay; a busy day is under 200
 
-const zeroCounts = () => ({ claude: 0, chat: 0, helpers: 0, prs: 0, reviews: 0, started: 0 });
+// The line's header counts too: building (jobs that got under way), changes (changes requested)
+// and merged (pull requests merged).
+const zeroCounts = () => ({ claude: 0, chat: 0, helpers: 0, prs: 0, reviews: 0, started: 0, building: 0, changes: 0, merged: 0 });
 // CI runs have no agent, so they are only counted overall: runs, and how many passed.
 const zeroTotals = () => ({ ...zeroCounts(), ci: 0, ciPass: 0 });
 
 export function emptyState(day) {
-  return { day, agents: {}, counts: zeroTotals(), byAgent: {}, seen: {}, feed: [], ci: [], lastIngest: 0 };
+  return { day, agents: {}, counts: zeroTotals(), byAgent: {}, seen: {}, line: {}, feed: [], ci: [], lastIngest: 0 };
 }
 
 export function emptyReplay() {
@@ -49,12 +54,12 @@ export function emptyReplay() {
 }
 
 // Apply a clean batch to the state (returns a new state). Counts reset each UTC day; the feed, the
-// recent CI results and when each agent was last seen carry over midnight. A state saved before
-// byAgent, seen, ci or a count existed is filled in rather than showing NaN.
+// recent CI results, when each agent was last seen and the lanes carry over midnight. A state saved
+// before byAgent, seen, line, ci or a count existed is filled in rather than showing NaN.
 export function applyBatch(state, batch, now, day) {
   const s = state && state.day === day
     ? structuredClone(state)
-    : { ...emptyState(day), feed: state?.feed ?? [], ci: state?.ci ?? [], seen: state?.seen ?? {} };
+    : { ...emptyState(day), feed: state?.feed ?? [], ci: state?.ci ?? [], seen: state?.seen ?? {}, line: state?.line ?? {} };
   s.counts = { ...zeroTotals(), ...s.counts };
   s.ci ??= [];
   s.byAgent ??= {};
@@ -80,10 +85,21 @@ export function applyBatch(state, batch, now, day) {
         if (e.action === "opened_pr") c.prs++;
         if (e.action === "approved" || e.action === "requested_changes") c.reviews++;
         if (e.action === "picked_up") c.started++;
+        if (e.action === "requested_changes") c.changes++;
+        if (e.action === "merged") c.merged++;
       }
     }
     if (e.kind === "github") s.feed.unshift(workItem(e, ts));
   }
+  // the lanes, with each event at the time it counted at
+  const timed = batch.events.filter((e) => e.t === "msg" && e.kind !== "ci").map((e) => ({ ...e, ts: Math.min(e.ts ?? nowS, nowS) }));
+  const { lines, built } = stepLines(s.line, timed, ENGINEERS);
+  for (const name of built) {
+    s.counts.building++;
+    s.byAgent[name] = { ...zeroCounts(), ...s.byAgent[name] };
+    s.byAgent[name].building++;
+  }
+  s.line = settleLines(lines, s.agents, ENGINEERS, nowS);
   s.feed = s.feed.slice(0, FEED);
   s.ci = s.ci.slice(0, CI_RECENT);
   s.lastIngest = now;
@@ -159,6 +175,6 @@ export function hourly(replay, now) {
 
 // What the page gets: on connect, with every batch, and from /api/state.
 export function view(state, replay, now) {
-  const { agents, counts, byAgent, seen, feed, ci, lastIngest } = state;
-  return { agents, counts, byAgent: byAgent ?? {}, seen: seen ?? {}, feed, ci: ci ?? [], hours: hourly(replay, now), lastIngest, now };
+  const { agents, counts, byAgent, seen, line, feed, ci, lastIngest } = state;
+  return { agents, counts, byAgent: byAgent ?? {}, seen: seen ?? {}, line: line ?? {}, feed, ci: ci ?? [], hours: hourly(replay, now), lastIngest, now };
 }

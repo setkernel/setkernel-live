@@ -20,9 +20,9 @@ test("per-agent counts: only the known agents, reset each UTC day", () => {
   );
   let s = applyBatch(emptyState("2026-10-13"), b, T0 * 1000 + 70_000, "2026-10-13");
   assert.deepEqual(Object.keys(s.byAgent).sort(), ["Rigel", "Vega"]);
-  assert.deepEqual(s.byAgent.Vega, { claude: 1, chat: 0, helpers: 0, prs: 1, reviews: 0, started: 1 });
-  assert.deepEqual(s.byAgent.Rigel, { claude: 0, chat: 0, helpers: 1, prs: 0, reviews: 2, started: 0 });
-  assert.deepEqual(s.counts, { claude: 1, chat: 0, helpers: 1, prs: 1, reviews: 2, started: 1, ci: 0, ciPass: 0 });
+  assert.deepEqual(s.byAgent.Vega, { claude: 1, chat: 0, helpers: 0, prs: 1, reviews: 0, started: 1, building: 0, changes: 0, merged: 0 });
+  assert.deepEqual(s.byAgent.Rigel, { claude: 0, chat: 0, helpers: 1, prs: 0, reviews: 2, started: 0, building: 0, changes: 1, merged: 0 });
+  assert.deepEqual(s.counts, { claude: 1, chat: 0, helpers: 1, prs: 1, reviews: 2, started: 1, building: 0, changes: 1, merged: 0, ci: 0, ciPass: 0 });
   assert.deepEqual(s.seen, { Vega: T0 + 2, Rigel: T0 + 5 });
 
   s = applyBatch(s, batch(), T0 * 1000 + 86_400_000, "2026-10-14");
@@ -41,10 +41,11 @@ test("seen keeps the latest time; no ts, or a clock ahead of ours, counts as now
 test("a state saved before this change loads without NaN", () => {
   const old = { day: "d", agents: {}, counts: { claude: 3, chat: 0, prs: 0, reviews: 0, started: 0 }, feed: [], lastIngest: 0 };
   const s = applyBatch(old, batch(msg("Orion", "helper", T0), msg("Orion", "claude", T0)), T0 * 1000, "d");
-  assert.deepEqual(s.counts, { claude: 4, chat: 0, helpers: 1, prs: 0, reviews: 0, started: 0, ci: 0, ciPass: 0 });
+  assert.deepEqual(s.counts, { claude: 4, chat: 0, helpers: 1, prs: 0, reviews: 0, started: 0, building: 0, changes: 0, merged: 0, ci: 0, ciPass: 0 });
   assert.equal(s.byAgent.Orion.helpers, 1);
   const v = view(old, undefined, T0 * 1000);
-  assert.deepEqual([v.byAgent, v.seen, v.ci, v.hours.length], [{}, {}, [], 24]);
+  assert.deepEqual([v.byAgent, v.seen, v.line, v.ci, v.hours.length], [{}, {}, {}, [], 24]);
+  assert.equal(s.line.Orion, undefined, "a Claude request with no job seen starts no lane");
 });
 
 test("replay: frequent kinds as one row per minute, GitHub actions one by one", () => {

@@ -6,9 +6,9 @@
 //
 // The state built from clean batches lives in public/lib/state.js, because ?demo mode on the page
 // runs the same code; it is re-exported here.
-import { AGENTS, POLE } from "../public/lib/state.js";
+import { AGENTS, ENGINEERS, POLE } from "../public/lib/state.js";
 
-export { AGENTS, POLE };
+export { AGENTS, ENGINEERS, POLE };
 export { COLUMNS, applyBatch, emptyReplay, emptyState, hourly, recordReplay, replaySince, view } from "../public/lib/state.js";
 export const STATES = ["WORKING", "REVIEW", "DISCUSS", "IDLE", "PAUSED"];
 export const WORK = ["issue", "review", "changes", "discussion", "decision"];
