@@ -3,7 +3,9 @@
 // each other's and talking in the team chat, with a test run each time they open or push to a pull
 // request, and a merge a while after each approval. Polaris and its three Claudes are seen only
 // through GitHub, as on the live page: Polaris reviews a waiting pull request now and then, and
-// Kochab, Pherkad and Yildun each open one now and then, merged later. It produces only events the
+// Kochab, Pherkad and Yildun each open one now and then, merged later. Polaris (and now and then
+// Kochab) sends the team requests, Polaris merges most pull requests, and Yildun's Claude requests
+// show while it works (setkernel-live#35). It produces only events the
 // Worker's allowlist accepts unchanged
 // (test/page-logic.test.mjs checks that), and the page feeds them through the same reducer as the
 // Durable Object. No DOM here.
@@ -13,6 +15,11 @@ import { AGENTS, ENGINEERS, POLE } from "./state.js";
 const REPOS = ["setkernel-live", null, null, "example-site", null];
 
 const CI_PASS = 0.85; // share of test runs that pass
+
+// Seconds between requests to the team, and the share of merges Polaris makes.
+const REQUEST_GAP = [900, 3600];
+const POLARIS_MERGES = 0.7;
+const YILDUN_CLAUDE = 0.05; // Yildun's Claude requests per second while it works
 
 // Seconds between a pole star's pull requests (or, for Polaris, its reviews): [shortest, longest].
 const POLE_GAP = { Polaris: [1500, 4800], Kochab: [3600, 9000], Pherkad: [1800, 6000], Yildun: [3000, 8400] };
@@ -49,6 +56,7 @@ function poisson(rand, mean) {
 export function createDemo(seed = 17, startS = Math.trunc(Date.now() / 1000)) {
   const rand = seeded(seed);
   const ciRand = seeded(seed ^ 0x5eed); // its own stream, so test runs don't change the rest of the story
+  const poleRand = seeded(seed ^ 0x9013); // and one for requests, Polaris's merges and Yildun's Claude
   const between = (lo, hi) => lo + rand() * (hi - lo);
   const pick = (list) => list[Math.floor(rand() * list.length)];
   let t = startS;
@@ -60,6 +68,14 @@ export function createDemo(seed = 17, startS = Math.trunc(Date.now() / 1000)) {
   // a test run has no agent: only the result, and the repo when it is public
   const ci = (repo, ts) => ({ t: "msg", kind: "ci", result: ciRand() < CI_PASS ? "pass" : "fail", ...(repo ? { repo } : {}), ts });
   const set = (agent, state, work, repo, until) => Object.assign(a[agent], { state, work, repo, until });
+  // a request names who sent it and, for a public repo, where; never what it asked
+  let requestAt = t + REQUEST_GAP[0] * poleRand();
+  function request(ts) {
+    const agent = poleRand() < 0.8 ? "Polaris" : "Kochab";
+    const action = agent === "Polaris" && poleRand() < 0.6 ? "opened_issue" : "commented";
+    const repo = REPOS[Math.floor(poleRand() * REPOS.length)];
+    return { t: "msg", kind: "request", agent, action, ...(repo ? { repo } : {}), ts };
+  }
 
   // A pole star's turn. Polaris reviews a waiting pull request when there is one. Its Claudes work
   // on one of their own for a while, then open it; it is merged later (they share Polaris's
@@ -148,7 +164,7 @@ export function createDemo(seed = 17, startS = Math.trunc(Date.now() / 1000)) {
         const step = Math.min(5, toS - t); // fine enough that tasks end close to when they're due
         for (const n of AGENTS) {
           const me = a[n];
-          const rate = POLE.includes(n) ? null : RATE[me.state]; // the pole stars' own requests never reach the page
+          const rate = POLE.includes(n) ? null : RATE[me.state]; // the pole stars' chat and helpers never reach the page; Yildun's Claude comes below
           if (rate) {
             for (const [kind, r] of Object.entries(rate)) {
               for (let i = poisson(rand, r * step); i > 0; i--) out.push({ t: "msg", kind, agent: n, ts: Math.trunc(t + rand() * step) });
@@ -156,11 +172,21 @@ export function createDemo(seed = 17, startS = Math.trunc(Date.now() / 1000)) {
           }
           if (me.until <= t + step) next(n, Math.trunc(Math.max(t, me.until)), out);
         }
+        if (a.Yildun.state === "WORKING") {
+          for (let i = poisson(poleRand, YILDUN_CLAUDE * step); i > 0; i--) out.push({ t: "msg", kind: "claude", agent: "Yildun", ts: Math.trunc(t + poleRand() * step) });
+        }
+        if (requestAt <= t + step) {
+          out.push(request(Math.trunc(Math.max(t, requestAt))));
+          requestAt += REQUEST_GAP[0] + poleRand() * (REQUEST_GAP[1] - REQUEST_GAP[0]);
+        }
         for (let i = merging.length - 1; i >= 0; i--) {
           const m = merging[i];
           if (m.at > t + step) continue;
           merging.splice(i, 1);
-          out.push(gh(m.author, "merged", m.repo, Math.trunc(Math.max(t, m.at))));
+          const at = Math.trunc(Math.max(t, m.at));
+          out.push(gh(m.author, "merged", m.repo, at));
+          // the director's Claudes share its account, so their merges are always Polaris's
+          if (POLE.includes(m.author) || poleRand() < POLARIS_MERGES) out.push(gh("Polaris", "merged_by", m.repo, at));
         }
         t += step;
       }

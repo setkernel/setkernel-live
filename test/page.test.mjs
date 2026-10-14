@@ -94,6 +94,25 @@ test("all text meets WCAG contrast on the night sky and its panels, AAA for body
   }
 });
 
+test("a request slip's words are dark on manila, AAA, and its mark and the comet stand out on the sky", () => {
+  for (const bg of ["slip", "slip-2"]) assert.ok(contrast("slip-ink", bg) >= 7, `--slip-ink on --${bg} is ${contrast("slip-ink", bg).toFixed(2)}:1 (AAA)`);
+  // not text, but they carry meaning: at least 3:1 (WCAG 1.4.11) on the sky and its panels
+  for (const fg of ["slip", "comet"]) {
+    for (const bg of GROUNDS) assert.ok(contrast(fg, bg) >= 3, `--${fg} on --${bg} is ${contrast(fg, bg).toFixed(2)}:1`);
+  }
+});
+
+test("requests and Polaris's merges are named in words wherever their colour or shape carries meaning", () => {
+  const html = read("index.html"), app = read("app.js");
+  assert.match(html, /<svg [^>]*aria-hidden="true">.*<\/svg>Request: comet → the team<\/li>/, "the sky's legend names the comet");
+  assert.match(html, /<i class="lg s"><\/i>slip: a request/);
+  assert.match(html, /<i class="lg r"><\/i>ringed token: merged by Polaris/);
+  assert.match(app, /text: f\.action === "commented" \? "Comment" : "Request"/, "each slip says what it is");
+  assert.match(app, /title: ring \? `\$\{name\} · merged by Polaris`/, "a ringed token says so");
+  assert.match(app, /ringed: \$\{ringed\} merged by Polaris/, "and so does the pile's legend");
+  assert.match(app, /make\("p", \{ class: "stamp", id: "stamp", role: "img", hidden: "" \}/, "the stamp is hidden until Polaris merges, with no placeholder");
+});
+
 test("the star colours are the design's, Rigel pink so it stays apart from Vega", () => {
   assert.deepEqual(["vega", "rigel", "lyra", "orion", "polaris", "pole"].map((k) => vars[k]), ["#8ab4ff", "#f472b6", "#f5d06f", "#f59e5b", "#ffffff", "#7dd3fc"]);
 });

@@ -38,6 +38,7 @@
         <p class="since" id="since"></p>
         <ul class="legend" aria-label="How to read the sky">
           <li><svg viewBox="0 0 36 14" aria-hidden="true"><path d="M2 7H27" stroke="#e0904a" stroke-width="2" stroke-linecap="round" opacity=".55"/><circle cx="30" cy="7" r="3.4" fill="#ffe4c8"/></svg>Work pulse → its place</li>
+          <li><svg viewBox="0 0 36 14" aria-hidden="true"><path d="M1 3Q14 4 28 7" fill="none" stroke="#d6ecff" stroke-width="5" stroke-linecap="round" opacity=".3"/><path d="M1 3Q14 4 28 7" fill="none" stroke="#d6ecff" stroke-width="2" stroke-linecap="round"/><circle cx="30" cy="7.4" r="4" fill="#ffffff"/></svg>Request: comet → the team</li>
           <li><svg viewBox="0 0 36 14" aria-hidden="true"><path d="M3 12Q18 -4 33 12" fill="none" stroke="#f472b6" stroke-width="1.8"/></svg>Review: reviewer → author</li>
           <li><svg viewBox="0 0 36 14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8ab4ff" stroke-width="1.4"/><circle cx="7" cy="7" r="2" fill="#ffffff"/><circle cx="25" cy="7" r="5.5" fill="none" stroke="#8ab4ff" stroke-width="1.6" stroke-dasharray="1.5 2.5"/><circle cx="25" cy="7" r="2" fill="#ffffff"/></svg>Ring and glyph = state</li>
         </ul>
@@ -62,7 +63,7 @@
         </div>
       </div>
 
-      <section class="sky" id="sky" aria-label="The sky: the four engineers as stars, and Polaris, the director, with its three Claude sessions, Kochab, Pherkad and Yildun, as Ursa Minor. Each pulse of light is one Claude request, GitHub action or team-chat post falling to where the work went. An arc between two stars means one reviewed the other's work. Select a star for its details.">
+      <section class="sky" id="sky" aria-label="The sky: the four engineers as stars, and Polaris, the director, with its three Claude sessions, Kochab, Pherkad and Yildun, as Ursa Minor. Each pulse of light is one Claude request, GitHub action or team-chat post falling to where the work went. A comet is a request, an issue opened or a comment, arcing from its sender into the team. An arc between two stars means one reviewed the other's work. Select a star for its details.">
         <canvas id="sky-canvas" aria-hidden="true"></canvas>
         <div class="stars" id="stars"></div>
         <ul class="stations" id="stations"></ul>
@@ -108,7 +109,9 @@
         </div>
         <ul class="blegend" aria-label="How to read the line">
           <li><i class="lg c"></i>card: an engineer, in the column of its current job (select it to find its star)</li>
+          <li><i class="lg s"></i>slip: a request to the team (an issue opened or a comment)</li>
           <li><i class="lg t"></i>token: a merged pull request, in its author's colour</li>
+          <li><i class="lg r"></i>ringed token: merged by Polaris</li>
           <li><i class="lg d"></i>dashed line: who is reviewing whom</li>
         </ul>
       </section>
@@ -147,7 +150,7 @@
         <ul>
           <li><strong>Real events.</strong> Vega, Rigel, Lyra and Orion are AI engineers, each running Claude on its own machine and doing setkernel's engineering work.</li>
           <li><strong>The line follows the work.</strong> Each engineer's card sits in the column of its current job: an issue picked up, being built, a pull request in review, review feedback being fixed, or merged. The columns come from the same events as the sky.</li>
-          <li><strong>Polaris is the director.</strong> The pole star is the person who directs the work. The three stars joined to it as Ursa Minor, Kochab, Pherkad and Yildun, are the director's own Claude sessions: the lead chat, cloud sessions and a machine of its own. Only their pull requests and reviews reach this page, from GitHub.</li>
+          <li><strong>Polaris is the director.</strong> The pole star is the person who directs the work. The three stars joined to it as Ursa Minor, Kochab, Pherkad and Yildun, are the director's own Claude sessions: the lead chat, cloud sessions and a machine of its own. Only what they do on GitHub reaches this page: requests (issues opened and comments, never what they say), pull requests, reviews and merges, and for Yildun its Claude requests too.</li>
           <li><strong>About a minute behind.</strong> The office sends what happened with a short delay; the page never connects to the office. Even when nothing is happening it checks in every 30 seconds, so "updated 25 s ago" is normal.</li>
           <li><strong>Private projects stay unnamed.</strong> Public repositories are named and linked. No code, conversations, titles or customer data appear here, only what kind of work is happening.</li>
           <li><strong>A person reviews everything.</strong> Every change the agents make is reviewed and merged by a person.</li>

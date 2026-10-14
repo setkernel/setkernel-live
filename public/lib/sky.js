@@ -1,10 +1,11 @@
 // The night sky's canvas (setkernel-live#36): the slowly turning star field round Polaris, Ursa
 // Minor's lines and faint stars, the horizon, the review arcs from reviewer to author, and the
-// pulses of work falling from a star to its place on the horizon. The stars themselves, their
+// pulses of work falling from a star to its place on the horizon, and the comets of requests
+// (setkernel-live#35) arcing from their sender into the team. The stars themselves, their
 // words and the places are real buttons and text over the canvas (app.js), so nothing here needs
 // to be read: the canvas is aria-hidden. It stops drawing when the tab is hidden or the sky is off
 // screen. With prefers-reduced-motion nothing travels or turns: a place lights up when work
-// reaches it, and arcs appear whole.
+// reaches it, arcs appear whole, and a request draws no comet (its slip on the line still lands).
 import { FAINT, UMI_LINES } from "./layout.js";
 import { seeded } from "./demo.js";
 
@@ -16,7 +17,7 @@ const TURN = 8.7e-7; // radians per ms: one turn in about two hours
 export function createSky(canvas, { reduced = false, colors, onArrive = () => {} }) {
   const ctx = canvas.getContext("2d");
   let L = null, dpr = 1, places = {}, field = [], running = false, raf = 0, still = false;
-  const pulses = []; // { from, place, t0, dur }
+  const pulses = []; // { a, b, c1, c2, rgb, t0, dur, then place, or comet, or ring }
   let arcs = []; // { from, to, t0 }
 
   // A field of faint stars, seeded so it is the same on every visit, spread round Polaris so it
@@ -165,9 +166,22 @@ export function createSky(canvas, { reduced = false, colors, onArrive = () => {}
     for (let i = pulses.length - 1; i >= 0; i--) {
       const p = pulses[i];
       const k = Math.min(1, (t - p.t0) / p.dur);
+      if (p.ring) {
+        // where a comet lands: a ring that widens and fades
+        ctx.globalAlpha = (1 - k) * 0.7;
+        ctx.strokeStyle = `rgb(${p.rgb})`;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(p.b.x, p.b.y, 10 + k * 40, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        if (k >= 1) pulses.splice(i, 1);
+        continue;
+      }
       if (k >= 0) {
         const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
-        const tail = Math.max(0, e - 0.18), h = bez(p, e), s0 = bez(p, tail);
+        // a comet is longer, wider and brighter than a work pulse, with a halo round its tail
+        const tail = Math.max(0, e - (p.comet ? 0.3 : 0.18)), h = bez(p, e), s0 = bez(p, tail);
         ctx.beginPath();
         for (let j = 0; j <= 12; j++) {
           const q = bez(p, tail + ((e - tail) * j) / 12);
@@ -176,22 +190,30 @@ export function createSky(canvas, { reduced = false, colors, onArrive = () => {}
         }
         const g = ctx.createLinearGradient(s0.x, s0.y, h.x + 0.01, h.y + 0.01);
         g.addColorStop(0, `rgba(${p.rgb},0)`);
-        g.addColorStop(1, `rgba(${p.rgb},.8)`);
+        g.addColorStop(1, `rgba(${p.rgb},${p.comet ? 0.95 : 0.8})`);
         ctx.strokeStyle = g;
-        ctx.lineWidth = 1.8;
+        if (p.comet) {
+          ctx.lineWidth = 7;
+          ctx.globalAlpha = 0.28;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+        ctx.lineWidth = p.comet ? 2.4 : 1.8;
         ctx.stroke();
-        const rg = ctx.createRadialGradient(h.x, h.y, 0, h.x, h.y, 8);
+        const rad = p.comet ? 13 : 8;
+        const rg = ctx.createRadialGradient(h.x, h.y, 0, h.x, h.y, rad);
         rg.addColorStop(0, "rgba(255,255,255,.95)");
         rg.addColorStop(0.3, `rgba(${p.rgb},.85)`);
         rg.addColorStop(1, `rgba(${p.rgb},0)`);
         ctx.fillStyle = rg;
         ctx.beginPath();
-        ctx.arc(h.x, h.y, 8, 0, Math.PI * 2);
+        ctx.arc(h.x, h.y, rad, 0, Math.PI * 2);
         ctx.fill();
       }
       if (k >= 1) {
         pulses.splice(i, 1);
-        onArrive(p.place);
+        if (p.comet) pulses.push({ ring: true, b: p.b, rgb: p.rgb, t0: t, dur: 1000 });
+        else onArrive(p.place);
       }
     }
     ctx.globalCompositeOperation = "source-over";
@@ -230,6 +252,16 @@ export function createSky(canvas, { reduced = false, colors, onArrive = () => {}
       pulses.push({ a, b, c1: { x: a.x, y: a.y + dy * 0.5 }, c2: { x: b.x, y: b.y - dy * 0.45 }, rgb: rgb(colors[place]), place, t0: performance.now(), dur: 1500 + Math.random() * 600 });
       kick();
     },
+    // A request: a comet from its sender, arcing into the middle of the four engineers, where it
+    // lands as a widening ring. Under reduced motion, nothing.
+    request(from) {
+      const a = L?.stars[from], team = ["Vega", "Rigel", "Lyra", "Orion"].map((n) => L?.stars[n]).filter(Boolean);
+      if (!a || !team.length || reduced || !running || pulses.length >= MAX_PULSES) return;
+      const b = { x: team.reduce((x, s) => x + s.x, 0) / team.length, y: team.reduce((y, s) => y + s.y, 0) / team.length };
+      const side = b.x < a.x ? -1 : 1;
+      pulses.push({ a, b, c1: { x: a.x - side * L.w * 0.12, y: a.y + L.h * 0.05 }, c2: { x: b.x - side * L.w * 0.05, y: b.y - L.h * 0.25 }, rgb: rgb(colors.comet), comet: true, t0: performance.now(), dur: 2400 });
+      kick();
+    },
     review(from, to) {
       arcs = [{ from, to, t0: performance.now() }, ...arcs.filter((x) => !(x.from === from && x.to === to))].slice(0, MAX_ARCS);
       kick();
@@ -242,7 +274,7 @@ export function createSky(canvas, { reduced = false, colors, onArrive = () => {}
     },
     setReduced(on) {
       reduced = on;
-      for (const p of pulses.splice(0)) onArrive(p.place);
+      for (const p of pulses.splice(0)) if (p.place) onArrive(p.place);
       kick();
       draw(performance.now());
     },
@@ -255,7 +287,7 @@ export function createSky(canvas, { reduced = false, colors, onArrive = () => {}
       running = false;
       if (raf) cancelAnimationFrame(raf);
       raf = 0;
-      for (const p of pulses.splice(0)) onArrive(p.place);
+      for (const p of pulses.splice(0)) if (p.place) onArrive(p.place);
     },
   };
 }
