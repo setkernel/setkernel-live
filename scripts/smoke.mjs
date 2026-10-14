@@ -9,6 +9,9 @@
 // The output is status codes, key names and the version only, never a response body, so it can
 // go into a public issue as it is.
 
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 export const BASE = "https://live.setkernel.com";
 export const WAIT_MS = 10 * 60_000;
 export const POLL_MS = 10_000;
@@ -111,12 +114,14 @@ export function parseArgs(argv, env) {
     else if (argv[i] === "--base") base = argv[++i];
     else return { error: `unknown argument ${argv[i]}` };
   }
-  if (!expected || !/^[0-9a-f]{7,40}$/.test(expected)) return { error: "--expect <commit sha> (or EXPECTED_VERSION) is required" };
+  if (!expected) return { error: "--expect <commit sha> (or EXPECTED_VERSION) is required" };
+  if (!/^[0-9a-f]{7,40}$/.test(expected)) return { error: "--expect must be a lowercase hex commit id" };
   if (!/^https?:\/\/[^/]+$/.test(base ?? "")) return { error: "--base must be an origin like https://live.setkernel.com" };
   return { expected, base };
 }
 
-if (import.meta.main) {
+// Not import.meta.main: that needs Node 24.2, and on 24.0 the check would skip itself and exit 0.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = parseArgs(process.argv.slice(2), process.env);
   if (args.error) {
     console.error(`smoke: ${args.error}`);

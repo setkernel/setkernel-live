@@ -1,6 +1,8 @@
 // scripts/smoke.mjs against a fake fetch and a fake clock (setkernel-live#30).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { POLL_MS, STATE_KEYS, WAIT_MS, checkRoutes, parseArgs, smoke, waitForVersion } from "../scripts/smoke.mjs";
 
 const SHA = "0123456789abcdef0123456789abcdef01234567";
@@ -126,5 +128,18 @@ test("parseArgs wants a commit id and an origin", () => {
   assert.deepEqual(parseArgs(["--expect", SHA, "--base", BASE], {}), { expected: SHA, base: BASE });
   for (const argv of [[], ["--expect"], ["--expect", "main"], ["--expect", "$(id)"], ["--expect", SHA, "--base", "https://x/y"], ["--expect", SHA, "--nope"]]) {
     assert.ok(parseArgs(argv, {}).error, JSON.stringify(argv));
+  }
+  assert.match(parseArgs([], {}).error, /is required/);
+  assert.match(parseArgs(["--expect", "ABCDEF1"], {}).error, /must be a lowercase hex commit id/);
+});
+
+// The script must run its check when started directly (by relative or absolute path), so a bad
+// argument exits 2 instead of the script quietly doing nothing and exiting 0.
+test("running the script directly parses its arguments", () => {
+  const script = fileURLToPath(new URL("../scripts/smoke.mjs", import.meta.url));
+  for (const path of [script, "scripts/smoke.mjs"]) {
+    const run = spawnSync(process.execPath, [path, "--expect", "ABCDEF1"], { cwd: fileURLToPath(new URL("..", import.meta.url)), encoding: "utf8", env: {} });
+    assert.equal(run.status, 2, path);
+    assert.match(run.stderr, /must be a lowercase hex commit id/);
   }
 });
