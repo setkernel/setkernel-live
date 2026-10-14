@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { skyLayout } from "../public/lib/layout.js";
+import { STAGE_NAME } from "../public/lib/line.js";
 
 const pub = new URL("../public/", import.meta.url);
 const read = (name) => readFileSync(new URL(name, pub), "utf8");
@@ -127,6 +128,24 @@ test("share preview tags point at a 1200x630 PNG on this origin", () => {
   assert.ok(png.length < 300_000, "small enough for every card scraper");
   assert.match(html, /<link rel="icon" href="\/favicon\.svg" type="image\/svg\+xml">/);
   assert.match(read("favicon.svg"), /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+});
+
+test("share preview words describe the Sky + Line page, with star names only", () => {
+  const html = read("index.html");
+  const meta = (attr, key) => html.match(new RegExp(`<meta ${attr}="${key}" content="([^"]*)">`))?.[1];
+  const desc = meta("property", "og:description");
+  const alt = meta("property", "og:image:alt");
+  assert.equal(meta("name", "twitter:description"), desc);
+  assert.equal(meta("name", "twitter:image:alt"), alt);
+  for (const text of [desc, alt]) {
+    for (const word of ["Vega", "Rigel", "Lyra", "Orion", "Polaris", "Ursa Minor"]) assert.ok(text.includes(word), `${word} in "${text}"`);
+    // the line's five columns, in order
+    const at = Object.values(STAGE_NAME).map((name) => text.indexOf(name));
+    assert.ok(at.every((i, n) => i >= 0 && (n === 0 || i > at[n - 1])), `the line's columns in order in "${text}"`);
+    assert.doesNotMatch(text, /pulses of light travelling/); // the v1 page
+  }
+  assert.match(desc, /three Claude sessions/);
+  assert.ok(desc.length <= 300, `og:description is ${desc.length} characters`);
 });
 
 test("status and news reach screen readers; the sky has a text alternative", () => {
