@@ -27,10 +27,42 @@ export const OFFLINE_AFTER_MS = 120_000;
 
 export const isActive = (info) => ACTIVE.has(info?.state);
 
-// Seconds or milliseconds since the epoch -> "14:02" (UTC; the page says so once).
-export function clock(t) {
-  const d = new Date(t > 1e11 ? t : t * 1000);
-  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+// Times are shown in the visitor's own time zone. Every function that prints a time takes an
+// optional IANA zone (tests pin "UTC" or "America/Halifax"); left out, the browser's zone is used.
+const formats = new Map();
+const format = (key, make) => formats.get(key) ?? formats.set(key, make()).get(key);
+const toMs = (t) => (t > 1e11 ? t : t * 1000);
+
+// Seconds or milliseconds since the epoch -> "14:02", 24-hour, in the visitor's zone.
+export function clock(t, timeZone) {
+  const f = format(`clock ${timeZone}`, () => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }));
+  return f.format(new Date(toMs(t)));
+}
+
+// The zone's short name at that moment -> "ADT" (or "AST" in winter, "UTC", "GMT+2").
+export function zoneName(t, timeZone, locale) {
+  const f = format(`zone ${timeZone} ${locale}`, () => new Intl.DateTimeFormat(locale, { timeZoneName: "short", timeZone }));
+  return f.formatToParts(new Date(toMs(t))).find((p) => p.type === "timeZoneName")?.value ?? "";
+}
+
+const localDay = (ms, timeZone) => format(`day ${timeZone}`, () => new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone })).format(new Date(ms));
+
+// The counters reset at midnight UTC; say when that was on the visitor's clock -> "since 21:00 ADT
+// yesterday" in Halifax just after midnight, "since 00:00 GMT" in London in winter.
+export function todaySince(now, timeZone, locale) {
+  const ms = toMs(now), midnight = Math.floor(ms / 86_400_000) * 86_400_000;
+  const when = `since ${clock(midnight, timeZone)} ${zoneName(midnight, timeZone, locale)}`.trimEnd();
+  return localDay(midnight, timeZone) === localDay(ms, timeZone) ? when : `${when} yesterday`;
+}
+
+// How long ago the office last reported in -> "updated 12 s ago", "updated 3 min ago".
+export function freshness(lastIngest, now = Date.now()) {
+  if (!lastIngest) return "";
+  const s = Math.max(0, Math.floor((now - lastIngest) / 1000));
+  if (s < 2) return "updated just now";
+  if (s < 60) return `updated ${s} s ago`;
+  if (s < 3600) return `updated ${Math.floor(s / 60)} min ago`;
+  return `updated ${Math.floor(s / 3600)} h ago`;
 }
 
 // An agent's state -> "working on an issue in setkernel-live" (or "idle", "paused").
@@ -73,11 +105,11 @@ export function ciSummary(c) {
 
 // The one line at the top: what's happening now. Returns { main, sub, mood } where mood is
 // "live", "quiet", "offline" or "waiting".
-export function headline({ agents = {}, seen = {}, feed = [], lastIngest = 0, now = Date.now() } = {}) {
+export function headline({ agents = {}, seen = {}, feed = [], lastIngest = 0, now = Date.now(), timeZone } = {}) {
   if (!lastIngest) return { main: "Waiting for the office to report in.", sub: "Nothing has arrived yet. Replay the last 24 hours below the sky, or watch the demo.", mood: "waiting" };
   if (now - lastIngest > OFFLINE_AFTER_MS) {
     return {
-      main: `No word from the office since ${clock(lastIngest)} UTC.`,
+      main: `No word from the office since ${clock(lastIngest, timeZone)}.`,
       sub: "The agents may still be working. This page catches up by itself.",
       mood: "offline",
     };
@@ -91,7 +123,7 @@ export function headline({ agents = {}, seen = {}, feed = [], lastIngest = 0, no
   }
   const last = Math.max(0, ...Object.values(seen).filter(Number.isFinite));
   return {
-    main: last ? `All four are quiet, since ${clock(last)} UTC.` : "All four are quiet. Nothing yet today.",
+    main: last ? `All four are quiet, since ${clock(last, timeZone)}.` : "All four are quiet. Nothing yet today.",
     sub: feed[0] ? `Last: ${sentence(feed[0])}` : "",
     mood: "quiet",
   };

@@ -117,7 +117,9 @@ test("share preview tags point at a 1200x630 PNG on this origin", () => {
 
 test("status and news reach screen readers; the sky has a text alternative", () => {
   const html = read("index.html");
-  assert.match(html, /<p class="status" id="status" role="status">/);
+  // only the state is a live region; the age beside it ticks every second and is not read out
+  assert.match(html, /<p class="status" id="status"><i aria-hidden="true"><\/i><span id="status-text" role="status">[^<]*<\/span><span id="status-age"><\/span><\/p>/);
+  assert.equal(html.match(/role="status"/g).length, 1);
   assert.match(html, /<p class="visually-hidden" id="announce" aria-live="polite"><\/p>/);
   assert.match(html, /<canvas id="sky-canvas" aria-hidden="true">/);
   assert.match(html, /<section class="sky" aria-label="[^"]{40,}">/);
@@ -125,6 +127,21 @@ test("status and news reach screen readers; the sky has a text alternative", () 
   // test runs: each mark carries its words for screen readers; the key gives the colours a name
   assert.match(html, /<ol class="ci-runs" id="ci-runs" aria-label="[^"]+">/);
   assert.match(html, /<span class="pass"><i><\/i>passed<\/span> <span class="fail"><i><\/i>failed<\/span>/);
+});
+
+test("times are the visitor's own: no hard-coded UTC on the page", () => {
+  for (const f of ["index.html", "app.js", "lib/words.js", "lib/replay.js", "lib/demo.js"]) {
+    const text = read(f).split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n"); // comments may explain
+    assert.doesNotMatch(text, /\bUTC\b|getUTC(Hours|Minutes)/, f);
+  }
+});
+
+test("the status dot pulses once per arrival, and not at all under reduced motion", () => {
+  assert.match(css, /\.status i\.pulse \{ animation: beat [^;]* 1; \}/);
+  assert.doesNotMatch(css, /infinite/);
+  assert.match(css, /@keyframes beat \{ 0% \{ box-shadow: 0 0 0 0 currentColor; \}/, "rings in the dot's own colour, so the demo dot rings in the accent");
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.status i\.pulse \{ animation: none; \} \}/);
+  assert.match(read("app.js"), /if \(msg\.t === "hello" \|\| msg\.t === "batch"\) pulse\(\);/, "the first data on connect pulses too");
 });
 
 test("the page never builds markup from data", () => {

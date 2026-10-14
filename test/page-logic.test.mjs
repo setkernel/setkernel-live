@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { cleanBatch, cleanEvent, emptyReplay, emptyState, recordReplay, applyBatch } from "../src/logic.js";
-import { ciSummary, ciWhere, ciWord, clock, createAnnouncer, doing, headline, reviewTarget, sentence, starLabel, summarise, tally } from "../public/lib/words.js";
+import { ciSummary, ciWhere, ciWord, clock, createAnnouncer, doing, freshness, headline, reviewTarget, sentence, starLabel, summarise, tally, todaySince, zoneName } from "../public/lib/words.js";
 import { createDemo, seeded } from "../public/lib/demo.js";
 import { plan } from "../public/lib/replay.js";
 import { skyLayout } from "../public/lib/layout.js";
@@ -24,10 +24,11 @@ test("headline: who is doing what, most recently active first", () => {
 test("headline: quiet says since when and what came last; offline and waiting say so", () => {
   const now = T0 * 1000;
   const feed = [{ agent: "Vega", action: "opened_pr", repo: "lafka-plugin", ts: T0 - 600 }];
-  const quiet = headline({ agents: { Vega: { state: "IDLE" } }, seen: { Vega: T0 - 600, Rigel: T0 - 900 }, feed, lastIngest: now - 5000, now });
-  assert.deepEqual(quiet, { main: "All four are quiet, since 15:50 UTC.", sub: "Last: Vega opened a pull request in lafka-plugin.", mood: "quiet" });
+  const quiet = headline({ agents: { Vega: { state: "IDLE" } }, seen: { Vega: T0 - 600, Rigel: T0 - 900 }, feed, lastIngest: now - 5000, now, timeZone: "UTC" });
+  assert.deepEqual(quiet, { main: "All four are quiet, since 15:50.", sub: "Last: Vega opened a pull request in lafka-plugin.", mood: "quiet" });
   assert.equal(headline({ agents: {}, lastIngest: now, now }).main, "All four are quiet. Nothing yet today.");
-  assert.equal(headline({ lastIngest: now - 10 * 60_000, now }).main, "No word from the office since 15:50 UTC.");
+  assert.equal(headline({ lastIngest: now - 10 * 60_000, now, timeZone: "UTC" }).main, "No word from the office since 15:50.");
+  assert.equal(headline({ lastIngest: now - 10 * 60_000, now, timeZone: "America/Halifax" }).main, "No word from the office since 11:50.");
   assert.equal(headline({ lastIngest: 0, now }).mood, "waiting");
 });
 
@@ -44,8 +45,37 @@ test("labels, tallies and feed sentences", () => {
   assert.equal(tally({ prs: 1, reviews: 1, started: 1 }), "1 PR · 1 review");
   assert.equal(tally(undefined), "nothing yet today");
   assert.equal(sentence({ agent: "Orion", action: "decision_pr" }), "Orion wrote up a decision.");
-  assert.equal(clock(T0 + 125), "16:02");
-  assert.equal(clock((T0 + 125) * 1000), "16:02");
+});
+
+test("clock: 24-hour HH:MM in the visitor's zone, seconds or milliseconds", () => {
+  assert.equal(clock(T0 + 125, "UTC"), "16:02");
+  assert.equal(clock((T0 + 125) * 1000, "UTC"), "16:02");
+  assert.equal(clock(T0 + 125, "America/Halifax"), "12:02", "AST in November");
+  assert.equal(clock(T0 - 140 * 86_400, "America/Halifax"), "13:00", "ADT in July");
+  assert.equal(clock(T0 + 8 * 3600, "UTC"), "00:00", "midnight is 00, never 24");
+  assert.equal(clock(T0, "Asia/Kolkata"), "21:30", "half-hour zones");
+  assert.equal(zoneName(T0, "UTC", "en-US"), "UTC");
+  assert.equal(zoneName(T0, "America/Halifax", "en-US"), "AST");
+  assert.equal(zoneName(T0 - 140 * 86_400, "America/Halifax", "en-US"), "ADT");
+});
+
+test("today: the counters' UTC midnight on the visitor's clock", () => {
+  assert.equal(todaySince(T0 * 1000, "UTC", "en-US"), "since 00:00 UTC");
+  assert.equal(todaySince(T0, "America/Halifax", "en-US"), "since 20:00 AST yesterday", "12:00 in Halifax: the count began last evening");
+  assert.equal(todaySince(T0 + 9 * 3600, "America/Halifax", "en-US"), "since 20:00 AST", "21:00 in Halifax: it began this evening");
+  assert.equal(todaySince((T0 - 140 * 86_400) * 1000, "America/Halifax", "en-US"), "since 21:00 ADT yesterday");
+  assert.equal(todaySince(T0, "Asia/Kolkata", "en-US"), "since 05:30 GMT+5:30");
+});
+
+test("freshness: how long since the office last reported in, ticking up", () => {
+  const now = T0 * 1000;
+  assert.equal(freshness(0, now), "", "nothing yet: nothing to say");
+  assert.equal(freshness(now - 500, now), "updated just now");
+  assert.equal(freshness(now + 3000, now), "updated just now", "a server clock ahead of ours");
+  assert.equal(freshness(now - 12_400, now), "updated 12 s ago");
+  assert.equal(freshness(now - 13_400, now), "updated 13 s ago");
+  assert.equal(freshness(now - 3 * 60_000 - 5000, now), "updated 3 min ago");
+  assert.equal(freshness(now - 2 * 3_600_000, now), "updated 2 h ago");
 });
 
 test("review lines: only when a public repo ties the review to a teammate's pull request", () => {

@@ -32,8 +32,8 @@
   <main class="page">
     <header class="bar">
       <p class="mark"><a href="https://setkernel.com">setkernel</a> <span>live</span></p>
-      <p class="status" id="status" role="status"><i aria-hidden="true"></i><span id="status-text">Connecting…</span></p>
-      <p class="asof" id="asof"><span class="wide-only">Data </span>as of <time id="asof-time">--:--</time> UTC</p>
+      <p class="status" id="status"><i aria-hidden="true"></i><span id="status-text" role="status">Connecting…</span><span id="status-age"></span></p>
+      <p class="asof" id="asof"><span class="wide-only">Data </span>as of <time id="asof-time">--:--</time></p>
       <div class="controls" role="group" aria-label="Replay and display">
         <span class="controls-label" id="replay-label">Replay</span>
         <button type="button" data-replay="1" aria-describedby="replay-label">Last hour</button>
@@ -56,7 +56,7 @@
       </div>
       <div class="sky-foot">
         <div class="replaying" id="replaying" hidden>
-          <p><span id="replay-what">Replaying the last hour</span> · <time id="replay-at"></time> UTC</p>
+          <p><span id="replay-what">Replaying the last hour</span> · <time id="replay-at"></time></p>
           <div class="replay-track" aria-hidden="true"><i id="replay-progress"></i></div>
           <button type="button" id="replay-stop">Back to live</button>
         </div>
@@ -65,11 +65,11 @@
     </section>
 
     <section class="today" aria-labelledby="today-h">
-      <h2 id="today-h">Today <span>since midnight UTC</span></h2>
+      <h2 id="today-h">Today <span id="today-since"></span></h2>
       <dl class="numbers" id="numbers"></dl>
       <p class="minor" id="minor"></p>
       <figure class="hours">
-        <figcaption>Last 24 hours, per hour <span>UTC</span></figcaption>
+        <figcaption>Last 24 hours, per hour <span id="hours-zone"></span></figcaption>
         <div id="hours" class="hours-rows"></div>
         <p class="visually-hidden" id="hours-desc"></p>
       </figure>
@@ -84,7 +84,7 @@
     </section>
 
     <section class="stream" aria-labelledby="stream-h">
-      <h2 id="stream-h">Recent work <span>times UTC</span></h2>
+      <h2 id="stream-h">Recent work <span id="stream-zone"></span></h2>
       <ol class="feed" id="feed"><li class="empty">Nothing yet.</li></ol>
     </section>
 
@@ -92,7 +92,7 @@
       <h2 id="about-h">What you're looking at</h2>
       <ul>
         <li><strong>Real events.</strong> Vega, Rigel, Lyra and Orion are AI engineers, each running Claude on its own machine and doing setkernel's engineering work.</li>
-        <li><strong>About a minute behind.</strong> The office sends what happened with a short delay; the page never connects to the office.</li>
+        <li><strong>About a minute behind.</strong> The office sends what happened with a short delay; the page never connects to the office. Even when nothing is happening it checks in every 30 seconds, so "updated 25 s ago" is normal; the dot pulses each time, unless you have asked for reduced motion.</li>
         <li><strong>Private projects stay unnamed.</strong> Public repositories are named and linked. No code, conversations, titles or customer data appear here, only what kind of work is happening.</li>
         <li><strong>A person reviews everything.</strong> Every change the agents make is reviewed and merged by a person.</li>
       </ul>
