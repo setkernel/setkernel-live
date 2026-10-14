@@ -44,12 +44,13 @@ export function plan(data, { from, to, durationMs, maxPulses, rand = Math.random
 }
 
 // The replay's events before `from`, oldest first, so the line can catch up silently before the
-// show starts: each minute row as one event per engineer and kind that had any, and every GitHub
-// action. Only the order and the kinds matter to the lanes, not the counts.
+// show starts: each minute row that ends before it (a row that runs past `from` belongs to the
+// show, see plan) as one event per engineer and kind that had any, and every GitHub action. Only
+// the order and the kinds matter to the lanes, not the counts.
 export function eventsBefore(data, from) {
   const out = [];
   for (const r of data?.pulses ?? []) {
-    if (!Array.isArray(r) || r[0] * 60 >= from) continue;
+    if (!Array.isArray(r) || r[0] * 60 + 59 >= from) continue;
     COLUMNS.forEach(([agent, kind], i) => {
       if (PULSE_KINDS.includes(kind) && r[1 + i] > 0) out.push({ t: "msg", kind, agent, ts: r[0] * 60 });
     });

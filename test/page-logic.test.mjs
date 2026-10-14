@@ -320,4 +320,8 @@ test("replay: the events before the show, so the line can catch up first", () =>
   assert.ok(pre.every((e, i) => i === 0 || e.ts >= pre[i - 1].ts), "in time order");
   assert.equal(pre.filter((e) => e.kind === "github").length, r.work.filter((w) => w.ts < T0 + 3600).length);
   assert.deepEqual(eventsBefore(undefined, 0), []);
+  // a show starting mid-minute: that minute's row is the show's, not the catch-up's too
+  const mid = { pulses: [[(T0 + 3600) / 60, 2]], work: [] };
+  assert.equal(plan(mid, { from: T0 + 3630, to: T0 + 7200, durationMs: 60_000, maxPulses: 900, rand: () => 0.5 }).length, 2);
+  assert.deepEqual(eventsBefore(mid, T0 + 3630), []);
 });
