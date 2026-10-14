@@ -31,6 +31,8 @@
   --rigel: #b4c8ff;
   --lyra: #ffe2a8;
   --orion: #ffb183;
+  /* Raghav's Claude (setkernel-live#33): pale violet, apart from the four and from --claude, the place */
+  --claude-star: #d4bcff;
   --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
   --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -136,6 +138,7 @@ button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent);
 .stars li { transform: translate(18px, -50%); line-height: 1.25; }
 .stars li.left { transform: translate(calc(-100% - 18px), -50%); text-align: right; }
 .stars b { display: block; font: 600 clamp(1.25rem, 1.2vw + .8rem, 2.4rem)/1.05 var(--font-display); letter-spacing: .05em; }
+.stars .note { display: block; font: 400 .8125rem/1.4 var(--font-data); color: var(--star); }
 .stars .state { display: block; font-size: .95rem; color: var(--ink); }
 .stars .state em { font-style: normal; color: var(--ink-2); }
 .stars .tally { display: block; font: 400 .8125rem/1.4 var(--font-data); color: var(--ink-2); }

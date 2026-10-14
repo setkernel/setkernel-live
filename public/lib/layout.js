@@ -1,5 +1,5 @@
 // Where the stars and the places their work goes sit in the sky, for any size from a 320 px phone
-// to a wall screen. Landscape: the four stars spread across the sky and the places stand in a
+// to a wall screen. Landscape: the five stars spread across the sky and the places stand in a
 // column on the right, so light travels left to right. Portrait: the stars zigzag down the sky and
 // the places sit along the bottom, so light falls downwards. Pure, so it is tested.
 import { AGENTS } from "./state.js";
@@ -10,11 +10,11 @@ export const PLACE_NAMES = { claude: "Claude", github: "GitHub", chat: "Team cha
 // Fractions of the sky's width and height. Hand-placed, like a star chart, not a grid.
 // Wide: two loose rows, far enough apart side by side that each star's words fit beside it.
 const WIDE = {
-  stars: { Vega: [0.04, 0.24], Rigel: [0.17, 0.7], Lyra: [0.46, 0.14], Orion: [0.59, 0.8] },
+  stars: { Vega: [0.04, 0.24], Rigel: [0.17, 0.7], Lyra: [0.46, 0.14], Orion: [0.59, 0.8], Claude: [0.31, 0.44] },
   places: { claude: [1, 0.2], github: [1, 0.5], chat: [1, 0.8] },
 };
 const TALL = {
-  stars: { Vega: [0.14, 0.13], Rigel: [0.64, 0.3], Lyra: [0.16, 0.47], Orion: [0.66, 0.64] },
+  stars: { Vega: [0.14, 0.1], Rigel: [0.64, 0.25], Lyra: [0.16, 0.4], Orion: [0.66, 0.55], Claude: [0.16, 0.71] },
   places: { claude: [0.17, 1], github: [0.5, 1], chat: [0.83, 1] },
 };
 

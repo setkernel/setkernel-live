@@ -76,10 +76,11 @@ const contrast = (a, b) => {
 test("all text meets WCAG AA contrast on the night background, secondary text included", () => {
   // ink: headings, numbers, labels; ink-2: secondary lines, times, tallies; accent: links, focus;
   // the star colours: their names in the feed marker; ok and fail: the test-run marks (non-text, 3:1)
-  for (const fg of ["ink", "ink-2", "accent"]) {
+  // claude-star is also the text colour of "Raghav's Claude" under that star's name
+  for (const fg of ["ink", "ink-2", "accent", "claude-star"]) {
     assert.ok(contrast(fg, "bg") >= 7, `--${fg} on --bg is ${contrast(fg, "bg").toFixed(2)}:1 (AAA, so small type stays readable)`);
   }
-  for (const fg of ["claude", "chat", "github", "vega", "rigel", "lyra", "orion", "ok", "warn", "fail"]) {
+  for (const fg of ["claude", "chat", "github", "vega", "rigel", "lyra", "orion", "claude-star", "ok", "warn", "fail"]) {
     assert.ok(contrast(fg, "bg") >= 3, `--${fg} on --bg is ${contrast(fg, "bg").toFixed(2)}:1`);
   }
 });

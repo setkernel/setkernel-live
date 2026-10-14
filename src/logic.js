@@ -12,7 +12,8 @@ export { AGENTS };
 export { applyBatch, emptyReplay, emptyState, hourly, recordReplay, replaySince, view } from "../public/lib/state.js";
 export const STATES = ["WORKING", "REVIEW", "DISCUSS", "IDLE", "PAUSED"];
 export const WORK = ["issue", "review", "changes", "discussion", "decision"];
-export const ACTIONS = ["picked_up", "opened_pr", "approved", "requested_changes", "pushed", "posted_round", "decision_pr"];
+// "merged": the agent's pull request was merged (by a person); from the GitHub webhook (setkernel-live#33).
+export const ACTIONS = ["picked_up", "opened_pr", "approved", "requested_changes", "pushed", "posted_round", "decision_pr", "merged"];
 export const CI_RESULTS = ["pass", "fail"];
 // Fields that never reach the page, under the names GitHub's CI, deployment and push payloads use
 // (hq#113): deployment environments, branches, commit messages, run URLs, actors. The same list as
@@ -74,6 +75,8 @@ function eventFields(e) {
     return info ? { t: "agent", agent: e.agent, ...info, ...(ts ? { ts } : {}) } : null;
   }
   if (e.t !== "msg") return null;
+  // Raghav's Claude is seen only through GitHub (setkernel-live#33): its pull requests and reviews.
+  if (e.agent === "Claude" && e.kind !== "github") return null;
   // "helper": the agent used a subagent or a skill. Which one is never accepted or shown.
   if (e.kind === "claude" || e.kind === "chat" || e.kind === "helper") return { t: "msg", kind: e.kind, agent: e.agent, ...(ts ? { ts } : {}) };
   if (e.kind === "github" && ACTIONS.includes(e.action)) {

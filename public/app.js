@@ -4,7 +4,7 @@
 // shown is built with textContent and attributes, never innerHTML, so nothing in a batch can
 // inject markup.
 import { AGENTS, applyBatch, emptyReplay, emptyState, recordReplay, replaySince, view } from "/lib/state.js";
-import { ACTION_TEXT, OFFLINE_AFTER_MS, ciSummary, ciWhere, ciWord, clock, createAnnouncer, freshness, headline, isActive, reviewTarget, starLabel, tally, todaySince, zoneName } from "/lib/words.js";
+import { ACTION_TEXT, OFFLINE_AFTER_MS, STAR_NOTE, ciSummary, ciWhere, ciWord, clock, createAnnouncer, freshness, headline, isActive, reviewTarget, starLabel, tally, todaySince, zoneName } from "/lib/words.js";
 import { PLACES, PLACE_NAMES, skyLayout } from "/lib/layout.js";
 import { createSky } from "/lib/sky.js";
 import { createDemo } from "/lib/demo.js";
@@ -26,7 +26,9 @@ const DEMO = params.has("demo");
 const css = getComputedStyle(document.documentElement);
 const color = (k) => css.getPropertyValue(`--${k}`).trim();
 const reducedQuery = matchMedia("(prefers-reduced-motion: reduce)");
-const COLORS = Object.fromEntries([...AGENTS.map((n) => [n, color(n.toLowerCase())]), ...PLACES.map((k) => [k, color(k)])]);
+// a star's colour is --<name>; the Claude star's is --claude-star, since --claude is the place
+const starVar = (n) => (PLACES.includes(n.toLowerCase()) ? `${n.toLowerCase()}-star` : n.toLowerCase());
+const COLORS = Object.fromEntries([...AGENTS.map((n) => [n, color(starVar(n))]), ...PLACES.map((k) => [k, color(k)])]);
 
 let skew = 0; // server clock minus ours
 const serverNow = () => Date.now() + skew;
@@ -38,7 +40,8 @@ const skyEl = $("sky");
 const sky = createSky($("sky-canvas"), { reduced: reducedQuery.matches, colors: COLORS });
 const starEls = {}, placeEls = {};
 for (const name of AGENTS) {
-  const li = make("li", { class: "idle" }, make("b", { text: name }), make("span", { class: "state" }), make("span", { class: "tally" }));
+  const note = STAR_NOTE[name] ? [make("span", { class: "note", text: STAR_NOTE[name] })] : [];
+  const li = make("li", { class: "idle" }, make("b", { text: name }), ...note, make("span", { class: "state" }), make("span", { class: "tally" }));
   li.style.setProperty("--star", COLORS[name]);
   starEls[name] = li;
   $("stars").append(li);

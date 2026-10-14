@@ -11,7 +11,11 @@ export const ACTION_TEXT = {
   pushed: "pushed fixes to a pull request",
   posted_round: "posted in a design discussion",
   decision_pr: "wrote up a decision",
+  merged: "had a pull request merged",
 };
+
+// Who a star is, when its name alone doesn't say: shown under the name.
+export const STAR_NOTE = { Claude: "Raghav's Claude" };
 
 const DOING = {
   issue: "working on an issue",
@@ -123,7 +127,7 @@ export function headline({ agents = {}, seen = {}, feed = [], lastIngest = 0, no
   }
   const last = Math.max(0, ...Object.values(seen).filter(Number.isFinite));
   return {
-    main: last ? `All four are quiet, since ${clock(last, timeZone)}.` : "All four are quiet. Nothing yet today.",
+    main: last ? `All quiet, since ${clock(last, timeZone)}.` : "All quiet. Nothing yet today.",
     sub: feed[0] ? `Last: ${sentence(feed[0])}` : "",
     mood: "quiet",
   };

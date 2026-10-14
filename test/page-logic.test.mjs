@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { cleanBatch, cleanEvent, emptyReplay, emptyState, recordReplay, applyBatch } from "../src/logic.js";
-import { ciSummary, ciWhere, ciWord, clock, createAnnouncer, doing, freshness, headline, reviewTarget, sentence, starLabel, summarise, tally, todaySince, zoneName } from "../public/lib/words.js";
+import { STAR_NOTE, ciSummary, ciWhere, ciWord, clock, createAnnouncer, doing, freshness, headline, reviewTarget, sentence, starLabel, summarise, tally, todaySince, zoneName } from "../public/lib/words.js";
 import { createDemo, seeded } from "../public/lib/demo.js";
 import { plan } from "../public/lib/replay.js";
 import { skyLayout } from "../public/lib/layout.js";
@@ -25,8 +25,8 @@ test("headline: quiet says since when and what came last; offline and waiting sa
   const now = T0 * 1000;
   const feed = [{ agent: "Vega", action: "opened_pr", repo: "lafka-plugin", ts: T0 - 600 }];
   const quiet = headline({ agents: { Vega: { state: "IDLE" } }, seen: { Vega: T0 - 600, Rigel: T0 - 900 }, feed, lastIngest: now - 5000, now, timeZone: "UTC" });
-  assert.deepEqual(quiet, { main: "All four are quiet, since 15:50.", sub: "Last: Vega opened a pull request in lafka-plugin.", mood: "quiet" });
-  assert.equal(headline({ agents: {}, lastIngest: now, now }).main, "All four are quiet. Nothing yet today.");
+  assert.deepEqual(quiet, { main: "All quiet, since 15:50.", sub: "Last: Vega opened a pull request in lafka-plugin.", mood: "quiet" });
+  assert.equal(headline({ agents: {}, lastIngest: now, now }).main, "All quiet. Nothing yet today.");
   assert.equal(headline({ lastIngest: now - 10 * 60_000, now, timeZone: "UTC" }).main, "No word from the office since 15:50.");
   assert.equal(headline({ lastIngest: now - 10 * 60_000, now, timeZone: "America/Halifax" }).main, "No word from the office since 11:50.");
   assert.equal(headline({ lastIngest: 0, now }).mood, "waiting");
@@ -45,6 +45,8 @@ test("labels, tallies and feed sentences", () => {
   assert.equal(tally({ prs: 1, reviews: 1, started: 1 }), "1 PR · 1 review");
   assert.equal(tally(undefined), "nothing yet today");
   assert.equal(sentence({ agent: "Orion", action: "decision_pr" }), "Orion wrote up a decision.");
+  assert.equal(sentence({ agent: "Claude", action: "merged", repo: "hq" }), "Claude had a pull request merged in hq.");
+  assert.equal(STAR_NOTE.Claude, "Raghav's Claude");
 });
 
 test("clock: 24-hour HH:MM in the visitor's zone, seconds or milliseconds", () => {
@@ -127,9 +129,13 @@ test("demo: every event and agent state passes the Worker's allowlist unchanged"
   for (const e of events) assert.deepEqual(cleanEvent(e), e, JSON.stringify(e));
   assert.deepEqual(cleanBatch({ events: [], agents }).agents, agents);
   const kinds = new Set(events.map((e) => e.kind === "github" ? e.action : e.kind));
-  for (const k of ["claude", "chat", "helper", "ci", "picked_up", "opened_pr", "approved", "requested_changes", "pushed", "posted_round", "decision_pr"]) {
+  for (const k of ["claude", "chat", "helper", "ci", "picked_up", "opened_pr", "approved", "requested_changes", "pushed", "posted_round", "decision_pr", "merged"]) {
     assert.ok(kinds.has(k), `demo shows ${k}`);
   }
+  // Raghav's Claude is seen only through GitHub, as on the live page: it opens pull requests and has them merged
+  const claude = events.filter((e) => e.agent === "Claude");
+  assert.ok(claude.length >= 4 && claude.every((e) => e.kind === "github"), `${claude.length} Claude events`);
+  assert.deepEqual(new Set(claude.map((e) => e.action)), new Set(["opened_pr", "merged"]));
   assert.ok(events.every((e, i) => e.ts >= T0 && e.ts <= T0 + 86_400 && (i === 0 || e.ts >= events[i - 1].ts)), "in time order, inside the window");
   // states change as time goes on: the next minute is a continuation, not a restart
   const later = demo.advance(T0 + 86_400 + 60);

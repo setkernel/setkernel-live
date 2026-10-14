@@ -24,7 +24,20 @@ test("repo names must look like repo names", () => {
   for (const bad of ["<script>", "a/b", "x".repeat(101), "", 7]) assert.equal(e(bad).repo, undefined, String(bad));
 });
 
-test("a batch keeps the four agents only and caps the event count", () => {
+test("Raghav's Claude: its GitHub actions and its state, nothing else; merged is an action", () => {
+  for (const action of ["opened_pr", "merged", "approved", "requested_changes"]) {
+    assert.deepEqual(cleanEvent({ t: "msg", kind: "github", agent: "Claude", action, repo: "hq", ts: 9, title: "secret", number: 12, branch: "claude/x", login: "realRaghavGupta" }),
+      { t: "msg", kind: "github", agent: "Claude", action, repo: "hq", ts: 9 });
+  }
+  assert.deepEqual(cleanEvent({ t: "msg", kind: "github", agent: "Vega", action: "merged" }), { t: "msg", kind: "github", agent: "Vega", action: "merged" });
+  assert.deepEqual(cleanEvent({ t: "agent", agent: "Claude", state: "WORKING", work: "issue", repo: "hq" }), { t: "agent", agent: "Claude", state: "WORKING", work: "issue", repo: "hq" });
+  // its Claude requests, chat posts and helpers never come through: only GitHub sees it
+  for (const kind of ["claude", "chat", "helper"]) assert.equal(cleanEvent({ t: "msg", kind, agent: "Claude", ts: 1 }), null, kind);
+  for (const name of ["claude", "Raghav", "realRaghavGupta"]) assert.equal(cleanEvent({ t: "msg", kind: "github", agent: name, action: "opened_pr" }), null, name);
+  assert.deepEqual(cleanBatch({ events: [], agents: { Claude: { state: "IDLE" } } }).agents, { Claude: { state: "IDLE" } });
+});
+
+test("a batch keeps the five agents only and caps the event count", () => {
   const b = cleanBatch({ events: Array.from({ length: 600 }, () => ({ t: "msg", kind: "claude", agent: "Orion" })), agents: { Vega: { state: "WORKING", work: "issue" }, Mallory: { state: "IDLE" } } });
   assert.equal(b.events.length, 500);
   assert.deepEqual(b.agents, { Vega: { state: "WORKING", work: "issue" } });
