@@ -139,6 +139,7 @@ test("times are the visitor's own: no hard-coded UTC on the page", () => {
 test("the status dot pulses once per arrival, and not at all under reduced motion", () => {
   assert.match(css, /\.status i\.pulse \{ animation: beat [^;]* 1; \}/);
   assert.doesNotMatch(css, /infinite/);
+  assert.match(css, /@keyframes beat \{ 0% \{ box-shadow: 0 0 0 0 currentColor; \}/, "rings in the dot's own colour, so the demo dot rings in the accent");
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.status i\.pulse \{ animation: none; \} \}/);
 });
 

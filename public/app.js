@@ -97,8 +97,9 @@ document.addEventListener("visibilitychange", wake);
 // ---- rendering the picture
 // Times are in the visitor's own zone; the labels that explain them name it ("times in ADT").
 function showZone() {
-  const zone = zoneName(Date.now());
-  $("today-since").textContent = todaySince(serverNow());
+  const now = serverNow();
+  const zone = zoneName(now);
+  $("today-since").textContent = todaySince(now);
   for (const id of ["hours-zone", "stream-zone"]) $(id).textContent = zone ? `times in ${zone}` : "your local time";
   return zone;
 }
@@ -383,7 +384,7 @@ if (params.has("wall")) setWall(true);
 // keep "quiet since", "offline", "Today since" and the zone's name moving even when nothing
 // arrives, and the age beside the status every second
 setInterval(() => { showZone(); showNow(); showStatus(DEMO || ws?.readyState === WebSocket.OPEN); }, 15_000);
-setInterval(showAge, 1000);
+setInterval(() => { if (!document.hidden) showAge(); }, 1000);
 
 render(false);
 layoutSky();
