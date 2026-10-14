@@ -3,7 +3,7 @@
 // in a few numbers, the last 24 hours, and the recent-work stream. Everything shown is built with
 // textContent and attributes, never innerHTML, so nothing in a batch can inject markup.
 import { AGENTS, applyBatch, emptyReplay, emptyState, recordReplay, replaySince, view } from "/lib/state.js";
-import { ACTION_TEXT, OFFLINE_AFTER_MS, clock, createAnnouncer, headline, isActive, reviewTarget, starLabel, tally } from "/lib/words.js";
+import { ACTION_TEXT, OFFLINE_AFTER_MS, clock, createAnnouncer, freshness, headline, isActive, reviewTarget, starLabel, tally, todaySince, zoneName } from "/lib/words.js";
 import { PLACES, PLACE_NAMES, skyLayout } from "/lib/layout.js";
 import { createSky } from "/lib/sky.js";
 import { createDemo } from "/lib/demo.js";
@@ -94,6 +94,14 @@ new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; wake(); }).obse
 document.addEventListener("visibilitychange", wake);
 
 // ---- rendering the picture
+// Times are in the visitor's own zone; the labels that explain them name it ("times in ADT").
+function showZone() {
+  const zone = zoneName(Date.now());
+  $("today-since").textContent = todaySince(serverNow());
+  for (const id of ["hours-zone", "stream-zone"]) $(id).textContent = zone ? `times in ${zone}` : "your local time";
+  return zone;
+}
+
 function showNow() {
   const h = headline({ ...current, now: serverNow() });
   $("now-main").textContent = h.main;
@@ -131,7 +139,7 @@ function showNumbers() {
 }
 
 const ROWS = [["claude", "Claude requests"], ["github", "GitHub actions"], ["chat", "Team-chat posts"]];
-function showHours() {
+function showHours(zone) {
   const hours = Array.isArray(current.hours) && current.hours.length === 24 ? current.hours : null;
   if (!hours) return;
   const said = [];
@@ -139,7 +147,7 @@ function showHours() {
     const vals = hours.map((b) => (Number.isFinite(b[key]) && b[key] > 0 ? b[key] : 0));
     const peak = Math.max(...vals), total = vals.reduce((a, v) => a + v, 0);
     const bars = make("div", { class: "hbars", "aria-hidden": "true" }, ...vals.map((v, i) => {
-      const bar = make("i", { title: `${clock(hours[i].h * 3600)} UTC: ${fmt.format(v)} ${name.toLowerCase()}` });
+      const bar = make("i", { title: `${clock(hours[i].h * 3600)}: ${fmt.format(v)} ${name.toLowerCase()}` });
       if (!v) bar.className = "zero";
       bar.style.setProperty("--v", peak ? String(v / peak) : "0");
       bar.style.setProperty("--c", COLORS[key]);
@@ -151,7 +159,7 @@ function showHours() {
   const ticks = make("div", { class: "hticks", "aria-hidden": "true" }, make("span"),
     make("div", {}, ...[0, 6, 12, 18].map((i) => make("span", { text: clock(hours[i].h * 3600) }))));
   $("hours").replaceChildren(...rows, ticks);
-  $("hours-desc").textContent = `Per hour over the last 24 hours, ${clock(hours[0].h * 3600)} to now, UTC. ${said.join(" ")}`;
+  $("hours-desc").textContent = `Per hour over the last 24 hours, ${clock(hours[0].h * 3600)} to now, ${zone ? `times in ${zone}` : "your local time"}. ${said.join(" ")}`;
 }
 
 function feedItem(f) {
@@ -167,26 +175,45 @@ function showFeed() {
 }
 
 let lastStatus = "";
+// The state goes in the role="status" region, read out only when it changes; the age beside it
+// ticks every second, so it stays out of that region.
+function showAge() {
+  const age = freshness(current.lastIngest, serverNow());
+  $("status-age").textContent = age ? ` · ${age}` : "";
+}
 function showStatus(connected) {
   const quiet = !current.lastIngest || serverNow() - current.lastIngest > OFFLINE_AFTER_MS;
   let cls, text;
   if (DEMO) [cls, text] = ["demo", "Demo · sample data"];
   else if (!connected) [cls, text] = ["down", "Reconnecting…"];
   else if (quiet) [cls, text] = ["down", current.lastIngest ? "Office offline" : "Waiting for the office"];
-  else [cls, text] = ["live", "Live · about a minute behind"];
+  else [cls, text] = ["live", "Live"];
   if (cls + text !== lastStatus) { // only on change, so screen readers aren't told twice
     lastStatus = cls + text;
     $("status").className = `status ${cls}`;
     $("status-text").textContent = text;
   }
   $("asof-time").textContent = current.lastIngest ? clock(current.lastIngest) : "--:--";
+  showAge();
+}
+
+// a brief pulse of the status dot each time a batch or heartbeat arrives; none under reduced motion
+// (then only the age above changes)
+const dot = $("status").querySelector("i");
+dot.addEventListener("animationend", () => dot.classList.remove("pulse"));
+function pulse() {
+  if (reducedQuery.matches) return;
+  dot.classList.remove("pulse");
+  void dot.offsetWidth; // restart the animation if one is still running
+  dot.classList.add("pulse");
 }
 
 function render(connected = true) {
+  const zone = showZone();
   showNow();
   showStars();
   showNumbers();
-  showHours();
+  showHours(zone);
   showFeed();
   showStatus(connected);
 }
@@ -215,6 +242,7 @@ function apply(msg) {
   for (const k of ["agents", "counts", "byAgent", "seen", "feed", "hours"]) if (msg[k] && typeof msg[k] === "object") current[k] = msg[k];
   if (typeof msg.lastIngest === "number") current.lastIngest = msg.lastIngest;
   render(true);
+  if (msg.t === "batch") pulse();
   if (msg.t === "batch" && Array.isArray(msg.events)) {
     announcer.add(msg.events);
     play(msg.events);
@@ -332,8 +360,10 @@ wallBtn.addEventListener("click", async () => {
 document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && !params.has("wall")) setWall(false); });
 if (params.has("wall")) setWall(true);
 
-// keep "quiet since", "offline" and the chart's hours moving even when nothing arrives
-setInterval(() => { showNow(); showStatus(DEMO || ws?.readyState === WebSocket.OPEN); }, 15_000);
+// keep "quiet since", "offline", "Today since" and the zone's name moving even when nothing
+// arrives, and the age beside the status every second
+setInterval(() => { showZone(); showNow(); showStatus(DEMO || ws?.readyState === WebSocket.OPEN); }, 15_000);
+setInterval(showAge, 1000);
 
 render(false);
 layoutSky();

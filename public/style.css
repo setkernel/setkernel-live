@@ -76,10 +76,11 @@ h2 span { font: 400 .875rem var(--font-data); color: var(--ink-2); letter-spacin
 .status, .asof { margin: 0; font: 400 .875rem var(--font-data); color: var(--ink-2); display: inline-flex; align-items: center; gap: 8px; }
 .status i { width: 9px; height: 9px; border: 1.5px solid var(--ink-2); border-radius: 50%; }
 .status.live { color: var(--ink); }
-.status.live i { background: var(--ok); border-color: var(--ok); animation: beat 2.4s ease-in-out infinite; }
+.status.live i { background: var(--ok); border-color: var(--ok); }
+.status i.pulse { animation: beat 1.2s ease-out 1; } /* once per batch or heartbeat (app.js) */
 .status.down i { border-color: var(--warn); border-radius: 1px; transform: rotate(45deg); } /* a diamond, not only a colour */
 .status.demo i { background: var(--accent); border-color: var(--accent); border-radius: 1px; }
-@keyframes beat { 50% { box-shadow: 0 0 0 5px rgb(111 209 154 / 0); } 0%, 100% { box-shadow: 0 0 0 0 rgb(111 209 154 / .55); } }
+@keyframes beat { 0% { box-shadow: 0 0 0 0 rgb(111 209 154 / .7); } 100% { box-shadow: 0 0 0 7px rgb(111 209 154 / 0); } }
 .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .controls-label { font: 400 .875rem var(--font-data); color: var(--ink-2); }
 button {
@@ -88,9 +89,9 @@ button {
 }
 button:hover { border-color: var(--ink-2); }
 button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
-/* The status text changes length (Connecting…, Live · about a minute behind, Office offline), so it
-   gets a slot of fixed width, or a row of its own on phones: changing it never reflows the bar. */
-.status { min-width: 31ch; }
+/* The status text changes length (Connecting…, Live · updated 12 s ago, Office offline · updated 3 min
+   ago), so it gets a slot of fixed width, or a row of its own on phones: changing it never reflows the bar. */
+.status { min-width: 40ch; }
 @media (max-width: 600px) {
   .mark { order: 0; } .asof { order: 1; } .status { order: 2; flex-basis: 100%; min-width: 0; } .controls { order: 3; width: 100%; }
   .controls-label { margin-right: auto; }
@@ -200,5 +201,5 @@ button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent);
 .wall .now h1 { font-size: clamp(1.9rem, 2.6vw + .5rem, 5.2rem); max-width: none; }
 @media (max-width: 900px) { .wall .page { grid-template-columns: minmax(0, 1fr); grid-template-areas: "bar" "now" "sky" "today" "stream"; } }
 
-@media (prefers-reduced-motion: reduce) { .status.live i { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .status i.pulse { animation: none; } }
 @media (forced-colors: active) { .hbars i { background: CanvasText; } .feed b::before { background: CanvasText; } }
