@@ -14,7 +14,7 @@ Public repo: everything here is visible to anyone.
 ```sh
 # install:  npm ci
 # test:     npm test                 (node --test: allowlist, state and replay buffer, Access token
-#                                    check, GitHub receiver, page wording/demo/replay/layout, page hosts and contrast)
+#                                    check, GitHub receiver, page wording/demo/replay/layout, page hosts and contrast, the smoke check)
 # worker:   npm run test:worker      (vitest in workerd: the real Worker and Hub, see test/worker/)
 # lint:     npm run check            (node --check on every script)
 # validate: npm run validate         (check + test + test:worker + wrangler deploy --dry-run; what CI runs)
@@ -38,6 +38,8 @@ a laptop.
   buffer; the Durable Object and `?demo` both run it. `words.js` (wording, aria-live summary),
   `demo.js` (seeded sample data), `replay.js` (the replay show) and `layout.js` (the sky at any
   size) are pure and tested; `sky.js` draws the canvas.
+- `scripts/smoke.mjs`: the post-deploy smoke check (no dependencies); waits for `/api/state`'s
+  `version` (the `VERSION` var, set at deploy) to be the deployed commit, then checks each route.
 - `test/`: `node --test` suites for the pure modules and the page.
 - `test/worker/`: vitest suites run in workerd by `@cloudflare/vitest-plugin` (`vitest.config.mjs`
   reads `wrangler.jsonc`). They fake Access's certs with a throwaway key and drive every route

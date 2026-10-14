@@ -7,7 +7,7 @@
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "test:worker": "vitest run",
-    "check": "for f in src/*.js public/*.js public/lib/*.js; do node --check \"$f\" || exit 1; done",
+    "check": "for f in src/*.js public/*.js public/lib/*.js scripts/*.mjs; do node --check \"$f\" || exit 1; done",
     "validate": "npm run check && npm test && npm run test:worker && wrangler deploy --dry-run --outdir .wrangler/dry-run"
   },
   "devDependencies": {
