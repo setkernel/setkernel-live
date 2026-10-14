@@ -6,10 +6,13 @@
   "engines": { "node": ">=24.0.0" },
   "scripts": {
     "test": "node --test test/*.test.mjs",
+    "test:worker": "vitest run",
     "check": "for f in src/*.js public/*.js public/lib/*.js; do node --check \"$f\" || exit 1; done",
-    "validate": "npm run check && npm test && wrangler deploy --dry-run --outdir .wrangler/dry-run"
+    "validate": "npm run check && npm test && npm run test:worker && wrangler deploy --dry-run --outdir .wrangler/dry-run"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.4.0",
+    "vitest": "4.1.11",
     "wrangler": "4.146.0"
   }
 }
