@@ -353,26 +353,27 @@ describe("GitHub webhook and queue", () => {
     expect(JSON.parse((await pull("?since=1")).body).events).toEqual([]);
   });
 
-  it("queues pull requests and reviews by the agents and Raghav's Claude, never a login, title or branch", async () => {
+  it("queues pull requests and reviews under star names, never a login, title, branch or body", async () => {
     const pr = (action, login, head, extra = {}) => ({
       action,
       repository: { name: "setkernel-live", private: false },
-      pull_request: { id: 9001, number: 77, title: "secret title", user: { login }, head: { ref: head }, merged: action === "closed", created_at: new Date().toISOString(), merged_at: new Date().toISOString() },
+      pull_request: { id: 9001, number: 77, title: "secret title", body: "secret body", user: { login }, head: { ref: head }, merged: action === "closed", created_at: new Date().toISOString(), merged_at: new Date().toISOString() },
       sender: { login },
       ...extra,
     });
     expect(await deliver("pull_request", pr("opened", "realRaghavGupta", "claude/secret-branch"))).toEqual({ status: 202, text: "Queued" });
     expect(await deliver("pull_request", pr("closed", "realRaghavGupta", "claude/secret-branch"))).toEqual({ status: 202, text: "Queued" });
-    const review = { id: 31, state: "approved", user: { login: "lyra-setkernel" }, submitted_at: new Date().toISOString() };
-    expect(await deliver("pull_request_review", pr("submitted", "realRaghavGupta", "claude/secret-branch", { review }))).toEqual({ status: 202, text: "Queued" });
-    // Raghav off a claude/ branch, and a stranger: signed, but nothing to keep
-    expect(await deliver("pull_request", pr("opened", "realRaghavGupta", "agent/secret-branch"))).toEqual({ status: 202, text: "Ignored" });
+    const review = (id, login, body) => ({ review: { id, state: "approved", body, user: { login }, submitted_at: new Date().toISOString() } });
+    expect(await deliver("pull_request_review", pr("submitted", "realRaghavGupta", "claude/secret-branch", review(31, "lyra-setkernel", "secret")))).toEqual({ status: 202, text: "Queued" });
+    expect(await deliver("pull_request_review", pr("submitted", "vega-setkernel", "agent/secret-branch", review(32, "realRaghavGupta", "secret\n\n— Claude Lead")))).toEqual({ status: 202, text: "Queued" });
+    expect(await deliver("pull_request_review", pr("submitted", "vega-setkernel", "agent/secret-branch", review(33, "realRaghavGupta", "secret")))).toEqual({ status: 202, text: "Queued" });
+    // a stranger, even with a marker: signed, but nothing to keep
     expect(await deliver("pull_request", pr("opened", "someone", "claude/secret-branch"))).toEqual({ status: 202, text: "Ignored" });
     const { body } = await pull();
     const q = JSON.parse(body);
-    expect(q.events.map(({ action, actor }) => [action, actor])).toEqual([["opened_pr", "Claude"], ["merged", "Claude"], ["approved", "Lyra"]]);
-    expect(q.events[0]).toEqual({ cursor: 1, kind: "pr", repo: "setkernel-live", private: false, action: "opened_pr", actor: "Claude", ts: expect.any(Number) });
-    expect(body).not.toMatch(/secret|someone|realRaghavGupta|lyra-setkernel|claude\/|9001|77/);
+    expect(q.events.map(({ action, actor }) => [action, actor])).toEqual([["opened_pr", "Pherkad"], ["merged", "Pherkad"], ["approved", "Lyra"], ["approved", "Kochab"], ["approved", "Polaris"]]);
+    expect(q.events[0]).toEqual({ cursor: 1, kind: "pr", repo: "setkernel-live", private: false, action: "opened_pr", actor: "Pherkad", ts: expect.any(Number) });
+    expect(body).not.toMatch(/secret|someone|raghav|lyra-setkernel|claude\/|Claude|—|9001|77/i);
   });
 
   it("guards the queue: 503 while QUEUE_AUD is empty, 405, 403 and a bad cursor", async () => {
