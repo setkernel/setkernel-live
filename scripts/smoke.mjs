@@ -17,7 +17,7 @@ export const WAIT_MS = 10 * 60_000;
 export const POLL_MS = 10_000;
 export const REQUEST_MS = 15_000;
 // What /api/state must carry: view() in public/lib/state.js plus the Hub's version.
-export const STATE_KEYS = ["agents", "counts", "byAgent", "seen", "feed", "ci", "hours", "lastIngest", "now", "version"];
+export const STATE_KEYS = ["agents", "counts", "byAgent", "seen", "line", "feed", "ci", "hours", "lastIngest", "now", "version"];
 
 // One GET, never following redirects (Access answers some routes itself). Returns the status and,
 // if asked, the parsed JSON body; a network error or timeout is status 0 with the error's name.

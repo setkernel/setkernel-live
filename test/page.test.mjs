@@ -42,7 +42,7 @@ test("index.html and style.css fetch nothing from another host", () => {
 test("every @font-face file exists, is woff2 and swaps, and ships with its licence", () => {
   const css = read("style.css");
   const faces = [...css.matchAll(/@font-face\s*{([^}]*)}/g)].map((m) => m[1]);
-  assert.equal(faces.length, 7);
+  assert.equal(faces.length, 7, "Manrope 400 to 800 and IBM Plex Mono 400 and 500");
   const used = new Set();
   for (const face of faces) {
     assert.match(face, /font-display:\s*swap/);
@@ -55,7 +55,8 @@ test("every @font-face file exists, is woff2 and swaps, and ships with its licen
   }
   const files = readdirSync(new URL("fonts/", pub));
   assert.deepEqual(files.filter((f) => f.endsWith(".woff2")).sort(), [...used].sort(), "no unused font files");
-  for (const licence of ["OFL-Barlow-Condensed.txt", "OFL-Barlow.txt", "OFL-IBM-Plex-Mono.txt"]) {
+  assert.ok(!files.some((f) => /barlow/i.test(f)), "Barlow is gone now nothing uses it");
+  for (const licence of ["OFL-Manrope.txt", "OFL-IBM-Plex-Mono.txt"]) {
     assert.match(read(`fonts/${licence}`), /SIL Open Font License, Version 1\.1/, licence);
   }
 });
@@ -73,16 +74,28 @@ const contrast = (a, b) => {
   return (hi + 0.05) / (lo + 0.05);
 };
 
-test("all text meets WCAG AA contrast on the night background, secondary text included", () => {
-  // ink: headings, numbers, labels; ink-2: secondary lines, times, tallies; accent: links, focus;
-  // the star colours: their names in the feed marker; ok and fail: the test-run marks (non-text, 3:1)
-  // polaris and pole are also the text colour of the pole stars' names, and "the director"
-  for (const fg of ["ink", "ink-2", "accent", "polaris", "pole"]) {
-    assert.ok(contrast(fg, "bg") >= 7, `--${fg} on --bg is ${contrast(fg, "bg").toFixed(2)}:1 (AAA, so small type stays readable)`);
+// Text sits on the night sky, from --bg (its darkest) to --panel (the lightest card or panel), so
+// every text colour is checked on both. Every new text colour goes in one of these lists.
+const GROUNDS = ["bg", "panel"];
+test("all text meets WCAG contrast on the night sky and its panels, AAA for body text", () => {
+  // ink: headings, numbers, names; ink-2: body and secondary lines; polaris: the pole star's name
+  for (const fg of ["ink", "ink-2", "polaris"]) {
+    for (const bg of GROUNDS) assert.ok(contrast(fg, bg) >= 7, `--${fg} on --${bg} is ${contrast(fg, bg).toFixed(2)}:1 (AAA)`);
   }
-  for (const fg of ["claude", "chat", "github", "vega", "rigel", "lyra", "orion", "polaris", "pole", "ok", "warn", "fail"]) {
-    assert.ok(contrast(fg, "bg") >= 3, `--${fg} on --bg is ${contrast(fg, "bg").toFixed(2)}:1`);
+  // ink-3: times, hints, labels; accent: links; the star colours: names in the headline, the feed
+  // and the cards; the places: station names and the per-hour labels; ok, fail, warn: LIVE, the
+  // failed-run ×, REPLAY
+  for (const fg of ["ink-3", "accent", "vega", "rigel", "lyra", "orion", "pole", "claude", "github", "chat", "ok", "fail", "warn"]) {
+    for (const bg of GROUNDS) assert.ok(contrast(fg, bg) >= 4.5, `--${fg} on --${bg} is ${contrast(fg, bg).toFixed(2)}:1 (AA)`);
   }
+  // dark text on light: a pressed chip (--bg on --ink) and a merged token's letter (--bg on its author's colour)
+  for (const fg of ["ink", "vega", "rigel", "lyra", "orion", "polaris", "pole"]) {
+    assert.ok(contrast("bg", fg) >= 4.5, `--bg on --${fg} is ${contrast("bg", fg).toFixed(2)}:1`);
+  }
+});
+
+test("the star colours are the design's, Rigel pink so it stays apart from Vega", () => {
+  assert.deepEqual(["vega", "rigel", "lyra", "orion", "polaris", "pole"].map((k) => vars[k]), ["#8ab4ff", "#f472b6", "#f5d06f", "#f59e5b", "#ffffff", "#7dd3fc"]);
 });
 
 test("no tiny type: nothing in style.css is set under 13px", () => {
@@ -123,15 +136,18 @@ test("status and news reach screen readers; the sky has a text alternative", () 
   assert.equal(html.match(/role="status"/g).length, 1);
   assert.match(html, /<p class="visually-hidden" id="announce" aria-live="polite"><\/p>/);
   assert.match(html, /<canvas id="sky-canvas" aria-hidden="true">/);
-  assert.match(html, /<section class="sky" aria-label="[^"]{40,}">/);
+  assert.match(html, /<section class="sky" id="sky" aria-label="[^"]{40,}">/);
+  // the star card is a labelled dialog with a close button
+  assert.match(html, /<div class="scard" id="scard" role="dialog" aria-labelledby="sc-title" hidden>/);
+  assert.match(html, /<button type="button" class="x" id="sc-close" aria-label="Close details">/);
   assert.match(html, /<script type="module" src="\/app\.js"><\/script>/);
   // test runs: each mark carries its words for screen readers; the key gives the colours a name
-  assert.match(html, /<ol class="ci-runs" id="ci-runs" aria-label="[^"]+">/);
-  assert.match(html, /<span class="pass"><i><\/i>passed<\/span> <span class="fail"><i><\/i>failed<\/span>/);
+  assert.match(html, /<ol class="ticks" id="ci-runs" aria-label="[^"]+">/);
+  assert.match(html, /<span class="pass"><i><\/i>passed<\/span> <span class="fail"><i><\/i>failed \(×\)<\/span>/);
 });
 
 test("times are the visitor's own: no hard-coded UTC on the page", () => {
-  for (const f of ["index.html", "app.js", "lib/words.js", "lib/replay.js", "lib/demo.js"]) {
+  for (const f of ["index.html", "app.js", "lib/words.js", "lib/replay.js", "lib/demo.js", "lib/card.js", "lib/line.js"]) {
     const text = read(f).split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n"); // comments may explain
     assert.doesNotMatch(text, /\bUTC\b|getUTC(Hours|Minutes)/, f);
   }
@@ -151,7 +167,34 @@ test("the page never builds markup from data", () => {
   }
 });
 
-test("the sky lays out tall on phones in portrait and wide everywhere else", () => {
-  assert.equal(skyLayout(375, 570).mode, "tall");
-  for (const [w, h] of [[812, 351], [768, 594], [1440, 522], [2560, 979]]) assert.equal(skyLayout(w, h).mode, "wide", `${w}x${h}`);
+test("no inline style or script: the CSP would block them", () => {
+  const html = read("index.html");
+  assert.doesNotMatch(html, /<style\b|\sstyle\s*=/i, "no <style> or style attributes");
+  for (const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
+    assert.match(m[0], /\bsrc="\/[\w./-]+"/, "every script is a file");
+    assert.equal(m[1].trim(), "", "with nothing inline");
+  }
+  assert.doesNotMatch(html, /\son[a-z]+\s*=/i, "no inline event handlers");
+  for (const f of ["app.js", ...readdirSync(new URL("lib/", pub)).map((n) => `lib/${n}`)]) {
+    assert.doesNotMatch(read(f), /setAttribute\(\s*["']style["']|\.style\.cssText|\.style\s*=/, f);
+  }
+});
+
+test("reduced motion: nothing animates, and nothing loops forever", () => {
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\*, \*::before, \*::after \{ animation: none !important; transition: none !important;/);
+  assert.match(read("app.js"), /if \(!reduced\) \{\s*for \(const name of ENGINEERS\)/, "board cards move instantly");
+  assert.match(read("lib/sky.js"), /reduced \|\| !running/, "no pulse travels");
+});
+
+test("stars and board cards can be reached and used from the keyboard", () => {
+  const app = read("app.js");
+  assert.match(app, /make\("button", \{ type: "button", class: `star \$\{kind\}`/, "a star is a button");
+  assert.match(app, /make\("div", \{ class: "card", role: "button", tabindex: "0"/, "a board card is focusable");
+  assert.match(app, /ev\.key === "Escape" && openName\) return closeCard\(true\)/, "Esc closes the card, focus back on the star");
+  assert.match(app, /\(ev\.key === "Enter" \|\| ev\.key === " "\) && ev\.target\?\.dataset\?\.card/);
+});
+
+test("the sky lays out narrow on phones and wide everywhere else", () => {
+  assert.equal(skyLayout(343, 500).mode, "narrow");
+  for (const [w, h] of [[812, 351], [768, 594], [1440, 724], [1536, 1340]]) assert.equal(skyLayout(w, h).mode, "wide", `${w}x${h}`);
 });
