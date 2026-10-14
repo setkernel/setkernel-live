@@ -1,72 +1,204 @@
-/* Layout: the same dark wall look as the internal wall (setkernel/hq observability/wall), cut down
-   to the four agents, the three places their work goes, and CI results. Flow drawing beside the counters and
-   feed; they stack under it on phones. Single dark theme on purpose. */
+/* live.setkernel.com: a night sky of four working stars (setkernel-live#17).
+   Flat dark ground, no cards: sections are separated by space and a hairline, text is left-aligned,
+   and colour is kept for meaning (where work went) and the stars themselves. One dark theme on
+   purpose: it is a night sky. Sizes run from a 320 px phone to a wall screen; see "Wall mode". */
+/* Fonts are served from here, not a font CDN, so no visitor's address goes to a third party
+   (setkernel-live#12). Latin subset, only the weights this file uses; licences in fonts/OFL-*.txt. */
+@font-face { font-family: "Barlow Condensed"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/barlow-condensed-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/barlow-condensed-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/barlow-condensed-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/barlow-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/barlow-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2"); }
+
 :root {
   color-scheme: dark;
-  --bg: #0d141b;
-  --panel: #131d27;
-  --panel-2: #192634;
-  --line: #2a3b4d;
-  --ink: #dbe4ec;
-  --ink-dim: #8193a5;
-  --claude: #e6a95c;
-  --github: #8fb1ff;
-  --chat: #c9a2f0;
-  --ok: #6fd08c;
-  --fail: #f06b6b;
-  --warn: #ff9f6b;
+  --bg: #0b0e13;          /* the night */
+  --line: #262c35;        /* hairlines */
+  --ink: #ece7dc;         /* warm starlight white */
+  --ink-2: #b3ada1;       /* secondary text, still 8:1 on --bg */
+  --accent: #f0b46a;      /* the one accent: links, focus, the word "live" */
+  --ok: #6fd19a;
+  --warn: #f39a6b;
+  /* where work goes: one hue each, validated as a categorical set on --bg (chart bars, markers) */
+  --claude: #c97a2c;
+  --chat: #259c77;
+  --github: #5f86e6;
+  /* the stars, after their real colours: Vega and Rigel blue-white, Lyra pale gold, Orion amber */
+  --vega: #dce6ff;
+  --rigel: #b4c8ff;
+  --lyra: #ffe2a8;
+  --orion: #ffb183;
   --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
   --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --gutter: clamp(18px, 4vw, 56px);
+  font-size: clamp(16px, 0.3vw + 14.5px, 22px);
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; background: var(--bg); color: var(--ink); }
-body { font: 15px/1.5 var(--font-body); padding-inline: 16px; padding-block: 20px 32px; }
-a { color: var(--github); }
-a:focus-visible { outline: 2px solid var(--github); outline-offset: 2px; }
-.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 16px; }
+body { font: 400 1rem/1.55 var(--font-body); overflow-x: hidden; -webkit-text-size-adjust: 100%; }
+a { color: var(--accent); text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+h1, h2 { margin: 0; font-family: var(--font-display); font-weight: 600; }
+h2 { font-size: 1.35rem; letter-spacing: .03em; margin-bottom: .9rem; }
+h2 span { font: 400 .875rem var(--font-data); color: var(--ink-2); letter-spacing: 0; margin-left: .5em; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+                   clip-path: inset(50%); white-space: nowrap; border: 0; }
 
-header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
-h1 { font: 700 clamp(26px, 4vw, 38px)/1 var(--font-display); letter-spacing: .04em; text-transform: uppercase; margin: 0; }
-h1 span { color: var(--claude); }
-.status { display: inline-flex; align-items: center; gap: 8px; font: 12.5px var(--font-data); color: var(--ink-dim);
-          border: 1px solid var(--line); border-radius: 3px; padding: 4px 10px; }
-.status i { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-dim); }
-.status.live i { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
-.status.down i { background: var(--warn); }
-.lede { margin: 0; max-width: 72ch; color: var(--ink-dim); text-wrap: pretty; }
-.lede b { color: var(--ink); font-weight: 500; }
-.offline { border: 1px solid var(--warn); color: var(--ink); background: var(--panel); border-radius: 6px; padding: 10px 14px; }
+/* ---- page grid: one column on phones; sky full width with today | recent work under it on
+   laptops; sky beside a right-hand column on very wide screens */
+.page {
+  max-width: 2400px; margin: 0 auto;
+  padding: max(14px, env(safe-area-inset-top)) max(var(--gutter), env(safe-area-inset-right)) 40px max(var(--gutter), env(safe-area-inset-left));
+  display: grid; gap: clamp(20px, 3vw, 44px) clamp(24px, 4vw, 72px);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "bar" "now" "sky" "today" "stream" "about";
+}
+.bar { grid-area: bar; } .now { grid-area: now; } .sky { grid-area: sky; }
+.today { grid-area: today; } .stream { grid-area: stream; } .about { grid-area: about; }
+@media (min-width: 960px) {
+  .page { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+          grid-template-areas: "bar bar" "now now" "sky sky" "today stream" "about stream"; }
+}
+@media (min-width: 1800px) and (min-aspect-ratio: 4/3) {
+  .page { grid-template-columns: minmax(0, 1fr) minmax(380px, 26%);
+          grid-template-areas: "bar bar" "now now" "sky today" "sky stream" "about stream"; align-items: start; }
+}
 
-.main { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; align-items: start; }
-@media (max-width: 1000px) { .main { grid-template-columns: minmax(0, 1fr); } }
-.stage { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; overflow-x: auto; }
-.stage svg { display: block; width: 100%; min-width: 640px; height: auto; }
+/* ---- top bar */
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.mark { margin: 0 auto 0 0; font: 700 1.3rem/1 var(--font-display); letter-spacing: .06em; text-transform: uppercase; }
+.mark a { color: var(--ink); text-decoration: none; }
+.mark span { color: var(--accent); }
+.status, .asof { margin: 0; font: 400 .875rem var(--font-data); color: var(--ink-2); display: inline-flex; align-items: center; gap: 8px; }
+.status i { width: 9px; height: 9px; border: 1.5px solid var(--ink-2); border-radius: 50%; }
+.status.live { color: var(--ink); }
+.status.live i { background: var(--ok); border-color: var(--ok); animation: beat 2.4s ease-in-out infinite; }
+.status.down i { border-color: var(--warn); border-radius: 1px; transform: rotate(45deg); } /* a diamond, not only a colour */
+.status.demo i { background: var(--accent); border-color: var(--accent); border-radius: 1px; }
+@keyframes beat { 50% { box-shadow: 0 0 0 5px rgb(111 209 154 / 0); } 0%, 100% { box-shadow: 0 0 0 0 rgb(111 209 154 / .55); } }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.controls-label { font: 400 .875rem var(--font-data); color: var(--ink-2); }
+button {
+  font: 500 .95rem var(--font-body); color: var(--ink); background: transparent; cursor: pointer;
+  min-height: 44px; min-width: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 22px;
+}
+button:hover { border-color: var(--ink-2); }
+button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+/* The status text changes length (Connecting…, Live · about a minute behind, Office offline), so it
+   gets a slot of fixed width, or a row of its own on phones: changing it never reflows the bar. */
+.status { min-width: 31ch; }
+@media (max-width: 600px) {
+  .mark { order: 0; } .asof { order: 1; } .status { order: 2; flex-basis: 100%; min-width: 0; } .controls { order: 3; width: 100%; }
+  .controls-label { margin-right: auto; }
+  .wide-only { display: none; }
+}
 
-aside { display: grid; gap: 16px; min-width: 0; }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px; min-width: 0; }
-.card h2 { font: 600 15px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-dim); margin: 0 0 10px; }
-.card h2 small { font-weight: 500; letter-spacing: .04em; }
-.counts { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: 0; }
-.counts dt { color: var(--ink-dim); }
-.counts dd { margin: 0; font: 500 15px var(--font-data); font-variant-numeric: tabular-nums; text-align: right; }
-.feed { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 420px; overflow: auto; }
-.feed li { padding-left: 9px; border-left: 2px solid var(--github); overflow-wrap: anywhere; }
-.feed li.empty { border-left-color: var(--line); color: var(--ink-dim); }
-.feed time { display: block; font: 12px var(--font-data); color: var(--ink-dim); }
-footer p { margin: 0; max-width: 80ch; font-size: 13.5px; color: var(--ink-dim); }
+/* the demo label sits on the sky itself, so it can't be missed and moves nothing when it appears */
+.demo-note { position: absolute; top: 0; left: var(--gutter); margin: 0; padding: 4px 0 4px 12px; border-left: 3px solid var(--accent); font-size: .95rem; }
+@media (min-width: 960px) { .demo-note { left: 0; } }
+@media (max-width: 700px) and (orientation: portrait) { .demo-note { left: auto; right: var(--gutter); max-width: 13em; } }
 
-/* SVG */
-.node { fill: var(--panel-2); stroke: var(--line); stroke-width: 1.2; transition: stroke .25s; }
-.tile { fill: var(--panel-2); stroke: var(--line); stroke-width: 1.2; transition: stroke .25s; }
-.n-name { font: 600 20px var(--font-display); letter-spacing: .05em; fill: var(--ink); }
-.n-sub { font: 400 12.5px var(--font-body); fill: var(--ink-dim); }
-.n-count { font: 400 11.5px var(--font-data); fill: var(--ink-dim); }
-.a-name { font: 600 22px var(--font-display); letter-spacing: .05em; fill: var(--ink); }
-.a-role { font: 400 12.5px var(--font-body); fill: var(--ink-dim); }
-.a-doing { font: 400 13px var(--font-body); fill: var(--ink); }
-.a-repo { font: 400 12px var(--font-data); fill: var(--github); }
-.pill-text { font: 600 11px var(--font-display); letter-spacing: .1em; }
-.pipe { fill: none; stroke: var(--line); stroke-width: 1.6; }
-.dot { filter: drop-shadow(0 0 4px currentColor); }
-@media (prefers-reduced-motion: reduce) { .tile, .node { transition: none; } }
+/* ---- now: the one line of what's happening */
+/* Space for two lines of headline and up to three of detail is kept from the first paint, so the
+   sky below doesn't jump when the first picture arrives (layout shift). */
+.now h1 { font-size: clamp(1.9rem, 3.4vw + .7rem, 4.6rem); line-height: 1.04; letter-spacing: .005em; max-width: 26ch; text-wrap: balance;
+          min-height: 2.08em; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.now p { margin: .6rem 0 0; font-size: 1.15rem; line-height: 1.5; color: var(--ink-2); max-width: 60ch;
+         min-height: 4.5em; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+@media (min-width: 960px) { .now h1 { max-width: 30ch; } .now p { min-height: 3em; -webkit-line-clamp: 2; } }
+@media (orientation: landscape) and (max-height: 520px) { .now h1 { font-size: 1.75rem; max-width: none; } .now p { min-height: 1.5em; -webkit-line-clamp: 1; } }
+.now.quiet h1, .now.offline h1 { color: var(--ink-2); }
+
+
+/* ---- the sky */
+.sky { margin-inline: calc(var(--gutter) * -1); }
+.sky-field { position: relative; height: clamp(320px, 58vh, 820px); }
+@media (max-width: 700px) and (orientation: portrait) { .sky-field { height: min(152vw, 680px); } }
+@media (orientation: landscape) and (max-height: 520px) { .sky-field { height: max(260px, calc(100svh - 80px)); } }
+@media (min-width: 960px) { .sky { margin-inline: 0; } }
+@media (min-width: 1800px) and (min-aspect-ratio: 4/3) { .sky-field { height: clamp(560px, 66vh, 1300px); } }
+/* a strip under the sky, always the same height: the replay's progress, or the offer when quiet */
+.sky-foot { min-height: 52px; padding-inline: var(--gutter); display: flex; align-items: center; }
+@media (min-width: 960px) { .sky-foot { padding-inline: 0; } }
+.offer { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--ink-2); }
+.offer a { display: inline-flex; align-items: center; min-height: 44px; }
+#sky-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.stars, .places { list-style: none; margin: 0; padding: 0; }
+.stars li, .places li { position: absolute; left: var(--x); top: var(--y); pointer-events: none; }
+.places li { white-space: nowrap; }
+.stars li { width: max-content; }
+.stars li { transform: translate(18px, -50%); line-height: 1.25; }
+.stars li.left { transform: translate(calc(-100% - 18px), -50%); text-align: right; }
+.stars b { display: block; font: 600 clamp(1.25rem, 1.2vw + .8rem, 2.4rem)/1.05 var(--font-display); letter-spacing: .05em; }
+.stars .state { display: block; font-size: .95rem; color: var(--ink); }
+.stars .state em { font-style: normal; color: var(--ink-2); }
+.stars .tally { display: block; font: 400 .8125rem/1.4 var(--font-data); color: var(--ink-2); }
+.stars li.idle b, .stars li.idle .state { color: var(--ink-2); }
+.places li { font: 500 .95rem/1.3 var(--font-body); }
+.places li.above { transform: translate(calc(-100% + 8px), calc(-100% - 14px)); text-align: right; }
+.places li.below { transform: translate(-50%, 16px); text-align: center; }
+.places small { display: block; font: 400 .8125rem var(--font-data); color: var(--ink-2); }
+@media (max-width: 380px) { .stars .tally { display: none; } }
+.stars li.compact .tally, .stars li.tiny .state em { display: none; }
+.replaying { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+.replaying p { margin: 0; font: 400 .9rem var(--font-data); }
+.replay-track { flex: 1 1 120px; height: 2px; background: var(--line); }
+.replay-track i { display: block; height: 100%; width: 0; background: var(--accent); }
+
+/* ---- today: a few big numbers, then the last 24 hours */
+.numbers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 24px; margin: 0 0 28px; }
+@media (min-width: 560px) { .numbers { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.numbers div { display: flex; flex-direction: column-reverse; justify-content: flex-end; border-top: 1px solid var(--line); padding-top: 10px; }
+.numbers dd { margin: 0; font: 600 clamp(2.4rem, 3vw + 1rem, 4.6rem)/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.numbers dt { font-size: .95rem; color: var(--ink-2); margin-top: 4px; }
+.minor { display: flex; flex-wrap: wrap; gap: .2em 1.5em; margin: -12px 0 28px; font-size: .95rem; color: var(--ink-2); }
+.hours { margin: 0; }
+.hours figcaption { font: 600 1.05rem var(--font-display); letter-spacing: .03em; margin-bottom: 10px; }
+.hours figcaption span { font: 400 .8125rem var(--font-data); color: var(--ink-2); margin-left: .4em; }
+.hrow { display: grid; grid-template-columns: minmax(7.5em, 22%) minmax(0, 1fr); gap: 12px; align-items: end; margin-bottom: 10px; }
+.hrow p { margin: 0; font-size: .9rem; line-height: 1.25; }
+.hrow p small { display: block; font: 400 .8125rem var(--font-data); color: var(--ink-2); }
+.hbars { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 2px; height: 46px; align-items: end; border-bottom: 1px solid var(--line); }
+.hbars i { display: block; height: calc(var(--v) * 100%); min-height: 0; border-radius: 2px 2px 0 0; background: var(--c); }
+.hbars i.zero { height: 0; }
+.hticks { display: grid; grid-template-columns: minmax(7.5em, 22%) minmax(0, 1fr); gap: 12px; font: 400 .8125rem var(--font-data); color: var(--ink-2); }
+.hticks div { display: grid; grid-template-columns: repeat(4, 1fr); }
+
+/* ---- recent work */
+.feed { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.feed li { display: grid; grid-template-columns: 3.6em minmax(0, 1fr); gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.feed li:first-child { border-top: 0; }
+.feed time { font: 400 .875rem/1.75 var(--font-data); color: var(--ink-2); }
+.feed b { font-weight: 500; }
+.feed b::before { content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 .45em .12em 0; transform: rotate(45deg); background: var(--star, var(--ink)); }
+.feed li.empty { display: block; color: var(--ink-2); }
+.feed a { color: var(--ink); text-decoration-color: var(--ink-2); }
+
+/* ---- what you're looking at */
+.about ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; max-width: 68ch; }
+@media (min-width: 700px) and (max-width: 959px) { .about ul { grid-template-columns: 1fr 1fr; gap: 16px 28px; } }
+.about li { color: var(--ink-2); }
+.about strong { color: var(--ink); font-weight: 500; }
+.foot { margin: 22px 0 0; font-size: .95rem; color: var(--ink-2); max-width: 68ch; }
+
+/* ---- wall mode (?wall, or the button): a big screen across a room. The sky takes most of it,
+   the numbers and the latest work sit on the right, the explanations and controls step back. */
+.wall .page { max-width: none; padding-bottom: 20px; grid-template-columns: minmax(0, 1fr) minmax(320px, 27%);
+              grid-template-areas: "bar bar" "now now" "sky today" "sky stream"; align-items: start; }
+.wall .sky { margin-inline: 0; }
+.wall .sky-field { height: calc(100vh - 15rem); min-height: 300px; }
+.wall .sky-foot { padding-inline: 0; }
+.wall .now p { min-height: 1.5em; -webkit-line-clamp: 1; }
+.wall .about, .wall .controls-label, .wall [data-replay], .wall .offer { display: none; }
+.wall .numbers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 1800px) and (min-aspect-ratio: 4/3) { .numbers { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.wall .feed li:nth-child(n + 9) { display: none; }
+.wall .now h1 { font-size: clamp(1.9rem, 2.6vw + .5rem, 5.2rem); max-width: none; }
+@media (max-width: 900px) { .wall .page { grid-template-columns: minmax(0, 1fr); grid-template-areas: "bar" "now" "sky" "today" "stream"; } }
+
+@media (prefers-reduced-motion: reduce) { .status.live i { animation: none; } }
+@media (forced-colors: active) { .hbars i { background: CanvasText; } .feed b::before { background: CanvasText; } }
