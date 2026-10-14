@@ -21,6 +21,7 @@
   --accent: #f0b46a;      /* the one accent: links, focus, the word "live" */
   --ok: #6fd19a;
   --warn: #f39a6b;
+  --fail: #f07a7a;        /* a failed test run; always a cross, never the colour alone */
   /* where work goes: one hue each, validated as a categorical set on --bg (chart bars, markers) */
   --claude: #c97a2c;
   --chat: #259c77;
@@ -150,7 +151,7 @@ button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent);
 .replay-track { flex: 1 1 120px; height: 2px; background: var(--line); }
 .replay-track i { display: block; height: 100%; width: 0; background: var(--accent); }
 
-/* ---- today: a few big numbers, then the last 24 hours */
+/* ---- today: a few big numbers, the last 24 hours, then the latest test runs */
 .numbers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 24px; margin: 0 0 28px; }
 @media (min-width: 560px) { .numbers { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .numbers div { display: flex; flex-direction: column-reverse; justify-content: flex-end; border-top: 1px solid var(--line); padding-top: 10px; }
@@ -168,6 +169,22 @@ button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent);
 .hbars i.zero { height: 0; }
 .hticks { display: grid; grid-template-columns: minmax(7.5em, 22%) minmax(0, 1fr); gap: 12px; font: 400 .8125rem var(--font-data); color: var(--ink-2); }
 .hticks div { display: grid; grid-template-columns: repeat(4, 1fr); }
+/* test runs: a filled circle for passed, a cross for failed, so the shape says it too */
+.ci { margin: 28px 0 0; }
+.ci figcaption { font: 600 1.05rem var(--font-display); letter-spacing: .03em; margin-bottom: 10px; }
+.ci figcaption span { font: 400 .8125rem var(--font-data); color: var(--ink-2); margin-left: .4em; }
+.ci-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; }
+.ci-runs { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; min-height: 14px; }
+.ci-runs li { display: block; }
+.ci-runs i, .ci-key i { position: relative; display: inline-block; width: 14px; height: 14px; vertical-align: -2px; }
+.pass i { border-radius: 50%; background: var(--ok); }
+.fail i::before, .fail i::after { content: ""; position: absolute; left: -1px; top: 5px; width: 16px; height: 4px;
+                                  border-radius: 1px; background: var(--fail); transform: rotate(45deg); }
+.fail i::after { transform: rotate(-45deg); }
+.ci-key { display: flex; gap: 1.2em; margin: 0; font: 400 .8125rem var(--font-data); color: var(--ink-2); }
+.ci-key i { margin-right: .45em; }
+.ci-sum { display: flex; flex-wrap: wrap; gap: .2em 1.5em; margin: 10px 0 0; font-size: .95rem; color: var(--ink-2); overflow-wrap: anywhere; }
+.ci-sum a { color: var(--ink); text-decoration-color: var(--ink-2); }
 
 /* ---- recent work */
 .feed { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
@@ -202,4 +219,4 @@ button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent);
 @media (max-width: 900px) { .wall .page { grid-template-columns: minmax(0, 1fr); grid-template-areas: "bar" "now" "sky" "today" "stream"; } }
 
 @media (prefers-reduced-motion: reduce) { .status i.pulse { animation: none; } }
-@media (forced-colors: active) { .hbars i { background: CanvasText; } .feed b::before { background: CanvasText; } }
+@media (forced-colors: active) { .hbars i, .pass i, .fail i::before, .fail i::after { background: CanvasText; } .feed b::before { background: CanvasText; } }

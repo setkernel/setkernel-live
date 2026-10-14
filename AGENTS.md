@@ -15,8 +15,9 @@ Public repo: everything here is visible to anyone.
 # install:  npm ci
 # test:     npm test                 (node --test: allowlist, state and replay buffer, Access token
 #                                    check, GitHub receiver, page wording/demo/replay/layout, page hosts and contrast)
+# worker:   npm run test:worker      (vitest in workerd: the real Worker and Hub, see test/worker/)
 # lint:     npm run check            (node --check on every script)
-# validate: npm run validate         (check + test + wrangler deploy --dry-run; what CI runs)
+# validate: npm run validate         (check + test + test:worker + wrangler deploy --dry-run; what CI runs)
 ```
 
 ## Deploy
@@ -37,7 +38,10 @@ a laptop.
   buffer; the Durable Object and `?demo` both run it. `words.js` (wording, aria-live summary),
   `demo.js` (seeded sample data), `replay.js` (the replay show) and `layout.js` (the sky at any
   size) are pure and tested; `sky.js` draws the canvas.
-- `test/`: `node --test` suites.
+- `test/`: `node --test` suites for the pure modules and the page.
+- `test/worker/`: vitest suites run in workerd by `@cloudflare/vitest-plugin` (`vitest.config.mjs`
+  reads `wrangler.jsonc`). They fake Access's certs with a throwaway key and drive every route
+  end to end.
 
 ## Traps and don't-touch
 - Anything added to what the page shows must be added to the allowlist on **both** sides
@@ -59,3 +63,7 @@ a laptop.
   `public/_headers` allows only same-origin scripts, styles and fonts; the fonts are self-hosted in
   `public/fonts/` (SIL OFL, licences beside them). Never add a third-party host.
 - The Durable Object migration tag `v1` creates `Hub`; never edit an applied migration, add a new tag.
+- vitest stays on 4.1.x for now: with vitest 5.0.4, `@cloudflare/vitest-plugin` 1.4.0 fails every
+  suite ("no such file or directory, readAll …/.vitest-cache/…").
+- In worker tests, read every response body. An unread body keeps the request open, and
+  `evictDurableObject` then waits for it until the test times out.

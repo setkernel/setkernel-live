@@ -24,9 +24,10 @@ wall service ── filtered events ──▶  /ingest (Access: service token on
   If the pushes stop, the page says the office is offline.
 - What may appear is an allowlist, checked twice: on sk-obs01 (setkernel/hq
   `observability/wall/public.py`) and again here (`src/logic.js`). Agents by first name, the kind
-  of work, a dot per Claude request and per team-chat post, a short list of GitHub actions, and a
-  repo's name only when the repo is public. No code, conversations, titles, numbers, usernames,
-  hostnames or customer data.
+  of work, a dot per Claude request and per team-chat post, a short list of GitHub actions, CI
+  results (pass or fail; a private repo's run is just "a private project"), and a repo's name only
+  when the repo is public. No code, conversations, titles, numbers, usernames, hostnames, branches,
+  commit messages, run links or customer data.
 - `/ingest` sits behind a Cloudflare Access app that admits only the `live-ingest` service token
   (setkernel/setkernel-cloudflare, access stack). The Worker checks the Access token again.
 
