@@ -96,11 +96,13 @@ document.addEventListener("visibilitychange", wake);
 
 // ---- rendering the picture
 // Times are in the visitor's own zone; the labels that explain them name it ("times in ADT").
+const zoneLabel = (zone) => zone ? `times in ${zone}` : "your local time";
+
 function showZone() {
   const now = serverNow();
   const zone = zoneName(now);
   $("today-since").textContent = todaySince(now);
-  for (const id of ["hours-zone", "stream-zone"]) $(id).textContent = zone ? `times in ${zone}` : "your local time";
+  for (const id of ["hours-zone", "stream-zone"]) $(id).textContent = zoneLabel(zone);
   return zone;
 }
 
@@ -161,7 +163,7 @@ function showHours(zone) {
   const ticks = make("div", { class: "hticks", "aria-hidden": "true" }, make("span"),
     make("div", {}, ...[0, 6, 12, 18].map((i) => make("span", { text: clock(hours[i].h * 3600) }))));
   $("hours").replaceChildren(...rows, ticks);
-  $("hours-desc").textContent = `Per hour over the last 24 hours, ${clock(hours[0].h * 3600)} to now, ${zone ? `times in ${zone}` : "your local time"}. ${said.join(" ")}`;
+  $("hours-desc").textContent = `Per hour over the last 24 hours, ${clock(hours[0].h * 3600)} to now, ${zoneLabel(zone)}. ${said.join(" ")}`;
 }
 
 // A public repo -> its name, linked to GitHub. Private repos never have a name on this page.
