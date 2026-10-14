@@ -3,8 +3,8 @@
 // in a few numbers, the last 24 hours, the latest test runs, and the recent-work stream. Everything
 // shown is built with textContent and attributes, never innerHTML, so nothing in a batch can
 // inject markup.
-import { AGENTS, applyBatch, emptyReplay, emptyState, recordReplay, replaySince, view } from "/lib/state.js";
-import { ACTION_TEXT, OFFLINE_AFTER_MS, STAR_NOTE, ciSummary, ciWhere, ciWord, clock, createAnnouncer, freshness, headline, isActive, reviewTarget, starLabel, tally, todaySince, zoneName } from "/lib/words.js";
+import { AGENTS, POLE, applyBatch, emptyReplay, emptyState, recordReplay, replaySince, view } from "/lib/state.js";
+import { ACTION_TEXT, OFFLINE_AFTER_MS, STAR_NOTE, ciSummary, ciWhere, ciWord, clock, createAnnouncer, freshness, headline, isActive, reviewTarget, starLabel, tally, todaySince, whereWork, zoneName } from "/lib/words.js";
 import { PLACES, PLACE_NAMES, skyLayout } from "/lib/layout.js";
 import { createSky } from "/lib/sky.js";
 import { createDemo } from "/lib/demo.js";
@@ -26,8 +26,8 @@ const DEMO = params.has("demo");
 const css = getComputedStyle(document.documentElement);
 const color = (k) => css.getPropertyValue(`--${k}`).trim();
 const reducedQuery = matchMedia("(prefers-reduced-motion: reduce)");
-// a star's colour is --<name>; the Claude star's is --claude-star, since --claude is the place
-const starVar = (n) => (PLACES.includes(n.toLowerCase()) ? `${n.toLowerCase()}-star` : n.toLowerCase());
+// a star's colour is --<name>; Polaris's three Claudes share --pole
+const starVar = (n) => (POLE.includes(n) && n !== "Polaris" ? "pole" : n.toLowerCase());
 const COLORS = Object.fromEntries([...AGENTS.map((n) => [n, color(starVar(n))]), ...PLACES.map((k) => [k, color(k)])]);
 
 let skew = 0; // server clock minus ours
@@ -41,7 +41,11 @@ const sky = createSky($("sky-canvas"), { reduced: reducedQuery.matches, colors: 
 const starEls = {}, placeEls = {};
 for (const name of AGENTS) {
   const note = STAR_NOTE[name] ? [make("span", { class: "note", text: STAR_NOTE[name] })] : [];
-  const li = make("li", { class: "idle" }, make("b", { text: name }), ...note, make("span", { class: "state" }), make("span", { class: "tally" }));
+  // the pole stars have no state, only what they did today
+  const pole = POLE.includes(name);
+  const li = pole
+    ? make("li", { class: name === "Polaris" ? "pole polaris" : "pole" }, make("b", { text: name }), ...note, make("span", { class: "tally" }))
+    : make("li", { class: "idle" }, make("b", { text: name }), ...note, make("span", { class: "state" }), make("span", { class: "tally" }));
   li.style.setProperty("--star", COLORS[name]);
   starEls[name] = li;
   $("stars").append(li);
@@ -119,13 +123,14 @@ function showNow() {
 
 function showStars() {
   for (const name of AGENTS) {
+    const li = starEls[name];
+    li.querySelector(".tally").textContent = tally(current.byAgent?.[name]);
+    if (POLE.includes(name)) continue;
     const info = current.agents?.[name];
     const { state, detail } = starLabel(info);
-    const li = starEls[name];
     li.classList.toggle("idle", !isActive(info));
     const st = li.querySelector(".state");
     st.replaceChildren(state, ...(detail ? [" ", make("em", { text: detail })] : []));
-    li.querySelector(".tally").textContent = tally(current.byAgent?.[name]);
   }
   const c = current.counts || {};
   const placeCount = { claude: c.claude, github: (c.started ?? 0) + (c.prs ?? 0) + (c.reviews ?? 0), chat: c.chat };
@@ -191,7 +196,8 @@ function feedItem(f) {
   const who = make("b", { text: f.agent });
   who.style.setProperty("--star", COLORS[f.agent] || COLORS.Vega);
   const p = make("span", {}, who, ` ${ACTION_TEXT[f.action] || "did something"}`);
-  if (f.repo) p.append(" in ", repoLink(f.repo));
+  const where = whereWork(f);
+  if (where) p.append(" in ", f.repo ? repoLink(f.repo) : where);
   return make("li", {}, make("time", { datetime: new Date(f.ts * 1000).toISOString(), text: clock(f.ts) }), p);
 }
 function showFeed() {

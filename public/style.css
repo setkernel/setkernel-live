@@ -1,4 +1,4 @@
-/* live.setkernel.com: a night sky of four working stars (setkernel-live#17).
+/* live.setkernel.com: a night sky of four working stars and the pole group (setkernel-live#17, #33).
    Flat dark ground, no cards: sections are separated by space and a hairline, text is left-aligned,
    and colour is kept for meaning (where work went) and the stars themselves. One dark theme on
    purpose: it is a night sky. Sizes run from a 320 px phone to a wall screen; see "Wall mode". */
@@ -31,8 +31,10 @@
   --rigel: #b4c8ff;
   --lyra: #ffe2a8;
   --orion: #ffb183;
-  /* Raghav's Claude (setkernel-live#33): pale violet, apart from the four and from --claude, the place */
-  --claude-star: #d4bcff;
+  /* Polaris, the director, pale yellow-white like the real one; its three Claudes (Kochab, Pherkad,
+     Yildun) share a pale violet, apart from the four and from --claude, the place (setkernel-live#33) */
+  --polaris: #fff3cf;
+  --pole: #d4bcff;
   --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
   --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -143,6 +145,13 @@ button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent);
 .stars .state em { font-style: normal; color: var(--ink-2); }
 .stars .tally { display: block; font: 400 .8125rem/1.4 var(--font-data); color: var(--ink-2); }
 .stars li.idle b, .stars li.idle .state { color: var(--ink-2); }
+/* the pole group: Polaris's name a little smaller than an engineer's, its Claudes' smaller again */
+.stars li.pole { transform: translate(12px, -50%); }
+.stars li.pole.left { transform: translate(calc(-100% - 12px), -50%); }
+.stars li.pole b { font-size: clamp(1rem, .6vw + .8rem, 1.6rem); color: var(--star); }
+.stars li.polaris b { font-size: clamp(1.15rem, 1vw + .8rem, 2.1rem); }
+.stars li.polaris { transform: translate(34px, -50%); } /* clear of its ring */
+.stars li.polaris.left { transform: translate(calc(-100% - 34px), -50%); }
 .places li { font: 500 .95rem/1.3 var(--font-body); }
 .places li.above { transform: translate(calc(-100% + 8px), calc(-100% - 14px)); text-align: right; }
 .places li.below { transform: translate(-50%, 16px); text-align: center; }

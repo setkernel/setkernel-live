@@ -1,10 +1,13 @@
 # setkernel-live
 
 **https://live.setkernel.com**: what setkernel's four AI engineers (Vega, Rigel, Lyra and Orion)
-are doing, about a minute behind, drawn as a night sky. A fifth star, Claude, is Raghav's own
-Claude (cloud sessions, Raghav's machine and the lead chat), seen only through its pull requests
-and reviews. Each agent is a star whose glow follows its work; each Claude request, GitHub action or team-chat post is a pulse of light from the star to
-where the work went, and a review draws a line between two stars. Under the sky: today in a few
+are doing, about a minute behind, drawn as a night sky. Each agent is a star whose glow follows its
+work; each Claude request, GitHub action or team-chat post is a pulse of light from the star to
+where the work went, and a review draws a line between two stars. Apart from the four, Polaris,
+the director, is drawn as the pole star, a fixed eight-pointed figure, with its three Claude
+sessions grouped round it as smaller stars in Ursa Minor's shape: Kochab (the lead chat), Pherkad
+(cloud sessions) and Yildun (a machine of its own). These four are seen only through their pull
+requests and reviews, and have no state on the page. Under the sky: today in a few
 numbers, the last 24 hours, and the recent-work stream.
 
 - `?demo`: sample data (labelled as such), so the page can be shown any time.
@@ -92,11 +95,20 @@ The office still accepts no connections: GitHub calls the Worker, and sk-obs01 p
   names. The queue keeps the latest 500 events.
 - A pull request event keeps `kind: "pr"`, the repo name, `private`, the action (`opened_pr`,
   `merged`, `approved`, `requested_changes`), the time and an `actor`. The actor is a name, never
-  the login: `vega-setkernel`, `rigel-setkernel`, `lyra-setkernel` and `orion-setkernel` become
-  Vega, Rigel, Lyra and Orion; Raghav's account becomes `Claude` only on a head branch starting
-  `claude/`. For an open or a merge the actor is the pull request's author; for a review, the
-  reviewer. Anyone else, and Raghav off a `claude/` branch, is dropped. Never a title, number,
-  body, branch name, URL or login. Each open, merge and review is one queued event.
+  the login. For an open or a merge the actor is the pull request's author; for a review, the
+  reviewer.
+  - `vega-setkernel`, `rigel-setkernel`, `lyra-setkernel` and `orion-setkernel` become Vega,
+    Rigel, Lyra and Orion.
+  - The director's account (`realRaghavGupta`) is shared by its Claude sessions, so a hidden marker
+    picks the star. On a pull request, the head branch: `claude/…` is Pherkad, `raghav-dev/…`
+    Yildun, `lead/…` Kochab. Otherwise, and always for a review (whose head branch is the
+    author's, not the reviewer's), the body's last non-empty line, when it is exactly a signature:
+    `— Claude Cloud` is Pherkad, `— raghav-dev` Yildun, `— Claude Lead` Kochab. With no marker
+    it is Polaris. The branch and body are read only to find the marker; neither is kept.
+  - Anyone else is dropped.
+
+  Never a title, number, body, branch name, URL or login. Each open, merge and review is one
+  queued event. sk-obs01 (setkernel/hq#163) accepts exactly these eight actor names.
 - `GET /github/queue?since=<cursor>` returns `{ events, cursor, more, gap }`: up to 200 events
   after the cursor, oldest first, each with its own `cursor`. Send the returned `cursor` next
   time. `more` means pull again now; `gap` means events after your cursor were dropped by the cap.

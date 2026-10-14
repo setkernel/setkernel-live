@@ -6,10 +6,10 @@
 //
 // The state built from clean batches lives in public/lib/state.js, because ?demo mode on the page
 // runs the same code; it is re-exported here.
-import { AGENTS } from "../public/lib/state.js";
+import { AGENTS, POLE } from "../public/lib/state.js";
 
-export { AGENTS };
-export { applyBatch, emptyReplay, emptyState, hourly, recordReplay, replaySince, view } from "../public/lib/state.js";
+export { AGENTS, POLE };
+export { COLUMNS, applyBatch, emptyReplay, emptyState, hourly, recordReplay, replaySince, view } from "../public/lib/state.js";
 export const STATES = ["WORKING", "REVIEW", "DISCUSS", "IDLE", "PAUSED"];
 export const WORK = ["issue", "review", "changes", "discussion", "decision"];
 // "merged": the agent's pull request was merged (by a person); from the GitHub webhook (setkernel-live#33).
@@ -70,13 +70,14 @@ function eventFields(e) {
     return out;
   }
   if (!AGENTS.includes(e.agent)) return null;
+  // Polaris and its three Claudes are seen only through GitHub (setkernel-live#33): their pull
+  // requests and reviews, never a state, a Claude request, a chat post or a helper.
+  if (POLE.includes(e.agent) && !(e.t === "msg" && e.kind === "github")) return null;
   if (e.t === "agent") {
     const info = cleanAgentInfo(e);
     return info ? { t: "agent", agent: e.agent, ...info, ...(ts ? { ts } : {}) } : null;
   }
   if (e.t !== "msg") return null;
-  // Raghav's Claude is seen only through GitHub (setkernel-live#33): its pull requests and reviews.
-  if (e.agent === "Claude" && e.kind !== "github") return null;
   // "helper": the agent used a subagent or a skill. Which one is never accepted or shown.
   if (e.kind === "claude" || e.kind === "chat" || e.kind === "helper") return { t: "msg", kind: e.kind, agent: e.agent, ...(ts ? { ts } : {}) };
   if (e.kind === "github" && ACTIONS.includes(e.action)) {
@@ -93,6 +94,7 @@ export function cleanBatch(body) {
   const events = body.events.slice(0, MAX_EVENTS).map(cleanEvent).filter(Boolean);
   const agents = {};
   for (const name of AGENTS) {
+    if (POLE.includes(name)) continue; // no state for the pole stars, as above
     const info = cleanAgentInfo(body.agents?.[name]);
     if (info) agents[name] = info;
   }

@@ -15,7 +15,11 @@ export const ACTION_TEXT = {
 };
 
 // Who a star is, when its name alone doesn't say: shown under the name.
-export const STAR_NOTE = { Claude: "Raghav's Claude" };
+export const STAR_NOTE = { Polaris: "the director" };
+
+// Where a GitHub action happened, when the event names no repo: a private one. A design-discussion
+// post isn't in a repo, so it says nothing.
+export const whereWork = (e) => e?.repo || (e?.action === "posted_round" ? "" : "a private project");
 
 const DOING = {
   issue: "working on an issue",
@@ -89,9 +93,11 @@ export function tally(c) {
   return parts.length ? parts.join(" · ") : "nothing yet today";
 }
 
-// One GitHub event -> "Vega opened a pull request in lafka-plugin."
+// One GitHub event -> "Vega opened a pull request in lafka-plugin.", "Pherkad opened a pull
+// request in a private project."
 export function sentence(e) {
-  return `${e.agent} ${ACTION_TEXT[e.action] || "did something"}${e.repo ? ` in ${e.repo}` : ""}.`;
+  const where = whereWork(e);
+  return `${e.agent} ${ACTION_TEXT[e.action] || "did something"}${where ? ` in ${where}` : ""}.`;
 }
 
 // ---- CI runs (setkernel-live#14). A run has no agent; a public repo is named, a private one is not.

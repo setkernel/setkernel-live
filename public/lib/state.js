@@ -9,14 +9,22 @@
 //   replay  the last 24 hours, capped, for "replay the last hour / 24 h" and the hourly chart:
 //           one row of counts per minute, and each GitHub action (capped).
 
-// Claude is Raghav's own Claude sessions, seen only through their pull requests and reviews
-// (setkernel-live#33). It comes last: a replay row's columns follow this order, so rows saved
-// before it existed still read the same.
-export const AGENTS = ["Vega", "Rigel", "Lyra", "Orion", "Claude"];
+// The four AI engineers, then Polaris (the director) and the three Claudes grouped around it:
+// Kochab, Pherkad and Yildun, after Ursa Minor (setkernel-live#33). The pole stars are seen only
+// through their pull requests and reviews. They come after the engineers: a replay row's columns
+// follow this order, so rows saved with four agents still read the same.
+export const ENGINEERS = ["Vega", "Rigel", "Lyra", "Orion"];
+export const POLE = ["Polaris", "Kochab", "Pherkad", "Yildun"];
+export const AGENTS = [...ENGINEERS, ...POLE];
 export const PULSE_KINDS = ["claude", "chat", "helper"]; // too frequent to keep one by one
-// Columns per agent in a minute row: the pulse kinds, then GitHub actions (counted there too, so
-// the hourly chart stays exact even when the list of actions is capped).
+// Columns per engineer in a minute row: the pulse kinds, then GitHub actions (counted there too, so
+// the hourly chart stays exact even when the list of actions is capped). A pole star has only
+// GitHub actions, so it gets that one column, after the engineers'.
 export const ROW_KINDS = [...PULSE_KINDS, "github"];
+export const COLUMNS = [...ENGINEERS.flatMap((agent) => ROW_KINDS.map((kind) => [agent, kind])), ...POLE.map((agent) => [agent, "github"])];
+const COLUMN = new Map(COLUMNS.map(([agent, kind], i) => [`${agent} ${kind}`, i]));
+// Where an agent's count of a kind sits in a minute row (after the minute itself), or -1.
+export const columnOf = (agent, kind) => COLUMN.get(`${agent} ${kind}`) ?? -1;
 const FEED = 30;
 const CI_RECENT = 12;
 const DAY_S = 86_400;
@@ -81,13 +89,14 @@ const workItem = (e, ts) => ({ agent: e.agent, action: e.action, ...(e.repo ? { 
 
 // Add a clean batch's events to the replay buffer (returns a new buffer). Only fields that passed
 // the allowlist go in, and nothing older than 24 hours stays. A row in `pulses` is
-// [minute since the epoch, then for each agent in AGENTS order its ROW_KINDS counts], so a full
-// day is at most 1440 short rows. Trailing zeros are left off (a missing count is 0), so an agent
-// at the end with nothing that minute, usually Claude, costs nothing. `work` holds the latest GitHub actions in the feed's shape.
+// [minute since the epoch, then the counts in COLUMNS order], so a full
+// day is at most 1440 short rows. Trailing zeros are left off (a missing count is 0), so the pole
+// stars at the end, with nothing that minute, cost nothing. `work` holds the latest GitHub actions
+// in the feed's shape.
 export function recordReplay(replay, batch, now) {
   const nowS = Math.trunc(now / 1000);
   const oldest = nowS - DAY_S;
-  const width = 1 + AGENTS.length * ROW_KINDS.length;
+  const width = 1 + COLUMNS.length;
   // a row saved before an agent was added is shorter: pad it, so that agent's counts start at 0
   const rows = new Map((replay?.pulses ?? []).map((r) => [r[0], r.length < width ? [...r, ...Array(width - r.length).fill(0)] : r.slice()]));
   const work = (replay?.work ?? []).slice();
@@ -95,15 +104,14 @@ export function recordReplay(replay, batch, now) {
     if (e.t !== "msg") continue;
     const ts = Math.min(e.ts ?? nowS, nowS); // a clock ahead of ours counts as now
     if (ts < oldest) continue;
-    const a = AGENTS.indexOf(e.agent);
-    if (a < 0) continue;
+    if (!AGENTS.includes(e.agent)) continue;
     if (e.kind === "github") work.push(workItem(e, ts));
-    const k = ROW_KINDS.indexOf(e.kind);
-    if (k < 0) continue;
+    const c = columnOf(e.agent, e.kind);
+    if (c < 0) continue;
     const minute = Math.floor(ts / 60);
     let row = rows.get(minute);
     if (!row) rows.set(minute, (row = [minute, ...Array(width - 1).fill(0)]));
-    row[1 + a * ROW_KINDS.length + k]++;
+    row[1 + c]++;
   }
   const pulses = [...rows.values()]
     .filter((r) => r[0] * 60 >= oldest - 59)
@@ -139,9 +147,7 @@ export function hourly(replay, now) {
   for (const r of replay?.pulses ?? []) {
     const b = at(r[0] * 60);
     if (!b) continue;
-    for (let a = 0; a < AGENTS.length; a++) {
-      ROW_KINDS.forEach((k, i) => { b[k] += r[1 + a * ROW_KINDS.length + i] || 0; });
-    }
+    COLUMNS.forEach(([, kind], i) => { b[kind] += r[1 + i] || 0; });
   }
   return out;
 }
