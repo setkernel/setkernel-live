@@ -96,11 +96,18 @@ export function actorFor(login, head, body) {
   return signatureStar(body) ?? "Polaris";
 }
 
-// The star a body's last non-empty line names, as a whole line ("— Claude Lead"), or null.
+// Footer lines that may follow the signature (setkernel/agent-plugins#17): the Claude Code
+// attribution, a co-author trailer and an agent's automated-by line. Blank lines are skipped too.
+const FOOTERS = [/^🤖 Generated with \[Claude Code\]\([^()\s]*\)$/u, /^Co-Authored-By: \S.*$/i, /^_Automated: .*_$/];
+
+// The star a body's signature names, as a whole line ("— Claude Lead"), or null. The signature
+// must be the last line once trailing footer lines are skipped.
 function signatureStar(body) {
   if (typeof body !== "string") return null;
-  const last = body.trimEnd().split("\n").at(-1).trim();
-  return Object.hasOwn(SIGNATURE_STARS, last) ? SIGNATURE_STARS[last] : null;
+  const lines = body.split("\n").map((line) => line.trim());
+  while (lines.length && (lines.at(-1) === "" || FOOTERS.some((f) => f.test(lines.at(-1))))) lines.pop();
+  const last = lines.at(-1);
+  return last !== undefined && Object.hasOwn(SIGNATURE_STARS, last) ? SIGNATURE_STARS[last] : null;
 }
 
 // A verified delivery -> { key, event } to queue, or null to ignore it. `key` collapses every

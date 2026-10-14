@@ -102,8 +102,10 @@ The office still accepts no connections: GitHub calls the Worker, and sk-obs01 p
   - The director's account (`realRaghavGupta`) is shared by its Claude sessions, so a hidden marker
     picks the star. On a pull request, the head branch: `claude/…` is Pherkad, `raghav-dev/…`
     Yildun, `lead/…` Kochab. Otherwise, and always for a review (whose head branch is the
-    author's, not the reviewer's), the body's last non-empty line, when it is exactly a signature:
-    `— Claude Cloud` is Pherkad, `— raghav-dev` Yildun, `— Claude Lead` Kochab. With no marker
+    author's, not the reviewer's), the body's last line, when it is exactly a signature:
+    `— Claude Cloud` is Pherkad, `— raghav-dev` Yildun, `— Claude Lead` Kochab. Trailing blank
+    lines and footers (`🤖 Generated with [Claude Code](…)`, `Co-Authored-By: …`,
+    `_Automated: …_`) are skipped first (setkernel/agent-plugins#17). With no marker
     it is Polaris. The branch and body are read only to find the marker; neither is kept.
   - Anyone else is dropped.
 

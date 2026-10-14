@@ -95,9 +95,22 @@ test("actors: the director's account by branch, then signature, else Polaris", (
   assert.equal(actorFor("realRaghavGupta", undefined, sig("raghav-dev")), "Yildun");
   assert.equal(actorFor("realRaghavGupta", undefined, "Requested changes.\r\n\r\n— Claude Lead\r\n\r\n"), "Kochab", "CRLF and trailing blank lines");
   assert.equal(actorFor("realRaghavGupta", undefined, "— Claude Lead"), "Kochab", "a body that is only the signature");
+  // footer lines after the signature are skipped (setkernel/agent-plugins#17), each on its own and all together
+  const GENERATED = "🤖 Generated with [Claude Code](https://claude.com/claude-code)";
+  const COAUTHOR = "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>";
+  const AUTOMATED = "_Automated: @vega-setkernel's agent on `vega-dev`._";
+  for (const footer of [GENERATED, COAUTHOR, AUTOMATED, `${GENERATED}\n\n${COAUTHOR}\n\n${AUTOMATED}`]) {
+    assert.equal(actorFor("realRaghavGupta", undefined, `x\n\n— Claude Lead\n\n${footer}`), "Kochab", footer);
+    assert.equal(actorFor("realRaghavGupta", undefined, `x\r\n\r\n— Claude Cloud\r\n\r\n${footer.replaceAll("\n", "\r\n")}\r\n`), "Pherkad", `CRLF: ${footer}`);
+    assert.equal(actorFor("realRaghavGupta", undefined, `x\n\n${footer}`), "Polaris", `a footer with no signature: ${footer}`);
+    assert.equal(actorFor("realRaghavGupta", undefined, footer), "Polaris", `only a footer: ${footer}`);
+  }
   // no marker: Polaris, the director
   for (const head of ["agent/33-x", "feature/claude/x", "Claude/x", "claude", "LEAD/x", "main", undefined, 7]) assert.equal(actorFor("realRaghavGupta", head), "Polaris", `branch ${head}`);
-  for (const body of [undefined, null, "", "Merging.", "— Claude Lead\n\nthen more text", "— Claude Leader", "-- Claude Lead", "— claude lead", "Signed — Claude Lead", 5, {}]) {
+  for (const body of [undefined, null, "", "Merging.", "— Claude Lead\n\nthen more text", "— Claude Leader", "-- Claude Lead", "— claude lead", "Signed — Claude Lead", 5, {},
+    // only the listed footers are skipped: anything else after the signature, or a near-miss footer, hides it
+    "— Claude Lead\n\nCloses setkernel/setkernel-live#33", "— Claude Lead\n\nGenerated with Claude Code", "— Claude Lead\n\n🤖 Generated with [Claude Code](https://x) and more",
+    "— Claude Lead\n\nCo-Authored-By:", "— Claude Lead\n\n_Automated: no closing underscore", "— Claude Lead\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nP.S."]) {
     assert.equal(actorFor("realRaghavGupta", "fix/x", body), "Polaris", `body ${JSON.stringify(body)}`);
   }
 });
