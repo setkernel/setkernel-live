@@ -71,6 +71,9 @@ version and "Rollback". The Durable Object again takes a few minutes to follow; 
 `node scripts/smoke.mjs --expect <that version's commit>`. Then revert the bad change in a PR.
 Cloudflare won't roll back across a Durable Object migration: if the bad deploy added one, fix
 forward.
+Rolling back to a version from before the pole stars (setkernel-live#33): that code doesn't pad
+the shorter replay rows saved since, so some counts in the minutes around the rollback become
+`null`. The page and the hourly chart read them as 0, and they age out within 24 hours.
 
 ## GitHub Actions results, pull requests and reviews
 

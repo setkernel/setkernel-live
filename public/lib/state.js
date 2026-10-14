@@ -18,11 +18,16 @@ export const POLE = ["Polaris", "Kochab", "Pherkad", "Yildun"];
 export const AGENTS = [...ENGINEERS, ...POLE];
 export const PULSE_KINDS = ["claude", "chat", "helper"]; // too frequent to keep one by one
 // Columns per engineer in a minute row: the pulse kinds, then GitHub actions (counted there too, so
-// the hourly chart stays exact even when the list of actions is capped). A pole star has only
-// GitHub actions, so it gets that one column, after the engineers'.
+// the hourly chart stays exact even when the list of actions is capped). The pole stars have only
+// GitHub actions, and they share one column after the engineers': only the hourly chart reads a
+// GitHub column (the replay show takes each action, with its star, from `work`), and one column
+// keeps a full day under the size limit (test/state.test.mjs).
 export const ROW_KINDS = [...PULSE_KINDS, "github"];
-export const COLUMNS = [...ENGINEERS.flatMap((agent) => ROW_KINDS.map((kind) => [agent, kind])), ...POLE.map((agent) => [agent, "github"])];
-const COLUMN = new Map(COLUMNS.map(([agent, kind], i) => [`${agent} ${kind}`, i]));
+export const COLUMNS = [...ENGINEERS.flatMap((agent) => ROW_KINDS.map((kind) => [agent, kind])), ["pole", "github"]];
+const COLUMN = new Map([
+  ...COLUMNS.map(([agent, kind], i) => [`${agent} ${kind}`, i]),
+  ...POLE.map((agent) => [`${agent} github`, COLUMNS.length - 1]),
+]);
 // Where an agent's count of a kind sits in a minute row (after the minute itself), or -1.
 export const columnOf = (agent, kind) => COLUMN.get(`${agent} ${kind}`) ?? -1;
 const FEED = 30;
@@ -91,7 +96,7 @@ const workItem = (e, ts) => ({ agent: e.agent, action: e.action, ...(e.repo ? { 
 // the allowlist go in, and nothing older than 24 hours stays. A row in `pulses` is
 // [minute since the epoch, then the counts in COLUMNS order], so a full
 // day is at most 1440 short rows. Trailing zeros are left off (a missing count is 0), so the pole
-// stars at the end, with nothing that minute, cost nothing. `work` holds the latest GitHub actions
+// stars' column at the end, with nothing that minute, costs nothing. `work` holds the latest GitHub actions
 // in the feed's shape.
 export function recordReplay(replay, batch, now) {
   const nowS = Math.trunc(now / 1000);
