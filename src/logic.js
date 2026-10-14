@@ -6,14 +6,18 @@
 //
 // The state built from clean batches lives in public/lib/state.js, because ?demo mode on the page
 // runs the same code; it is re-exported here.
-import { AGENTS, ENGINEERS, POLE } from "../public/lib/state.js";
+import { AGENTS, ENGINEERS, POLE, REQUEST_ACTIONS } from "../public/lib/state.js";
 
 export { AGENTS, ENGINEERS, POLE };
 export { COLUMNS, applyBatch, emptyReplay, emptyState, hourly, recordReplay, replaySince, view } from "../public/lib/state.js";
 export const STATES = ["WORKING", "REVIEW", "DISCUSS", "IDLE", "PAUSED"];
 export const WORK = ["issue", "review", "changes", "discussion", "decision"];
 // "merged": the agent's pull request was merged (by a person); from the GitHub webhook (setkernel-live#33).
-export const ACTIONS = ["picked_up", "opened_pr", "approved", "requested_changes", "pushed", "posted_round", "decision_pr", "merged"];
+// "merged_by": Polaris merged a pull request, anyone's (setkernel-live#35).
+export const ACTIONS = ["picked_up", "opened_pr", "approved", "requested_changes", "pushed", "posted_round", "decision_pr", "merged", "merged_by"];
+// A request (setkernel-live#35): an issue opened or a comment made, from the GitHub webhook. Only who
+// sent it, the action and a public repo's name; never what it said.
+export { REQUEST_ACTIONS } from "../public/lib/state.js";
 export const CI_RESULTS = ["pass", "fail"];
 // Fields that never reach the page, under the names GitHub's CI, deployment and push payloads use
 // (hq#113): deployment environments, branches, commit messages, run URLs, actors. The same list as
@@ -71,8 +75,9 @@ function eventFields(e) {
   }
   if (!AGENTS.includes(e.agent)) return null;
   // Polaris and its three Claudes are seen only through GitHub (setkernel-live#33): their pull
-  // requests and reviews, never a state, a Claude request, a chat post or a helper.
-  if (POLE.includes(e.agent) && !(e.t === "msg" && e.kind === "github")) return null;
+  // requests, reviews, merges and requests, never a state, a chat post or a helper. Yildun is the
+  // one exception: its Claude requests come from its own machine's telemetry (setkernel-live#35).
+  if (POLE.includes(e.agent) && !(e.t === "msg" && (e.kind === "github" || e.kind === "request" || (e.kind === "claude" && e.agent === "Yildun")))) return null;
   if (e.t === "agent") {
     const info = cleanAgentInfo(e);
     return info ? { t: "agent", agent: e.agent, ...info, ...(ts ? { ts } : {}) } : null;
@@ -80,8 +85,9 @@ function eventFields(e) {
   if (e.t !== "msg") return null;
   // "helper": the agent used a subagent or a skill. Which one is never accepted or shown.
   if (e.kind === "claude" || e.kind === "chat" || e.kind === "helper") return { t: "msg", kind: e.kind, agent: e.agent, ...(ts ? { ts } : {}) };
-  if (e.kind === "github" && ACTIONS.includes(e.action)) {
-    const out = { t: "msg", kind: "github", agent: e.agent, action: e.action, ...(ts ? { ts } : {}) };
+  if (e.action === "merged_by" && e.agent !== "Polaris") return null; // only the director merges
+  if ((e.kind === "github" && ACTIONS.includes(e.action)) || (e.kind === "request" && REQUEST_ACTIONS.includes(e.action))) {
+    const out = { t: "msg", kind: e.kind, agent: e.agent, action: e.action, ...(ts ? { ts } : {}) };
     if (typeof e.repo === "string" && REPO.test(e.repo)) out.repo = e.repo;
     return out;
   }
