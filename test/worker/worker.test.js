@@ -373,7 +373,9 @@ describe("GitHub webhook and queue", () => {
     const q = JSON.parse(body);
     expect(q.events.map(({ action, actor }) => [action, actor])).toEqual([["opened_pr", "Pherkad"], ["merged", "Pherkad"], ["approved", "Lyra"], ["approved", "Kochab"], ["approved", "Polaris"]]);
     expect(q.events[0]).toEqual({ cursor: 1, kind: "pr", repo: "setkernel-live", private: false, action: "opened_pr", actor: "Pherkad", ts: expect.any(Number) });
-    expect(body).not.toMatch(/secret|someone|raghav|lyra-setkernel|claude\/|Claude|—|9001|77/i);
+    expect(body).not.toMatch(/secret|someone|raghav|lyra-setkernel|claude\/|Claude|—/i);
+    // the id and number as whole values: as substrings they can turn up inside a timestamp
+    expect(q.events.flatMap(Object.values).filter((v) => [9001, 77, "9001", "77"].includes(v))).toEqual([]);
   });
 
   it("guards the queue: 503 while QUEUE_AUD is empty, 405, 403 and a bad cursor", async () => {
