@@ -4,7 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ENGINEERS, applyBatch, cleanBatch, emptyState } from "../src/logic.js";
-import { STARTED_FOR_S, column, replayAgents, reviewers, settleLines, stepLines, steps } from "../public/lib/line.js";
+import { STARTED_FOR_S, column, replayAgents, reviewers, seedLanes, settleLines, stepLines, steps } from "../public/lib/line.js";
 
 const T0 = 490_000 * 3600;
 const gh = (agent, action, ts, repo) => ({ t: "msg", kind: "github", agent, action, ts, ...(repo ? { repo } : {}) });
@@ -175,4 +175,16 @@ test("replay guesses states from pulses: working on feedback once a pull request
   assert.deepEqual(a.Orion, { state: "WORKING", work: "changes", repo: "hq" });
   assert.deepEqual(a.Vega, { state: "IDLE" });
   assert.equal(column(l.Orion, a.Orion, T0 + 60), "fixing");
+});
+
+test("replay starts a job begun before its 24 hours where the live line has it", () => {
+  const since = T0 + 86_400;
+  const live = lanes([gh("Orion", "picked_up", T0, "hq"), claude("Orion", T0 + 5), gh("Orion", "opened_pr", T0 + 600, "hq"),
+    gh("Rigel", "requested_changes", since + 100, "hq"), gh("Vega", "picked_up", since + 50)]);
+  const seed = seedLanes(live, since);
+  assert.deepEqual(Object.keys(seed), ["Orion"], "a job begun in the replay's own window comes from its events");
+  assert.deepEqual(seed.Orion, { job: "review", at: T0 + 600, built: true, repo: "hq", steps: { started: T0, building: T0 + 5, review: T0 + 600 } });
+  const l = stepLines(seed, [gh("Rigel", "requested_changes", since + 100, "hq")], ENGINEERS).lines;
+  assert.deepEqual(l.Orion, live.Orion, "the replay's events put back what happened since");
+  assert.equal(column(stepLines({}, [], ENGINEERS).lines.Orion, undefined, since), "started", "without the seed it would sit in Started");
 });

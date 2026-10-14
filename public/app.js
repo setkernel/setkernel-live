@@ -6,7 +6,7 @@
 import { AGENTS, ENGINEERS, POLE, PULSE_KINDS, applyBatch, emptyReplay, emptyState, recordReplay, replaySince, view } from "/lib/state.js";
 import { OFFLINE_AFTER_MS, ciSummary, ciWhere, ciWord, clock, createAnnouncer, deed, fitHeadline, freshness, headline, isActive, reviewTarget, stateWords, todaySince, whereWork, zoneName } from "/lib/words.js";
 import { NARROW_BELOW, PLACES, PLACE_NAMES, PLACE_X, skyLayout } from "/lib/layout.js";
-import { STAGES, STAGE_NAME, column, replayAgents, reviewers, stepLines } from "/lib/line.js";
+import { STAGES, STAGE_NAME, column, replayAgents, reviewers, seedLanes, stepLines } from "/lib/line.js";
 import { SESSION_NOTE, cardText, cardWords, starCard, tokenPile } from "/lib/card.js";
 import { createSky } from "/lib/sky.js";
 import { createDemo } from "/lib/demo.js";
@@ -776,7 +776,8 @@ async function startReplay(h) {
   const pre = eventsBefore(data, from);
   const last = {};
   for (const e of pre) if (PULSE_KINDS.includes(e.kind)) last[e.agent] = e.ts;
-  const lines = stepLines({}, pre, ENGINEERS).lines;
+  // jobs begun before the day's data start where the live line has them
+  const lines = stepLines(seedLanes(current.line, to - 86_400), pre, ENGINEERS).lines;
   const feed = pre.filter((e) => e.kind === "github").reverse().slice(0, 30).map(({ agent, action, repo, ts }) => ({ agent, action, ...(repo ? { repo } : {}), ts }));
   rp = { hours: h, lines, last, feed, nowS: from, agents: replayAgents(last, lines, ENGINEERS, from) };
   sky.clear();

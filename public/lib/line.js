@@ -158,6 +158,23 @@ export function steps(lane, col) {
   });
 }
 
+// Replay's data covers the last 24 hours only, so a job begun before that (a pull request open
+// for two days) would sit in Started. This keeps the live lanes whose job event is older than
+// `sinceS`, as they were then: what happened since (a change request, a step, a merge waiting for
+// its pull request) is left for the replay's own events to put back.
+export function seedLanes(lines, sinceS) {
+  const out = {};
+  for (const [name, lane] of Object.entries(lines ?? {})) {
+    if (!lane?.job || !(lane.at < sinceS)) continue;
+    const { asked, merge, steps: st, ...rest } = structuredClone(lane);
+    const seed = { ...rest, steps: Object.fromEntries(Object.entries(st ?? {}).filter(([, ts]) => ts < sinceS)) };
+    if (asked < sinceS) seed.asked = asked;
+    if (lane.job === "started" && !(seed.steps.building < sinceS)) seed.built = false;
+    out[name] = seed;
+  }
+  return out;
+}
+
 // Replay has no agent states, only events. This guesses them the way the board needs: an engineer
 // whose Claude, chat or helper pulses came in the last few minutes is working, on review feedback
 // when its pull request was sent back, otherwise on its issue. `last` is { name: ts of its latest
