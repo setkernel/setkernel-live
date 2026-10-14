@@ -93,8 +93,9 @@ export function applyBatch(state, batch, now, day) {
   }
   // the lanes, with each event at the time it counted at
   const timed = batch.events.filter((e) => e.t === "msg" && e.kind !== "ci").map((e) => ({ ...e, ts: Math.min(e.ts ?? nowS, nowS) }));
-  // building counts each job that got under way: a Claude request after the pick-up, a pull
-  // request straight away, or the two-minute wait
+  // building counts each job that got under way today: a Claude request after the pick-up, a pull
+  // request straight away, or the two-minute wait. It is jobs started, not issues worked on: a job
+  // picked up yesterday and still being built adds nothing today.
   const stepped = stepLines(s.line, timed, ENGINEERS);
   const settled = settleLines(stepped.lines, s.agents, ENGINEERS, nowS);
   for (const name of [...stepped.built, ...settled.built]) {

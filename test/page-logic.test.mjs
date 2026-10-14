@@ -306,6 +306,10 @@ test("the Merged pile: a token per merge up to the cap, then every author in pro
   assert.equal(pile.length, 10);
   for (const n of ["Rigel", "Orion", "Lyra", "Kochab"]) assert.ok(pile.includes(n), `${n} keeps a token`);
   assert.ok(pile.filter((n) => n === "Rigel").length >= pile.filter((n) => n === "Kochab").length);
+  const skewed = tokenPile([["Rigel", 100], ["Orion", 1], ["Lyra", 1], ["Vega", 1], ["Polaris", 1], ["Kochab", 1], ["Pherkad", 1], ["Yildun", 1]], 10);
+  assert.equal(skewed.length, 10, "one each for the small ones doesn't push it past the cap");
+  assert.equal(new Set(skewed).size, 8);
+  assert.equal(skewed.filter((n) => n === "Rigel").length, 3);
 });
 
 test("replay: the events before the show, so the line can catch up first", () => {

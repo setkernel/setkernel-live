@@ -72,13 +72,21 @@ export function starCard(name, v, nowS, targets = {}) {
 
 // The Merged pile: one token per merged pull request, in its author's colour, at most `cap`. Past
 // the cap each author keeps a share in proportion (at least one each), so nobody drops off the
-// pile; the count beside it stays exact. counts: [[name, merged]] in the order to show.
+// pile; the count beside it stays exact. The pile goes over the cap only when there are more
+// authors than tokens. counts: [[name, merged]] in the order to show.
 export function tokenPile(counts, cap) {
   const live = counts.filter(([, n]) => n > 0);
   const total = live.reduce((a, [, n]) => a + n, 0);
   if (total <= cap) return live.flatMap(([name, n]) => Array(n).fill(name));
   const share = live.map(([name, n]) => ({ name, n: Math.max(1, Math.floor((n * cap) / total)), rest: (n * cap) / total % 1 }));
   let left = cap - share.reduce((a, s) => a + s.n, 0);
+  // the floor of one each can push it over: take the excess back from the biggest shares
+  while (left < 0) {
+    const big = share.reduce((a, s) => (s.n > a.n ? s : a));
+    if (big.n <= 1) break;
+    big.n--;
+    left++;
+  }
   for (const s of [...share].sort((a, b) => b.rest - a.rest)) {
     if (left <= 0) break;
     s.n++;
