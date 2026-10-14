@@ -39,6 +39,10 @@ const sameRepo = (a, b) => !a || !b || a === b;
 // event older than what a lane already shows (a late batch, or a duplicate) leaves it alone, so
 // the lanes come out as if every event had arrived in time order. Returns { lines, built } where
 // built names the engineer of each job that moved from Started to Building (for today's count).
+// One case it can't put right: the page has no pull request numbers, so a merge that arrives
+// first is matched to the next opened_pr in its repo no later than it. If that pull request was
+// an earlier one and the engineer has since picked up a new issue, a pick-up arriving after both
+// is older than the merged lane and is skipped, so the card shows Merged until the next job event.
 export function stepLines(lines, events, engineers) {
   const out = structuredClone(lines ?? {});
   const built = [];
@@ -50,8 +54,11 @@ export function stepLines(lines, events, engineers) {
       const lane = out[author];
       // a review from before the pull request, or before the latest one, is old news
       if (!author || e.ts < lane.at || lane.asked > e.ts) continue;
-      if (e.action === "requested_changes") lane.asked = e.ts;
-      else delete lane.asked;
+      if (e.action === "requested_changes") {
+        // a new round of changes: Fixing starts again from it (settleLines stamps it)
+        if (!lane.asked && lane.steps) delete lane.steps.fixing;
+        lane.asked = e.ts;
+      } else delete lane.asked;
       continue;
     }
     if (!engineers.includes(e.agent)) continue;
@@ -72,7 +79,13 @@ export function stepLines(lines, events, engineers) {
     // a push or merge is about the open pull request only: one for an earlier pull request, while
     // the engineer is on a new job, or in another repo, leaves the lane alone (it still counts)
     const ours = lane.job === "review" && sameRepo(e.repo, lane.repo);
-    if (e.action === "picked_up") out[e.agent] = { job: "started", at: e.ts, built: false, ...repo, steps: { started: e.ts } };
+    if (e.action === "picked_up") {
+      // a merge that came in an earlier batch but is newer than this pick-up is still waiting for
+      // this job's pull request
+      const m = lane.merge;
+      const keep = m && m.at > e.ts && sameRepo(m.repo, e.repo) ? { merge: m } : {};
+      out[e.agent] = { job: "started", at: e.ts, built: false, ...repo, steps: { started: e.ts }, ...keep };
+    }
     else if (e.action === "opened_pr") {
       if (lane.job === "started" && !lane.built) built.push(e.agent); // straight to a pull request: under way all the same
       const steps = lane.job === "started" ? { ...lane.steps, review: e.ts } : { review: e.ts };
@@ -82,8 +95,8 @@ export function stepLines(lines, events, engineers) {
         out[e.agent] = { job: "merged", at: m.at, built: true, ...repo, steps: { ...steps, merged: m.at } };
       } else out[e.agent] = { job: "review", at: e.ts, built: true, ...repo, steps };
     } else if (e.action === "pushed" && ours && !(lane.asked > e.ts)) {
-      const { asked, ...rest } = lane; // the fixes are in: back to waiting for review
-      out[e.agent] = { ...rest, steps: { ...lane.steps, review: lane.steps?.review ?? e.ts } };
+      const { asked, ...rest } = lane; // the fixes are in: back to waiting for review, from now
+      out[e.agent] = { ...rest, steps: { ...lane.steps, review: asked || !lane.steps?.review ? e.ts : lane.steps.review } };
     } else if (e.action === "merged" && ours) {
       const { asked, ...rest } = lane;
       out[e.agent] = { ...rest, job: "merged", at: e.ts, ...repo, steps: { ...lane.steps, merged: e.ts } };

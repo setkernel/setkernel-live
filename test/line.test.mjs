@@ -40,7 +40,15 @@ test("Fixing: working on review feedback, then back to In review after the push"
   l = stepLines(l, [gh("Orion", "pushed", T0 + 400, "hq")], ENGINEERS).lines;
   assert.equal(column(l.Orion, { state: "IDLE" }, T0 + 401), "review");
   assert.equal(l.Orion.asked, undefined);
-  assert.equal(l.Orion.steps.review, T0 + 100, "In review keeps its first time");
+  assert.equal(l.Orion.steps.review, T0 + 400, "back in review from the push, not the first round");
+  // a second round: Fixing counts from the new request, not the first
+  l = stepLines(l, [gh("Rigel", "requested_changes", T0 + 600, "hq")], ENGINEERS).lines;
+  l = settleLines(l, { Orion: { state: "WORKING", work: "changes" } }, ENGINEERS, T0 + 700).lines;
+  assert.equal(l.Orion.steps.fixing, T0 + 600);
+  l = stepLines(l, [gh("Orion", "pushed", T0 + 800, "hq")], ENGINEERS).lines;
+  assert.equal(l.Orion.steps.review, T0 + 800);
+  // a push with no change request pending leaves In review's time alone
+  assert.equal(stepLines(l, [gh("Orion", "pushed", T0 + 900, "hq")], ENGINEERS).lines.Orion.steps.review, T0 + 800);
 });
 
 test("Merged: until the next pick-up, which starts a fresh job", () => {
@@ -119,6 +127,13 @@ test("a merge that arrives before its own pull request: the card goes on to Merg
   // the same as when the two came in order
   const inOrder = lanes([gh("Lyra", "picked_up", T0, "hq"), claude("Lyra", T0 + 5), gh("Lyra", "opened_pr", T0 + 600, "hq"), gh("Lyra", "merged", T0 + 900, "hq")]);
   assert.deepEqual(l.Lyra, inOrder.Lyra);
+  // the pick-up comes in a later batch than the merge, with its pull request
+  l = stepLines(lanes([gh("Vega", "merged", T0 + 900, "hq")]), [gh("Vega", "picked_up", T0, "hq"), gh("Vega", "opened_pr", T0 + 600, "hq")], ENGINEERS).lines;
+  assert.equal(column(l.Vega, undefined, T0 + 1000), "merged");
+  assert.deepEqual(l.Vega, lanes([gh("Vega", "picked_up", T0, "hq"), gh("Vega", "opened_pr", T0 + 600, "hq"), gh("Vega", "merged", T0 + 900, "hq")]).Vega);
+  // a pick-up after the merge starts a new job: the merge isn't kept for it
+  l = stepLines(lanes([gh("Vega", "merged", T0 + 900, "hq")]), [gh("Vega", "picked_up", T0 + 950, "hq")], ENGINEERS).lines;
+  assert.equal(l.Vega.merge, undefined);
   // a merge for an earlier pull request doesn't carry over to the next one
   l = lanes([gh("Vega", "picked_up", T0, "hq"), gh("Vega", "merged", T0 + 50, "hq"), gh("Vega", "opened_pr", T0 + 400, "hq")]);
   assert.equal(column(l.Vega, undefined, T0 + 500), "review");
