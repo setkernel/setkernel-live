@@ -4,8 +4,8 @@
 // what the live page really shows. Run its tests with: npm test
 //
 // Two parts, stored under two keys:
-//   state   today's counts (overall and per agent), the recent-work feed, the agents' current
-//           state, and when each agent last did anything.
+//   state   today's counts (overall and per agent), the recent-work feed, the recent CI
+//           results, the agents' current state, and when each agent last did anything.
 //   replay  the last 24 hours, capped, for "replay the last hour / 24 h" and the hourly chart:
 //           one row of counts per minute, and each GitHub action (capped).
 
@@ -15,34 +15,44 @@ export const PULSE_KINDS = ["claude", "chat", "helper"]; // too frequent to keep
 // the hourly chart stays exact even when the list of actions is capped).
 export const ROW_KINDS = [...PULSE_KINDS, "github"];
 const FEED = 30;
+const CI_RECENT = 12;
 const DAY_S = 86_400;
 const REPLAY_MINUTES = 24 * 60; // one row per minute at most, so this is also the row cap
 const REPLAY_WORK = 300; // GitHub actions kept for the replay; a busy day is under 200
 
 const zeroCounts = () => ({ claude: 0, chat: 0, helpers: 0, prs: 0, reviews: 0, started: 0 });
+// CI runs have no agent, so they are only counted overall: runs, and how many passed.
+const zeroTotals = () => ({ ...zeroCounts(), ci: 0, ciPass: 0 });
 
 export function emptyState(day) {
-  return { day, agents: {}, counts: zeroCounts(), byAgent: {}, seen: {}, feed: [], lastIngest: 0 };
+  return { day, agents: {}, counts: zeroTotals(), byAgent: {}, seen: {}, feed: [], ci: [], lastIngest: 0 };
 }
 
 export function emptyReplay() {
   return { pulses: [], work: [] };
 }
 
-// Apply a clean batch to the state (returns a new state). Counts reset each UTC day; the feed and
-// when each agent was last seen carry over midnight. A state saved before byAgent, seen or
-// counts.helpers existed is filled in rather than showing NaN.
+// Apply a clean batch to the state (returns a new state). Counts reset each UTC day; the feed, the
+// recent CI results and when each agent was last seen carry over midnight. A state saved before
+// byAgent, seen, ci or a count existed is filled in rather than showing NaN.
 export function applyBatch(state, batch, now, day) {
   const s = state && state.day === day
     ? structuredClone(state)
-    : { ...emptyState(day), feed: state?.feed ?? [], seen: state?.seen ?? {} };
-  s.counts = { ...zeroCounts(), ...s.counts };
+    : { ...emptyState(day), feed: state?.feed ?? [], ci: state?.ci ?? [], seen: state?.seen ?? {} };
+  s.counts = { ...zeroTotals(), ...s.counts };
+  s.ci ??= [];
   s.byAgent ??= {};
   s.seen ??= {};
   s.agents = batch.agents;
   const nowS = Math.trunc(now / 1000);
   for (const e of batch.events) {
     if (e.t !== "msg") continue;
+    if (e.kind === "ci") {
+      s.counts.ci++;
+      if (e.result === "pass") s.counts.ciPass++;
+      s.ci.unshift({ result: e.result, ...(e.repo ? { repo: e.repo } : {}), ts: e.ts ?? nowS });
+      continue;
+    }
     const mine = (s.byAgent[e.agent] = { ...zeroCounts(), ...s.byAgent[e.agent] });
     const ts = Math.min(e.ts ?? nowS, nowS); // a clock ahead of ours counts as now
     if (!(s.seen[e.agent] >= ts)) s.seen[e.agent] = ts;
@@ -59,6 +69,7 @@ export function applyBatch(state, batch, now, day) {
     if (e.kind === "github") s.feed.unshift(workItem(e, ts));
   }
   s.feed = s.feed.slice(0, FEED);
+  s.ci = s.ci.slice(0, CI_RECENT);
   s.lastIngest = now;
   return s;
 }
@@ -124,6 +135,6 @@ export function hourly(replay, now) {
 
 // What the page gets: on connect, with every batch, and from /api/state.
 export function view(state, replay, now) {
-  const { agents, counts, byAgent, seen, feed, lastIngest } = state;
-  return { agents, counts, byAgent: byAgent ?? {}, seen: seen ?? {}, feed, hours: hourly(replay, now), lastIngest, now };
+  const { agents, counts, byAgent, seen, feed, ci, lastIngest } = state;
+  return { agents, counts, byAgent: byAgent ?? {}, seen: seen ?? {}, feed, ci: ci ?? [], hours: hourly(replay, now), lastIngest, now };
 }

@@ -1,9 +1,10 @@
 // live.setkernel.com page. Connects to /ws (or, with ?demo, runs the sample simulation through the
 // same reducer as the Durable Object), and shows: one line of what's happening now, the sky, today
-// in a few numbers, the last 24 hours, and the recent-work stream. Everything shown is built with
-// textContent and attributes, never innerHTML, so nothing in a batch can inject markup.
+// in a few numbers, the last 24 hours, the latest test runs, and the recent-work stream. Everything
+// shown is built with textContent and attributes, never innerHTML, so nothing in a batch can
+// inject markup.
 import { AGENTS, applyBatch, emptyReplay, emptyState, recordReplay, replaySince, view } from "/lib/state.js";
-import { ACTION_TEXT, OFFLINE_AFTER_MS, clock, createAnnouncer, headline, isActive, reviewTarget, starLabel, tally } from "/lib/words.js";
+import { ACTION_TEXT, OFFLINE_AFTER_MS, ciSummary, ciWhere, ciWord, clock, createAnnouncer, headline, isActive, reviewTarget, starLabel, tally } from "/lib/words.js";
 import { PLACES, PLACE_NAMES, skyLayout } from "/lib/layout.js";
 import { createSky } from "/lib/sky.js";
 import { createDemo } from "/lib/demo.js";
@@ -29,7 +30,7 @@ const COLORS = Object.fromEntries([...AGENTS.map((n) => [n, color(n.toLowerCase(
 
 let skew = 0; // server clock minus ours
 const serverNow = () => Date.now() + skew;
-let current = { agents: {}, counts: {}, byAgent: {}, seen: {}, feed: [], hours: [], lastIngest: 0 };
+let current = { agents: {}, counts: {}, byAgent: {}, seen: {}, feed: [], ci: [], hours: [], lastIngest: 0 };
 let replaying = null;
 
 // ---- the sky and the labels over it
@@ -154,11 +155,28 @@ function showHours() {
   $("hours-desc").textContent = `Per hour over the last 24 hours, ${clock(hours[0].h * 3600)} to now, UTC. ${said.join(" ")}`;
 }
 
+// A public repo -> its name, linked to GitHub. Private repos never have a name on this page.
+const repoLink = (repo) => make("a", { href: `https://github.com/setkernel/${encodeURIComponent(repo)}`, rel: "noopener", text: repo });
+
+// The latest test runs as marks (the shape and the key say passed or failed, not only the colour),
+// then today's count and the latest run in words.
+function showCi() {
+  const runs = (Array.isArray(current.ci) ? current.ci : []).slice(0, 12);
+  $("ci-runs").replaceChildren(...runs.map((r) => {
+    const said = `${ciWhere(r)} ${ciWord(r)}${Number.isFinite(r.ts) ? ` at ${clock(r.ts)} UTC` : ""}`;
+    return make("li", { class: r.result === "pass" ? "pass" : "fail", title: said },
+      make("i", { "aria-hidden": "true" }), make("span", { class: "visually-hidden", text: said }));
+  }));
+  $("ci-today").textContent = ciSummary(current.counts);
+  const last = runs[0];
+  $("ci-last").replaceChildren(...(last ? ["Last: ", last.repo ? repoLink(last.repo) : ciWhere(last), ` ${ciWord(last)}${Number.isFinite(last.ts) ? ` at ${clock(last.ts)} UTC` : ""}.`] : []));
+}
+
 function feedItem(f) {
   const who = make("b", { text: f.agent });
   who.style.setProperty("--star", COLORS[f.agent] || COLORS.Vega);
   const p = make("span", {}, who, ` ${ACTION_TEXT[f.action] || "did something"}`);
-  if (f.repo) p.append(" in ", make("a", { href: `https://github.com/setkernel/${encodeURIComponent(f.repo)}`, rel: "noopener", text: f.repo }));
+  if (f.repo) p.append(" in ", repoLink(f.repo));
   return make("li", {}, make("time", { datetime: new Date(f.ts * 1000).toISOString(), text: clock(f.ts) }), p);
 }
 function showFeed() {
@@ -187,6 +205,7 @@ function render(connected = true) {
   showStars();
   showNumbers();
   showHours();
+  showCi();
   showFeed();
   showStatus(connected);
 }
@@ -200,7 +219,7 @@ function light(e, recent) {
   if (target) sky.review(e.agent, target);
 }
 function play(events) {
-  const msgs = events.filter((e) => e.t === "msg");
+  const msgs = events.filter((e) => e.t === "msg" && e.kind !== "ci"); // a test run has no star to leave
   if (!msgs.length || replaying) return;
   const first = Math.min(...msgs.map((e) => e.ts ?? Infinity));
   const recent = current.feed || [];
@@ -212,7 +231,7 @@ function play(events) {
 
 function apply(msg) {
   if (typeof msg.now === "number") skew = msg.now - Date.now();
-  for (const k of ["agents", "counts", "byAgent", "seen", "feed", "hours"]) if (msg[k] && typeof msg[k] === "object") current[k] = msg[k];
+  for (const k of ["agents", "counts", "byAgent", "seen", "feed", "ci", "hours"]) if (msg[k] && typeof msg[k] === "object") current[k] = msg[k];
   if (typeof msg.lastIngest === "number") current.lastIngest = msg.lastIngest;
   render(true);
   if (msg.t === "batch" && Array.isArray(msg.events)) {

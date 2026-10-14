@@ -13,6 +13,7 @@ export { applyBatch, emptyReplay, emptyState, hourly, recordReplay, replaySince,
 export const STATES = ["WORKING", "REVIEW", "DISCUSS", "IDLE", "PAUSED"];
 export const WORK = ["issue", "review", "changes", "discussion", "decision"];
 export const ACTIONS = ["picked_up", "opened_pr", "approved", "requested_changes", "pushed", "posted_round", "decision_pr"];
+export const CI_RESULTS = ["pass", "fail"];
 // Fields that never reach the page, under the names GitHub's CI, deployment and push payloads use
 // (hq#113): deployment environments, branches, commit messages, run URLs, actors. The same list as
 // NEVER in setkernel/hq observability/wall/public.py. A clean event or agent state carrying one, at
@@ -57,8 +58,17 @@ export function cleanEvent(e) {
 }
 
 function eventFields(e) {
-  if (!e || typeof e !== "object" || !AGENTS.includes(e.agent)) return null;
+  if (!e || typeof e !== "object") return null;
   const ts = Number.isFinite(e.ts) ? Math.trunc(e.ts) : null;
+  // A CI run has no agent. Only the result, and the repo name when sk-obs01 sends one: it sends a
+  // name for public repos only, so a run without one shows as "a private project".
+  if (e.t === "msg" && e.kind === "ci") {
+    if (!CI_RESULTS.includes(e.result)) return null;
+    const out = { t: "msg", kind: "ci", result: e.result, ...(ts ? { ts } : {}) };
+    if (typeof e.repo === "string" && REPO.test(e.repo)) out.repo = e.repo;
+    return out;
+  }
+  if (!AGENTS.includes(e.agent)) return null;
   if (e.t === "agent") {
     const info = cleanAgentInfo(e);
     return info ? { t: "agent", agent: e.agent, ...info, ...(ts ? { ts } : {}) } : null;
