@@ -35,7 +35,7 @@ test("Fixing: working on review feedback, then back to In review after the push"
   let l = lanes([gh("Orion", "picked_up", T0, "hq"), gh("Orion", "opened_pr", T0 + 100, "hq"), gh("Rigel", "requested_changes", T0 + 200, "hq")]);
   assert.equal(l.Orion.asked, T0 + 200, "a review in the same public repo names Orion's pull request");
   assert.equal(column(l.Orion, { state: "WORKING", work: "changes" }, T0 + 300), "fixing");
-  l = settleLines(l, { Orion: { state: "WORKING", work: "changes" } }, ENGINEERS, T0 + 300);
+  l = settleLines(l, { Orion: { state: "WORKING", work: "changes" } }, ENGINEERS, T0 + 300).lines;
   assert.equal(l.Orion.steps.fixing, T0 + 200, "Fixing began when changes were asked for");
   l = stepLines(l, [gh("Orion", "pushed", T0 + 400, "hq")], ENGINEERS).lines;
   assert.equal(column(l.Orion, { state: "IDLE" }, T0 + 401), "review");
@@ -51,6 +51,39 @@ test("Merged: until the next pick-up, which starts a fresh job", () => {
   assert.equal(column(l.Rigel, WORKING, T0 + 610), "started");
   assert.deepEqual(l.Rigel.steps, { started: T0 + 600 });
   assert.deepEqual(steps(l.Rigel, "started").map((s) => s.status), ["now", "todo", "todo", "todo", "todo"]);
+});
+
+test("a push or merge for an earlier pull request leaves the new job where it is", () => {
+  const before = lanes([gh("Orion", "picked_up", T0, "hq"), claude("Orion", T0 + 5), gh("Orion", "opened_pr", T0 + 600, "hq"),
+    gh("Orion", "picked_up", T0 + 700, "setkernel-live"), claude("Orion", T0 + 710)]);
+  assert.equal(column(before.Orion, WORKING, T0 + 800), "building");
+  for (const action of ["merged", "pushed"]) {
+    const l = stepLines(before, [gh("Orion", action, T0 + 900, "hq")], ENGINEERS).lines;
+    assert.equal(column(l.Orion, WORKING, T0 + 910), "building", action);
+    assert.deepEqual(l.Orion, before.Orion, `${action}: the new job's lane is untouched`);
+  }
+  // in review in one repo, a merge in another is a different pull request too
+  const open = lanes([gh("Lyra", "opened_pr", T0, "hq")]);
+  assert.equal(stepLines(open, [gh("Lyra", "merged", T0 + 9, "example-site")], ENGINEERS).lines.Lyra.job, "review");
+  assert.equal(stepLines(open, [gh("Lyra", "merged", T0 + 9)], ENGINEERS).lines.Lyra.job, "merged", "a merge with no repo can't be told apart");
+});
+
+test("a new pull request after a finished job starts its steps afresh", () => {
+  const l = lanes([gh("Vega", "picked_up", T0), claude("Vega", T0 + 5), gh("Vega", "opened_pr", T0 + 60), gh("Vega", "merged", T0 + 120), gh("Vega", "opened_pr", T0 + 500)]);
+  assert.deepEqual(l.Vega.steps, { review: T0 + 500 });
+  assert.deepEqual(steps(l.Vega, "review").map((s) => s.status), ["skip", "skip", "now", "todo", "todo"]);
+});
+
+test("Building counts every job that got under way: a request, a pull request straight away, or the wait", () => {
+  const b = (events, agents = {}) => cleanBatch({ events, agents });
+  let s = applyBatch(emptyState("d"), b([gh("Vega", "picked_up", T0), gh("Vega", "opened_pr", T0 + 30), gh("Lyra", "picked_up", T0 + 40)]), (T0 + 50) * 1000, "d");
+  assert.equal(s.counts.building, 1, "Vega went straight to a pull request");
+  assert.equal(column(s.line.Lyra, WORKING, T0 + 50), "started");
+  s = applyBatch(s, b([]), (T0 + 40 + STARTED_FOR_S) * 1000, "d");
+  assert.equal(s.counts.building, 2, "Lyra, after the wait");
+  assert.equal(s.line.Lyra.steps.building, T0 + 40 + STARTED_FOR_S);
+  s = applyBatch(s, b([claude("Lyra", T0 + 200)]), (T0 + 201) * 1000, "d");
+  assert.equal(s.counts.building, 2, "counted once");
 });
 
 test("no job seen yet: the card waits in Started, or Building when the state says it works on an issue", () => {

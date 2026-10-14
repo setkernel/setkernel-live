@@ -20,9 +20,9 @@ test("per-agent counts: only the known agents, reset each UTC day", () => {
   );
   let s = applyBatch(emptyState("2026-10-13"), b, T0 * 1000 + 70_000, "2026-10-13");
   assert.deepEqual(Object.keys(s.byAgent).sort(), ["Rigel", "Vega"]);
-  assert.deepEqual(s.byAgent.Vega, { claude: 1, chat: 0, helpers: 0, prs: 1, reviews: 0, started: 1, building: 0, changes: 0, merged: 0 });
+  assert.deepEqual(s.byAgent.Vega, { claude: 1, chat: 0, helpers: 0, prs: 1, reviews: 0, started: 1, building: 1, changes: 0, merged: 0 });
   assert.deepEqual(s.byAgent.Rigel, { claude: 0, chat: 0, helpers: 1, prs: 0, reviews: 2, started: 0, building: 0, changes: 1, merged: 0 });
-  assert.deepEqual(s.counts, { claude: 1, chat: 0, helpers: 1, prs: 1, reviews: 2, started: 1, building: 0, changes: 1, merged: 0, ci: 0, ciPass: 0 });
+  assert.deepEqual(s.counts, { claude: 1, chat: 0, helpers: 1, prs: 1, reviews: 2, started: 1, building: 1, changes: 1, merged: 0, ci: 0, ciPass: 0 });
   assert.deepEqual(s.seen, { Vega: T0 + 2, Rigel: T0 + 5 });
 
   s = applyBatch(s, batch(), T0 * 1000 + 86_400_000, "2026-10-14");

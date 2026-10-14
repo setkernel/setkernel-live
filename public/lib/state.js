@@ -93,13 +93,16 @@ export function applyBatch(state, batch, now, day) {
   }
   // the lanes, with each event at the time it counted at
   const timed = batch.events.filter((e) => e.t === "msg" && e.kind !== "ci").map((e) => ({ ...e, ts: Math.min(e.ts ?? nowS, nowS) }));
-  const { lines, built } = stepLines(s.line, timed, ENGINEERS);
-  for (const name of built) {
+  // building counts each job that got under way: a Claude request after the pick-up, a pull
+  // request straight away, or the two-minute wait
+  const stepped = stepLines(s.line, timed, ENGINEERS);
+  const settled = settleLines(stepped.lines, s.agents, ENGINEERS, nowS);
+  for (const name of [...stepped.built, ...settled.built]) {
     s.counts.building++;
     s.byAgent[name] = { ...zeroCounts(), ...s.byAgent[name] };
     s.byAgent[name].building++;
   }
-  s.line = settleLines(lines, s.agents, ENGINEERS, nowS);
+  s.line = settled.lines;
   s.feed = s.feed.slice(0, FEED);
   s.ci = s.ci.slice(0, CI_RECENT);
   s.lastIngest = now;

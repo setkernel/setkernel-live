@@ -57,13 +57,18 @@ export function stepLines(lines, events, engineers) {
     }
     if (e.kind !== "github") continue;
     const repo = e.repo ? { repo: e.repo } : {};
+    // a push or merge is about the open pull request only: one for an earlier pull request, while
+    // the engineer is on a new job, or in another repo, leaves the lane alone (it still counts)
+    const ours = lane.job === "review" && (!e.repo || !lane.repo || e.repo === lane.repo);
     if (e.action === "picked_up") out[e.agent] = { job: "started", at: e.ts, built: false, ...repo, steps: { started: e.ts } };
     else if (e.action === "opened_pr") {
-      out[e.agent] = { job: "review", at: e.ts, built: true, ...repo, steps: { ...lane.steps, review: e.ts } };
-    } else if (e.action === "pushed" && (lane.job === "review" || lane.job === "started")) {
+      if (lane.job === "started" && !lane.built) built.push(e.agent); // straight to a pull request: under way all the same
+      const steps = lane.job === "started" ? { ...lane.steps, review: e.ts } : { review: e.ts };
+      out[e.agent] = { job: "review", at: e.ts, built: true, ...repo, steps };
+    } else if (e.action === "pushed" && ours) {
       const { asked, ...rest } = lane; // the fixes are in: back to waiting for review
-      out[e.agent] = { ...rest, job: "review", steps: { ...lane.steps, review: lane.steps?.review ?? e.ts } };
-    } else if (e.action === "merged") {
+      out[e.agent] = { ...rest, steps: { ...lane.steps, review: lane.steps?.review ?? e.ts } };
+    } else if (e.action === "merged" && ours) {
       const { asked, ...rest } = lane;
       out[e.agent] = { ...rest, job: "merged", at: e.ts, ...repo, steps: { ...lane.steps, merged: e.ts } };
     }
@@ -86,17 +91,23 @@ export function column(lane, info, nowS) {
 }
 
 // After a batch: note when a job reached a column the events alone don't mark (Building after
-// the wait, Fixing from the state), so the star card has a time for every step it passed.
+// the wait, Fixing from the state), so the star card has a time for every step it passed. Returns
+// { lines, built } with built naming each job that went on to Building by the wait.
 export function settleLines(lines, agents, engineers, nowS) {
   const out = structuredClone(lines ?? {});
+  const built = [];
   for (const name of engineers) {
     const lane = out[name];
     if (!lane?.job) continue;
     const col = column(lane, agents?.[name], nowS);
+    if (col === "building" && !lane.built) {
+      lane.built = true;
+      built.push(name);
+    }
     if (col === "building" && !lane.steps?.building) lane.steps = { ...lane.steps, building: Math.min(nowS, lane.at + STARTED_FOR_S) };
     if (col === "fixing" && !lane.steps?.fixing) lane.steps = { ...lane.steps, fixing: lane.asked ?? nowS };
   }
-  return out;
+  return { lines: out, built };
 }
 
 // Who is reviewing whose pull request, for the reviewer chip: { author: reviewer }. Only an
