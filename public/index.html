@@ -73,6 +73,14 @@
         <div id="hours" class="hours-rows"></div>
         <p class="visually-hidden" id="hours-desc"></p>
       </figure>
+      <figure class="ci">
+        <figcaption>Test runs <span>latest 12, newest first</span></figcaption>
+        <div class="ci-row">
+          <ol class="ci-runs" id="ci-runs" aria-label="Latest test runs, newest first"></ol>
+          <p class="ci-key" aria-hidden="true"><span class="pass"><i></i>passed</span> <span class="fail"><i></i>failed</span></p>
+        </div>
+        <p class="ci-sum"><span id="ci-today">No runs yet today</span> <span id="ci-last"></span></p>
+      </figure>
     </section>
 
     <section class="stream" aria-labelledby="stream-h">

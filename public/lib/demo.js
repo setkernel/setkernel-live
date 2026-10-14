@@ -1,12 +1,15 @@
 // ?demo: sample data so the page can be shown any time, clearly labelled as such on the page.
 // A small seeded simulation of four agents picking up issues, opening pull requests, reviewing
-// each other's and talking in the team chat. It produces only events the Worker's allowlist
-// accepts unchanged (test/page-logic.test.mjs checks that), and the page feeds them through the same
-// reducer as the Durable Object. No DOM here.
+// each other's and talking in the team chat, with a test run each time they open or push to a pull
+// request. It produces only events the Worker's allowlist accepts unchanged
+// (test/page-logic.test.mjs checks that), and the page feeds them through the same reducer as the
+// Durable Object. No DOM here.
 import { AGENTS } from "./state.js";
 
 // Public repos are named on the live page and private ones never are; null stands for private.
 const REPOS = ["setkernel-live", null, null, "example-site", null];
+
+const CI_PASS = 0.85; // share of test runs that pass
 
 // Events per second while busy, per kind.
 const RATE = {
@@ -39,6 +42,7 @@ function poisson(rand, mean) {
 // call returns what happened since the last call, in time order, and the agents' picture now.
 export function createDemo(seed = 17, startS = Math.trunc(Date.now() / 1000)) {
   const rand = seeded(seed);
+  const ciRand = seeded(seed ^ 0x5eed); // its own stream, so test runs don't change the rest of the story
   const between = (lo, hi) => lo + rand() * (hi - lo);
   const pick = (list) => list[Math.floor(rand() * list.length)];
   let t = startS;
@@ -46,6 +50,8 @@ export function createDemo(seed = 17, startS = Math.trunc(Date.now() / 1000)) {
   const waiting = []; // pull requests waiting for a review: { author, repo }
 
   const gh = (agent, action, repo, ts) => ({ t: "msg", kind: "github", agent, action, ...(repo ? { repo } : {}), ts });
+  // a test run has no agent: only the result, and the repo when it is public
+  const ci = (repo, ts) => ({ t: "msg", kind: "ci", result: ciRand() < CI_PASS ? "pass" : "fail", ...(repo ? { repo } : {}), ts });
   const set = (agent, state, work, repo, until) => Object.assign(a[agent], { state, work, repo, until });
 
   // An agent's current task ends at time `at`: what it did, then what it does next.
@@ -54,6 +60,7 @@ export function createDemo(seed = 17, startS = Math.trunc(Date.now() / 1000)) {
     if (me.state === "WORKING") {
       if (me.work === "changes") out.push(gh(name, "pushed", me.repo, at));
       else out.push(gh(name, "opened_pr", me.repo, at));
+      out.push(ci(me.repo, at));
       waiting.push({ author: name, repo: me.repo });
       return set(name, "IDLE", undefined, undefined, at + between(60, 420));
     }

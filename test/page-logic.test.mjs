@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { cleanBatch, cleanEvent, emptyReplay, emptyState, recordReplay, applyBatch } from "../src/logic.js";
-import { clock, createAnnouncer, doing, headline, reviewTarget, sentence, starLabel, summarise, tally } from "../public/lib/words.js";
+import { ciSummary, ciWhere, ciWord, clock, createAnnouncer, doing, headline, reviewTarget, sentence, starLabel, summarise, tally } from "../public/lib/words.js";
 import { createDemo, seeded } from "../public/lib/demo.js";
 import { plan } from "../public/lib/replay.js";
 import { skyLayout } from "../public/lib/layout.js";
@@ -79,6 +79,17 @@ test("announcer (from PR #8): first news at once, then at most one summary per 3
   assert.equal(summarise([]), "");
 });
 
+test("test runs in words: public repos named, private ones not, the rate never rounds up to 100%", () => {
+  assert.equal(`${ciWhere({ result: "pass", repo: "setkernel-live" })} ${ciWord({ result: "pass" })}`, "setkernel-live passed");
+  assert.equal(`${ciWhere({ result: "fail" })} ${ciWord({ result: "fail" })}`, "a private project failed");
+  assert.equal(ciSummary({}), "No runs yet today");
+  assert.equal(ciSummary(undefined), "No runs yet today");
+  assert.equal(ciSummary({ ci: 1, ciPass: 1 }), "1 run today · 100% passed");
+  assert.equal(ciSummary({ ci: 3, ciPass: 2 }), "3 runs today · 66% passed");
+  assert.equal(ciSummary({ ci: 200, ciPass: 199 }), "200 runs today · 99% passed");
+  assert.equal(ciSummary({ ci: 4 }), "4 runs today · 0% passed");
+});
+
 test("demo: every event and agent state passes the Worker's allowlist unchanged", () => {
   const demo = createDemo(17, T0);
   const { events, agents } = demo.advance(T0 + 86_400);
@@ -86,7 +97,7 @@ test("demo: every event and agent state passes the Worker's allowlist unchanged"
   for (const e of events) assert.deepEqual(cleanEvent(e), e, JSON.stringify(e));
   assert.deepEqual(cleanBatch({ events: [], agents }).agents, agents);
   const kinds = new Set(events.map((e) => e.kind === "github" ? e.action : e.kind));
-  for (const k of ["claude", "chat", "helper", "picked_up", "opened_pr", "approved", "requested_changes", "pushed", "posted_round", "decision_pr"]) {
+  for (const k of ["claude", "chat", "helper", "ci", "picked_up", "opened_pr", "approved", "requested_changes", "pushed", "posted_round", "decision_pr"]) {
     assert.ok(kinds.has(k), `demo shows ${k}`);
   }
   assert.ok(events.every((e, i) => e.ts >= T0 && e.ts <= T0 + 86_400 && (i === 0 || e.ts >= events[i - 1].ts)), "in time order, inside the window");
@@ -110,6 +121,10 @@ test("demo state comes from the real reducer and stays inside the replay cap", (
   const s = applyBatch(emptyState("d"), batch, (T0 + 86_400) * 1000, "d");
   const r = recordReplay(emptyReplay(), batch, (T0 + 86_400) * 1000);
   assert.equal(s.counts.claude, events.filter((e) => e.kind === "claude").length);
+  const ci = events.filter((e) => e.kind === "ci");
+  assert.equal(s.counts.ci, ci.length);
+  assert.ok(s.counts.ciPass > 0 && s.counts.ciPass < s.counts.ci, "the demo shows passes and failures");
+  assert.equal(s.ci.length, 12);
   assert.ok(r.pulses.length <= 1440 && r.work.length <= 300);
 });
 
