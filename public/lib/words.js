@@ -58,6 +58,19 @@ export function sentence(e) {
   return `${e.agent} ${ACTION_TEXT[e.action] || "did something"}${e.repo ? ` in ${e.repo}` : ""}.`;
 }
 
+// ---- CI runs (setkernel-live#14). A run has no agent; a public repo is named, a private one is not.
+export const ciWord = (r) => (r?.result === "pass" ? "passed" : "failed");
+export const ciWhere = (r) => r?.repo || "a private project";
+
+// Today's CI counts -> "14 runs today · 92% passed". The rate rounds down, so a day with a failure
+// never says 100%.
+export function ciSummary(c) {
+  const runs = c?.ci > 0 ? c.ci : 0;
+  if (!runs) return "No runs yet today";
+  const pass = Math.min(runs, c.ciPass > 0 ? c.ciPass : 0);
+  return `${runs} run${runs === 1 ? "" : "s"} today · ${Math.floor((100 * pass) / runs)}% passed`;
+}
+
 // The one line at the top: what's happening now. Returns { main, sub, mood } where mood is
 // "live", "quiet", "offline" or "waiting".
 export function headline({ agents = {}, seen = {}, feed = [], lastIngest = 0, now = Date.now() } = {}) {

@@ -75,11 +75,11 @@ const contrast = (a, b) => {
 
 test("all text meets WCAG AA contrast on the night background, secondary text included", () => {
   // ink: headings, numbers, labels; ink-2: secondary lines, times, tallies; accent: links, focus;
-  // the star colours: their names in the feed marker (non-text, 3:1)
+  // the star colours: their names in the feed marker; ok and fail: the test-run marks (non-text, 3:1)
   for (const fg of ["ink", "ink-2", "accent"]) {
     assert.ok(contrast(fg, "bg") >= 7, `--${fg} on --bg is ${contrast(fg, "bg").toFixed(2)}:1 (AAA, so small type stays readable)`);
   }
-  for (const fg of ["claude", "chat", "github", "vega", "rigel", "lyra", "orion", "ok", "warn"]) {
+  for (const fg of ["claude", "chat", "github", "vega", "rigel", "lyra", "orion", "ok", "warn", "fail"]) {
     assert.ok(contrast(fg, "bg") >= 3, `--${fg} on --bg is ${contrast(fg, "bg").toFixed(2)}:1`);
   }
 });
@@ -122,6 +122,9 @@ test("status and news reach screen readers; the sky has a text alternative", () 
   assert.match(html, /<canvas id="sky-canvas" aria-hidden="true">/);
   assert.match(html, /<section class="sky" aria-label="[^"]{40,}">/);
   assert.match(html, /<script type="module" src="\/app\.js"><\/script>/);
+  // test runs: each mark carries its words for screen readers; the key gives the colours a name
+  assert.match(html, /<ol class="ci-runs" id="ci-runs" aria-label="[^"]+">/);
+  assert.match(html, /<span class="pass"><i><\/i>passed<\/span> <span class="fail"><i><\/i>failed<\/span>/);
 });
 
 test("the page never builds markup from data", () => {
