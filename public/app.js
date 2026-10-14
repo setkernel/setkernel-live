@@ -219,7 +219,7 @@ function showStatus(connected) {
   showAge();
 }
 
-// a brief pulse of the status dot each time a batch or heartbeat arrives; none under reduced motion
+// a brief pulse of the status dot each time data arrives (hello, batch or heartbeat); none under reduced motion
 // (then only the age above changes)
 const dot = $("status").querySelector("i");
 dot.addEventListener("animationend", () => dot.classList.remove("pulse"));
@@ -265,7 +265,7 @@ function apply(msg) {
   for (const k of ["agents", "counts", "byAgent", "seen", "feed", "ci", "hours"]) if (msg[k] && typeof msg[k] === "object") current[k] = msg[k];
   if (typeof msg.lastIngest === "number") current.lastIngest = msg.lastIngest;
   render(true);
-  if (msg.t === "batch") pulse();
+  if (msg.t === "hello" || msg.t === "batch") pulse();
   if (msg.t === "batch" && Array.isArray(msg.events)) {
     announcer.add(msg.events);
     play(msg.events);

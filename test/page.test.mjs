@@ -141,6 +141,7 @@ test("the status dot pulses once per arrival, and not at all under reduced motio
   assert.doesNotMatch(css, /infinite/);
   assert.match(css, /@keyframes beat \{ 0% \{ box-shadow: 0 0 0 0 currentColor; \}/, "rings in the dot's own colour, so the demo dot rings in the accent");
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.status i\.pulse \{ animation: none; \} \}/);
+  assert.match(read("app.js"), /if \(msg\.t === "hello" \|\| msg\.t === "batch"\) pulse\(\);/, "the first data on connect pulses too");
 });
 
 test("the page never builds markup from data", () => {
