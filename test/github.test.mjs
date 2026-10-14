@@ -2,7 +2,7 @@
 // cursor. Run: npm test
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cleanDelivery, cleanWebhook, emptyQueue, fetchHub, MAX_WEBHOOK_BODY, parseCursor, pushEvent, readCapped, readQueue, verifySignature } from "../src/github.js";
+import { EVENTS, actorFor, cleanDelivery, cleanWebhook, emptyQueue, fetchHub, MAX_WEBHOOK_BODY, parseCursor, pushEvent, readCapped, readQueue, verifySignature } from "../src/github.js";
 
 const SECRET = "test-secret-not-real";
 async function sign(body, secret = SECRET) {
@@ -42,6 +42,104 @@ const deployPayload = (state = "success") => ({
   workflow: { name: "Deploy" },
   repository: { name: "setkernel-live", private: false },
   sender: { login: "someone" },
+});
+
+// A pull_request payload by `login` from branch `head`, with the fields that must never come through.
+const prPayload = ({ action = "opened", login = "vega-setkernel", head = "agent/33-secret-branch", merged = false, repo = {} } = {}) => ({
+  action,
+  number: 4242,
+  pull_request: {
+    id: 777001,
+    number: 4242,
+    title: "feat: secret title",
+    body: "secret body",
+    html_url: "https://github.com/setkernel/hidden/pull/4242",
+    user: { login, id: 1 },
+    head: { ref: head, sha: "abc123", label: `setkernel:${head}` },
+    base: { ref: "main" },
+    merged,
+    merged_by: merged ? { login: "realRaghavGupta" } : null,
+    created_at: "2026-10-14T12:00:00Z",
+    merged_at: merged ? "2026-10-14T13:00:00Z" : null,
+  },
+  repository: { name: "setkernel-live", full_name: "setkernel/setkernel-live", private: false, ...repo },
+  sender: { login },
+});
+const reviewPayload = ({ state = "approved", login = "rigel-setkernel", head = "agent/33-secret-branch", action = "submitted" } = {}) => ({
+  ...prPayload({ action, login: "vega-setkernel", head }),
+  review: { id: 555, state, body: "secret review", user: { login }, html_url: "https://github.com/x", submitted_at: "2026-10-14T12:30:00Z" },
+  sender: { login },
+});
+const NEVER_PR = ["secret", "4242", "777001", "vega-setkernel", "rigel-setkernel", "realRaghavGupta", "claude/", "agent/", "https://", "main", "abc"];
+
+test("pull requests and reviews are listened for next to CI", () => {
+  assert.deepEqual(EVENTS, ["workflow_run", "deployment_status", "pull_request", "pull_request_review"]);
+});
+
+test("actors: the four agents by login, Raghav's account only on a claude/ branch, nobody else", () => {
+  assert.equal(actorFor("vega-setkernel", "agent/1-x"), "Vega");
+  assert.equal(actorFor("Rigel-Setkernel", undefined), "Rigel", "logins are case-insensitive");
+  assert.equal(actorFor("lyra-setkernel", "claude/x"), "Lyra");
+  assert.equal(actorFor("orion-setkernel", "main"), "Orion");
+  assert.equal(actorFor("realRaghavGupta", "claude/fix-the-thing"), "Claude");
+  assert.equal(actorFor("realraghavgupta", "claude/x"), "Claude");
+  for (const head of ["agent/33-x", "feature/claude/x", "Claude/x", "claude", "main", undefined, 7]) assert.equal(actorFor("realRaghavGupta", head), null, `Raghav on ${head}`);
+  for (const login of ["someone", "dependabot[bot]", "vega", "vega-setkernel-evil", "", undefined, null, 5, "constructor", "__proto__", "toString"]) {
+    assert.equal(actorFor(login, "claude/x"), null, String(login));
+  }
+});
+
+test("pull requests: opened and merged keep only kind, action, repo, private, actor and time", () => {
+  const opened = cleanWebhook("pull_request", prPayload());
+  assert.deepEqual(opened, { key: "pr:777001:opened_pr", event: { kind: "pr", repo: "setkernel-live", private: false, action: "opened_pr", actor: "Vega", ts: Date.parse("2026-10-14T12:00:00Z") / 1000 } });
+  const merged = cleanWebhook("pull_request", prPayload({ action: "closed", merged: true, login: "realRaghavGupta", head: "claude/secret-branch" }));
+  assert.deepEqual(merged, { key: "pr:777001:merged", event: { kind: "pr", repo: "setkernel-live", private: false, action: "merged", actor: "Claude", ts: Date.parse("2026-10-14T13:00:00Z") / 1000 } });
+  for (const c of [opened, merged]) {
+    const text = JSON.stringify(c.event);
+    for (const never of NEVER_PR) assert.ok(!text.includes(never), `${never} leaked: ${text}`);
+  }
+  // the author is the actor, not whoever merged it
+  assert.equal(cleanWebhook("pull_request", prPayload({ action: "closed", merged: true, login: "orion-setkernel" })).event.actor, "Orion");
+  assert.equal(cleanWebhook("pull_request", prPayload({ repo: { private: true } })).event.private, true);
+  assert.equal(cleanWebhook("pull_request", prPayload({ repo: { private: undefined } })).event.private, true);
+});
+
+test("pull requests: closed unmerged, other actions, Raghav off claude/ and unknown logins are dropped", () => {
+  assert.equal(cleanWebhook("pull_request", prPayload({ action: "closed", merged: false })), null);
+  assert.equal(cleanWebhook("pull_request", prPayload({ action: "closed", merged: "true" })), null);
+  for (const action of ["edited", "synchronize", "reopened", "labeled", "ready_for_review", "assigned"]) assert.equal(cleanWebhook("pull_request", prPayload({ action })), null, action);
+  assert.equal(cleanWebhook("pull_request", prPayload({ login: "realRaghavGupta", head: "agent/33-x" })), null, "Raghav's own pull request");
+  assert.equal(cleanWebhook("pull_request", prPayload({ action: "closed", merged: true, login: "realRaghavGupta", head: "fix/x" })), null);
+  assert.equal(cleanWebhook("pull_request", prPayload({ login: "someone-else", head: "claude/x" })), null, "an unknown login");
+  assert.equal(cleanWebhook("pull_request", { ...prPayload(), pull_request: { ...prPayload().pull_request, id: "1" } }), null);
+  assert.equal(cleanWebhook("pull_request", { ...prPayload(), pull_request: undefined }), null);
+  assert.equal(cleanWebhook("pull_request", prPayload({ repo: { name: "../x" } })), null);
+});
+
+test("reviews: approvals and change requests by a known reviewer, nothing else", () => {
+  const ok = cleanWebhook("pull_request_review", reviewPayload());
+  assert.deepEqual(ok, { key: "review:555", event: { kind: "pr", repo: "setkernel-live", private: false, action: "approved", actor: "Rigel", ts: Date.parse("2026-10-14T12:30:00Z") / 1000 } });
+  for (const never of NEVER_PR) assert.ok(!JSON.stringify(ok.event).includes(never), never);
+  assert.equal(cleanWebhook("pull_request_review", reviewPayload({ state: "changes_requested" })).event.action, "requested_changes");
+  assert.equal(cleanWebhook("pull_request_review", reviewPayload({ state: "APPROVED" })).event.action, "approved");
+  // the reviewer is the actor; Raghav's account counts only on a claude/ branch
+  assert.equal(cleanWebhook("pull_request_review", reviewPayload({ login: "realRaghavGupta", head: "claude/x" })).event.actor, "Claude");
+  assert.equal(cleanWebhook("pull_request_review", reviewPayload({ login: "realRaghavGupta" })), null, "Raghav reviewing off claude/");
+  assert.equal(cleanWebhook("pull_request_review", reviewPayload({ login: "stranger" })), null);
+  for (const state of ["commented", "dismissed", "pending", "", null]) assert.equal(cleanWebhook("pull_request_review", reviewPayload({ state })), null, String(state));
+  for (const action of ["edited", "dismissed"]) assert.equal(cleanWebhook("pull_request_review", reviewPayload({ action })), null, action);
+});
+
+test("a pull request's open, merge and each review queue once each; a repeated open replaces itself", () => {
+  let q = emptyQueue();
+  q = pushEvent(q, "d-1", cleanWebhook("pull_request", prPayload())).queue;
+  q = pushEvent(q, "d-2", cleanWebhook("pull_request_review", reviewPayload())).queue;
+  q = pushEvent(q, "d-3", cleanWebhook("pull_request", prPayload({ action: "closed", merged: true }))).queue;
+  q = pushEvent(q, "d-4", cleanWebhook("pull_request", prPayload())).queue; // the same open, delivered again under a new id
+  assert.deepEqual(q.items.map((it) => it.event.action), ["approved", "merged", "opened_pr"]);
+  const out = readQueue(q, 0);
+  for (const e of out.events) assert.deepEqual(Object.keys(e).sort(), ["action", "actor", "cursor", "kind", "private", "repo", "ts"]);
+  assert.ok(!JSON.stringify(out).includes("777001") && !JSON.stringify(out).includes("review:"), "keys stay inside the Hub");
 });
 
 test("a good signature passes; a bad, missing or wrong-secret one fails", async () => {

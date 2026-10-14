@@ -4,7 +4,7 @@
 //   GET  /api/state       the current picture as JSON, plus the deployed commit (VERSION) of the Hub's code
 //   GET  /api/replay      the last hour (?h=1) or 24 hours (?h=24) of allowlisted events, for the replay
 //   POST /ingest          batches from sk-obs01 (Access service token at the edge, checked again here)
-//   POST /github/webhook  GitHub Actions events from the org webhook (public; HMAC-signed)
+//   POST /github/webhook  GitHub Actions, pull request and review events from the org webhook (public; HMAC-signed)
 //   GET  /github/queue    those events, cut down, for sk-obs01 to pull (its own Access token, checked again)
 // One Durable Object ("live") holds the picture, a capped 24-hour replay buffer and the GitHub queue,
 // and fans batches out to every open WebSocket.

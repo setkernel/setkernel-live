@@ -5,12 +5,24 @@
 // Stored per run, and nothing else: repo name, private flag, workflow name, conclusion and time
 // (plus whether it was a workflow run or a deployment). Never commit messages, branch names,
 // URLs, actors or deployment environment names. The raw payload is never stored.
+//
+// Pull requests and reviews (setkernel-live#33): repo name, private flag, the action, the time and
+// an actor, which is a name from ACTORS below or "Claude", never the login itself. Never a title,
+// number, body, branch name, URL or login. A pull request by anyone else is ignored.
 
 export const MAX_WEBHOOK_BODY = 512 * 1024; // a workflow_run payload is tens of KB
 export const QUEUE_CAP = 500; // events kept for sk-obs01; the oldest go first
 export const DELIVERY_CAP = 2000; // X-GitHub-Delivery ids remembered for dedupe
 export const PULL_LIMIT = 200; // events per pull
-export const EVENTS = ["workflow_run", "deployment_status"];
+export const EVENTS = ["workflow_run", "deployment_status", "pull_request", "pull_request_review"];
+
+// GitHub logins -> the names the walls show (logins are case-insensitive). Raghav's own account
+// counts only on a claude/ branch, where it is one of Raghav's Claude sessions; Raghav's own pull
+// requests and reviews, and everyone else's, are dropped.
+const ACTORS = { "vega-setkernel": "Vega", "rigel-setkernel": "Rigel", "lyra-setkernel": "Lyra", "orion-setkernel": "Orion" };
+const CLAUDE_LOGIN = "realraghavgupta";
+const CLAUDE_BRANCH = "claude/";
+const REVIEW_ACTIONS = { approved: "approved", changes_requested: "requested_changes" }; // comments and dismissals are dropped
 
 const REPO = /^[A-Za-z0-9._-]{1,100}$/;
 const DELIVERY = /^[A-Za-z0-9-]{1,64}$/;
@@ -74,6 +86,16 @@ function toSeconds(v, now) {
 // A verified delivery -> { key, event } to queue, or null to ignore it. `key` collapses every
 // delivery about the same run (re-runs, redelivered or repeated statuses) to one queued event;
 // it stays inside the Hub and is never handed out.
+// Who did it, as the walls name them, or null to drop the event. `head` is the pull request's head
+// branch; it is only read here, never kept.
+export function actorFor(login, head) {
+  if (typeof login !== "string") return null;
+  const l = login.toLowerCase();
+  if (Object.hasOwn(ACTORS, l)) return ACTORS[l];
+  if (l === CLAUDE_LOGIN && typeof head === "string" && head.startsWith(CLAUDE_BRANCH)) return "Claude";
+  return null;
+}
+
 export function cleanWebhook(eventName, payload, now = Date.now()) {
   if (!payload || typeof payload !== "object") return null;
   const repo = payload.repository;
@@ -95,6 +117,30 @@ export function cleanWebhook(eventName, payload, now = Date.now()) {
     // never the environment name; the workflow's name when a workflow made the deployment
     const workflow = cleanName(payload.workflow?.name, "deployment");
     return { key: `deploy:${deployment.id}`, event: { kind: "deploy", ...base, workflow, conclusion: status.state, ts: toSeconds(status.updated_at ?? status.created_at, now) } };
+  }
+  const pr = payload.pull_request;
+  if (!pr || typeof pr !== "object" || !Number.isSafeInteger(pr.id)) return null;
+  const head = pr.head?.ref;
+  if (eventName === "pull_request") {
+    // opened, or merged (the author's pull request, whoever pressed the button); a closed one that
+    // wasn't merged, and every other action, is dropped
+    let action, at;
+    if (payload.action === "opened") [action, at] = ["opened_pr", pr.created_at];
+    else if (payload.action === "closed" && pr.merged === true) [action, at] = ["merged", pr.merged_at];
+    else return null;
+    const actor = actorFor(pr.user?.login, head);
+    if (!actor) return null;
+    return { key: `pr:${pr.id}:${action}`, event: { kind: "pr", ...base, action, actor, ts: toSeconds(at, now) } };
+  }
+  if (eventName === "pull_request_review") {
+    const review = payload.review;
+    if (payload.action !== "submitted" || !review || !Number.isSafeInteger(review.id)) return null;
+    const state = typeof review.state === "string" ? review.state.toLowerCase() : "";
+    const action = Object.hasOwn(REVIEW_ACTIONS, state) ? REVIEW_ACTIONS[state] : null;
+    if (!action) return null;
+    const actor = actorFor(review.user?.login, head);
+    if (!actor) return null;
+    return { key: `review:${review.id}`, event: { kind: "pr", ...base, action, actor, ts: toSeconds(review.submitted_at, now) } };
   }
   return null;
 }

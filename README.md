@@ -1,8 +1,9 @@
 # setkernel-live
 
 **https://live.setkernel.com**: what setkernel's four AI engineers (Vega, Rigel, Lyra and Orion)
-are doing, about a minute behind, drawn as a night sky. Each agent is a star whose glow follows its
-work; each Claude request, GitHub action or team-chat post is a pulse of light from the star to
+are doing, about a minute behind, drawn as a night sky. A fifth star, Claude, is Raghav's own
+Claude (cloud sessions, Raghav's machine and the lead chat), seen only through its pull requests
+and reviews. Each agent is a star whose glow follows its work; each Claude request, GitHub action or team-chat post is a pulse of light from the star to
 where the work went, and a review draws a line between two stars. Under the sky: today in a few
 numbers, the last 24 hours, and the recent-work stream.
 
@@ -68,10 +69,11 @@ version and "Rollback". The Durable Object again takes a few minutes to follow; 
 Cloudflare won't roll back across a Durable Object migration: if the bad deploy added one, fix
 forward.
 
-## GitHub Actions results
+## GitHub Actions results, pull requests and reviews
 
 ```
-GitHub (org webhook) ── workflow_run, deployment_status ──▶  /github/webhook  ──▶  queue in the
+GitHub (org webhook) ── workflow_run, deployment_status, ──▶  /github/webhook  ──▶  queue in the
+                        pull_request, pull_request_review
                                                                                   Durable Object
 sk-obs01 ◀── pulls ── /github/queue?since=<cursor> (Access: live-queue service token only) ◀──┘
 ```
@@ -80,12 +82,21 @@ The office still accepts no connections: GitHub calls the Worker, and sk-obs01 p
 
 - `POST /github/webhook` is public, because GitHub calls it. The Worker caps the body at 512 KB,
   checks `X-Hub-Signature-256` against `GITHUB_WEBHOOK_SECRET`, ignores repeated
-  `X-GitHub-Delivery` ids, and accepts only completed `workflow_run` and finished
-  (`success`, `failure`, `error`) `deployment_status` events. Every other event is ignored.
+  `X-GitHub-Delivery` ids, and accepts only completed `workflow_run`, finished
+  (`success`, `failure`, `error`) `deployment_status`, `pull_request` (`opened`, and `closed`
+  when merged) and `pull_request_review` (`submitted`, approved or changes requested) events.
+  Every other event is ignored (202 "Ignored").
 - Each run or deployment is one queued event; a re-run replaces it. Only the repo name, whether
   the repo is private (anything unclear counts as private), the workflow name, the conclusion and
   the time are kept. Never the payload, commit messages, branch names, URLs, actors or environment
   names. The queue keeps the latest 500 events.
+- A pull request event keeps `kind: "pr"`, the repo name, `private`, the action (`opened_pr`,
+  `merged`, `approved`, `requested_changes`), the time and an `actor`. The actor is a name, never
+  the login: `vega-setkernel`, `rigel-setkernel`, `lyra-setkernel` and `orion-setkernel` become
+  Vega, Rigel, Lyra and Orion; Raghav's account becomes `Claude` only on a head branch starting
+  `claude/`. For an open or a merge the actor is the pull request's author; for a review, the
+  reviewer. Anyone else, and Raghav off a `claude/` branch, is dropped. Never a title, number,
+  body, branch name, URL or login. Each open, merge and review is one queued event.
 - `GET /github/queue?since=<cursor>` returns `{ events, cursor, more, gap }`: up to 200 events
   after the cursor, oldest first, each with its own `cursor`. Send the returned `cursor` next
   time. `more` means pull again now; `gap` means events after your cursor were dropped by the cap.
@@ -114,6 +125,8 @@ deliveries (github.com/organizations/setkernel/settings/hooks) and redeliver any
    `https://live.setkernel.com/github/webhook`, content type `application/json`, the same secret,
    SSL verification on, and "Let me select individual events" with only **Workflow runs** and
    **Deployment statuses** ticked. GitHub's ping should get `200 pong`.
+   Once the pull request receiver (setkernel-live#33) is deployed, also tick **Pull requests**
+   and **Pull request reviews**. Before that deploy the receiver answers 202 "Ignored" to them.
 4. After setkernel-cloudflare#54 is applied, put its audience tag in `QUEUE_AUD` in
    `wrangler.jsonc` (a PR) and deploy again.
 
