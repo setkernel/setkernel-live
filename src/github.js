@@ -205,7 +205,7 @@ export function emptyQueue() {
   return { seq: 0, dropped: 0, items: [], deliveries: [] };
 }
 
-// Add a delivery's cleaned events, in order (returns { queue, added }). A delivery id seen before
+// Add a delivery's cleaned events, a list in order (returns { queue, added }). A delivery id seen before
 // is a duplicate and changes nothing. An event for a run already queued replaces it and moves to
 // the end with a new cursor, so a re-run reaches sk-obs01 again but the queue holds one per run.
 export function pushEvent(queue, delivery, cleaned, { cap = QUEUE_CAP, deliveryCap = DELIVERY_CAP } = {}) {
@@ -214,7 +214,7 @@ export function pushEvent(queue, delivery, cleaned, { cap = QUEUE_CAP, deliveryC
   const deliveries = [...q.deliveries, delivery].slice(-deliveryCap);
   let seq = q.seq;
   let items = q.items;
-  for (const c of Array.isArray(cleaned) ? cleaned : [cleaned]) {
+  for (const c of cleaned) {
     seq++;
     items = items.filter((it) => it.key !== c.key);
     items.push({ seq, key: c.key, event: c.event });

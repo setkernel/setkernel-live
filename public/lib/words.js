@@ -23,8 +23,7 @@ export const STAR_NOTE = { Polaris: "the director" };
 
 // Where a GitHub action happened, when the event names no repo: a private one. A design-discussion
 // post isn't in a repo, and a request is sent to the team, so they say nothing.
-const NOWHERE = new Set(["posted_round", "opened_issue"]);
-export const whereWork = (e) => (NOWHERE.has(e?.action) ? "" : e?.repo || "a private project");
+export const whereWork = (e) => (e?.action === "opened_issue" ? "" : e?.repo || (e?.action === "posted_round" ? "" : "a private project"));
 
 const DOING = {
   issue: "working on an issue",

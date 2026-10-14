@@ -453,6 +453,20 @@ describe("GitHub webhook and queue", () => {
     expect(q.events.flatMap(Object.values).filter((v) => [8801, 9901, 9902, 9002, 4243, 78, "8801", "4243", "78"].includes(v))).toEqual([]);
   });
 
+  it("pushes a delivery's events on a route an older Hub doesn't know, and still takes one from an older Worker", async () => {
+    // what the Worker sends now: a list, on push-all, which a Hub on older code answers 404 to (so
+    // fetchHub waits for the new one) instead of queueing an empty item
+    const calls = [];
+    const fakeHub = { idFromName: () => "id", get: () => ({ fetch: async (url, init) => { calls.push([new URL(url).pathname, JSON.parse(init.body)]); return new Response("Queued", { status: 202 }); } }) };
+    expect(await deliver("workflow_run", run(51), { delivery: "new-1", envOverride: { ...withSecret, HUB: fakeHub } })).toEqual({ status: 202, text: "Queued" });
+    expect(calls).toEqual([["/github/push-all", { delivery: "new-1", events: [{ key: "run:51", event: expect.objectContaining({ kind: "run", workflow: "deploy" }) }] }]]);
+    // a Worker still on older code sends one event on push: the new Hub queues it
+    const res = await hub().fetch("https://hub/github/push", { method: "POST", body: JSON.stringify({ delivery: "old-1", cleaned: { key: "run:52", event: { kind: "run", repo: "setkernel-live", private: false, workflow: "CI", conclusion: "success", ts: 1 } } }) });
+    expect([res.status, await res.text()]).toEqual([202, "Queued"]);
+    const q = JSON.parse((await pull()).body);
+    expect(q.events.map((e) => [e.cursor, e.kind, e.workflow])).toEqual([[1, "run", "CI"]]);
+  });
+
   it("guards the queue: 503 while QUEUE_AUD is empty, 405, 403 and a bad cursor", async () => {
     expect((await pull("", { envOverride: { ...env, QUEUE_AUD: "" } })).status).toBe(503);
     const post = await worker.fetch(new Request(`${BASE}/github/queue`, { method: "POST" }), env);

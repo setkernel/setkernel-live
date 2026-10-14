@@ -182,10 +182,10 @@ test("reviews by the director's account: the review's signature, never the pull 
 
 test("a pull request's open, merge and each review queue once each; a repeated open replaces itself", () => {
   let q = emptyQueue();
-  q = pushEvent(q, "d-1", one("pull_request", prPayload())).queue;
-  q = pushEvent(q, "d-2", one("pull_request_review", reviewPayload())).queue;
-  q = pushEvent(q, "d-3", one("pull_request", prPayload({ action: "closed", merged: true }))).queue;
-  q = pushEvent(q, "d-4", one("pull_request", prPayload())).queue; // the same open, delivered again under a new id
+  q = pushEvent(q, "d-1", cleanWebhook("pull_request", prPayload())).queue;
+  q = pushEvent(q, "d-2", cleanWebhook("pull_request_review", reviewPayload())).queue;
+  q = pushEvent(q, "d-3", cleanWebhook("pull_request", prPayload({ action: "closed", merged: true }))).queue;
+  q = pushEvent(q, "d-4", cleanWebhook("pull_request", prPayload())).queue; // the same open, delivered again under a new id
   assert.deepEqual(q.items.map((it) => it.event.action), ["approved", "merged", "opened_pr"]);
   const out = readQueue(q, 0);
   for (const e of out.events) assert.deepEqual(Object.keys(e).sort(), ["action", "actor", "cursor", "kind", "private", "repo", "ts"]);
@@ -237,7 +237,7 @@ test("requests never carry an issue's title, body, number, labels or a login", (
   }
   // and the queue hands out nothing more
   let q = emptyQueue();
-  all.forEach((c, i) => { q = pushEvent(q, `d-${i}`, c).queue; });
+  all.forEach((c, i) => { q = pushEvent(q, `d-${i}`, [c]).queue; });
   const pulled = JSON.stringify(readQueue(q, 0));
   for (const never of [...NEVER_REQUEST, "issue:", "comment:"]) assert.ok(!pulled.includes(never), `${never} leaked from the queue`);
 });
@@ -361,7 +361,7 @@ test("a workflow name is cleaned and never taken from the run title", () => {
 });
 
 test("a delivery id seen before changes nothing", () => {
-  const ev = one("workflow_run", runPayload());
+  const ev = cleanWebhook("workflow_run", runPayload());
   const first = pushEvent(emptyQueue(), "d-1", ev);
   assert.equal(first.added, true);
   const again = pushEvent(first.queue, "d-1", ev);
@@ -371,22 +371,22 @@ test("a delivery id seen before changes nothing", () => {
   for (const bad of [null, "", "x".repeat(65), "a b", "a/b"]) assert.equal(cleanDelivery(bad), null);
   // the remembered ids are capped
   let q = emptyQueue();
-  for (let i = 0; i < 5; i++) q = pushEvent(q, `d-${i}`, { key: `run:${i}`, event: { kind: "run" } }, { deliveryCap: 3 }).queue;
+  for (let i = 0; i < 5; i++) q = pushEvent(q, `d-${i}`, [{ key: `run:${i}`, event: { kind: "run" } }], { deliveryCap: 3 }).queue;
   assert.deepEqual(q.deliveries, ["d-2", "d-3", "d-4"]);
 });
 
 test("each run collapses to one queued event, the latest, with a new cursor", () => {
   let q = emptyQueue();
-  q = pushEvent(q, "d-1", one("workflow_run", runPayload({ run: { conclusion: "failure" } }))).queue;
-  q = pushEvent(q, "d-2", one("workflow_run", runPayload({ run: { id: 2002 } }))).queue;
-  q = pushEvent(q, "d-3", one("workflow_run", runPayload({ run: { conclusion: "success", run_attempt: 2 } }))).queue; // re-run of 1001
+  q = pushEvent(q, "d-1", cleanWebhook("workflow_run", runPayload({ run: { conclusion: "failure" } }))).queue;
+  q = pushEvent(q, "d-2", cleanWebhook("workflow_run", runPayload({ run: { id: 2002 } }))).queue;
+  q = pushEvent(q, "d-3", cleanWebhook("workflow_run", runPayload({ run: { conclusion: "success", run_attempt: 2 } }))).queue; // re-run of 1001
   assert.equal(q.items.length, 2);
   assert.deepEqual(q.items.map((it) => [it.key, it.seq, it.event.conclusion]), [["run:2002", 2, "success"], ["run:1001", 3, "success"]]);
 });
 
 test("the pull cursor returns only newer events, in order, with nothing but the stored fields", () => {
   let q = emptyQueue();
-  for (let i = 1; i <= 5; i++) q = pushEvent(q, `d-${i}`, one("workflow_run", runPayload({ run: { id: i } }))).queue;
+  for (let i = 1; i <= 5; i++) q = pushEvent(q, `d-${i}`, cleanWebhook("workflow_run", runPayload({ run: { id: i } }))).queue;
   const all = readQueue(q, 0);
   assert.deepEqual(all.events.map((e) => e.cursor), [1, 2, 3, 4, 5]);
   assert.equal(all.cursor, 5);
@@ -414,7 +414,7 @@ test("the pull cursor returns only newer events, in order, with nothing but the 
 
 test("the queue is capped, and a cursor behind the cap reports a gap", () => {
   let q = emptyQueue();
-  for (let i = 1; i <= 6; i++) q = pushEvent(q, `d-${i}`, { key: `run:${i}`, event: { kind: "run" } }, { cap: 4 }).queue;
+  for (let i = 1; i <= 6; i++) q = pushEvent(q, `d-${i}`, [{ key: `run:${i}`, event: { kind: "run" } }], { cap: 4 }).queue;
   assert.deepEqual(q.items.map((it) => it.seq), [3, 4, 5, 6]);
   assert.equal(q.dropped, 2);
   assert.equal(readQueue(q, 1).gap, true);
