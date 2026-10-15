@@ -13,10 +13,10 @@ Public repo: everything here is visible to anyone.
 ## Commands
 ```sh
 # install:  npm ci
-# test:     npm test                 (node --test: allowlist, state and replay buffer, the line's columns,
-#                                    Access token check, GitHub receiver, page wording/headline/star card/
-#                                    demo/replay/layout, page hosts and contrast, Day/Night choice and
-#                                    the Day sky, the smoke check)
+# test:     npm test                 (node --test: allowlist, state, the Halifax day and replay buffer,
+#                                    the line's columns, Access token check, GitHub receiver, page wording/
+#                                    headline/demo/replay, Day's lanes/Now column/key/scrubbing/fitWall,
+#                                    page hosts, fonts and contrast, the smoke check)
 # worker:   npm run test:worker      (vitest in workerd: the real Worker and Hub, see test/worker/)
 # lint:     npm run check            (node --check on every script)
 # validate: npm run validate         (check + test + test:worker + wrangler deploy --dry-run; what CI runs)
@@ -34,16 +34,20 @@ a laptop.
 - `src/logic.js`: the allowlist (pure, tested); re-exports the state from `public/lib/state.js`.
 - `src/access.js`: checks the Cloudflare Access token on `/ingest` and `/github/queue` (pure, tested).
 - `src/github.js`: the GitHub Actions webhook check, the fields it keeps, and the pull queue (pure, tested).
-- `public/`: the page (`index.html`, `app.js`, `style.css`), its security headers (`_headers`),
-  `favicon.svg`, `og.png` (the share preview) and `fonts/`.
-- `public/lib/`: ES modules for the page. `state.js` is the public state and the 24-hour replay
-  buffer; the Durable Object and `?demo` both run it. `line.js` derives each engineer's column on
-  the line (state.js keeps the lanes). `words.js` (wording, the headline, aria-live summary),
-  `card.js` (the star card and board card words), `demo.js` (seeded sample data), `replay.js` (the
-  replay show) and `layout.js` (the sky at any size) are pure and tested; `sky.js` draws the canvas.
+- `public/`: the page, v3 "Day" (`index.html`, `app.js`, `style.css`, `early.js` for `?wall`
+  before the first paint), its security headers (`_headers`), `favicon.svg`, `og.png` (the share
+  preview, taken by `docs/design/v3/day/built/shoot.mjs`) and `fonts/`. The design is
+  `docs/design/v3/day/` (the prototype and its README); `built/` holds the built page's shots.
+- `public/lib/`: ES modules for the page. `state.js` is the public state, the Halifax day
+  (`homeDay`, `homeMidnight`) and the 24-hour replay buffer; the Durable Object and `?demo` both
+  run it. `line.js` derives each engineer's stage (state.js keeps the lanes). `words.js` (wording,
+  the headline, aria-live summary), `day.js` (the lanes, stages, marks, Now column, key, table and
+  scrubbing, from the view and the replay), `layout.js` (the grid, the page's modes and `fitWall`),
+  `demo.js` (seeded sample data and the busy and quiet days) and `replay.js` (the replay plan) are
+  pure and tested; `chart.js` draws the SVG.
 - `scripts/smoke.mjs`: the post-deploy smoke check (no dependencies); waits for `/api/state`'s
   `version` (the `VERSION` var, set at deploy) to be the deployed commit, then checks each route.
-- `test/`: `node --test` suites for the pure modules and the page.
+- `test/`: `node --test` suites for the pure modules and the page (`day.test.mjs` for Day).
 - `test/worker/`: vitest suites run in workerd by `@cloudflare/vitest-plugin` (`vitest.config.mjs`
   reads `wrangler.jsonc`). They fake Access's certs with a throwaway key and drive every route
   end to end.
@@ -61,12 +65,17 @@ a laptop.
 - `public/lib/state.js` is served to visitors (demo mode runs it) and bundled into the Worker.
   It must stay pure and hold nothing private. The replay buffer is capped so the stored value
   stays under 128 KiB even at its worst (`test/state.test.mjs`); keep that test passing if you add a column.
-- `?demo` data must pass `cleanEvent` unchanged (`test/page-logic.test.mjs`). If the allowlist
-  changes, the demo changes with it.
-- Text colours are checked for contrast in `test/page.test.mjs`, in Night (`:root`) and Day
-  (`html[data-theme="day"]`); a new colour goes in its list and needs a value in both themes.
-- `public/early.js` picks Day or Night before the first paint and is the only place that touches
-  `localStorage`; keep every read and write in its try/catch.
+- "Today" is the Halifax day: the Worker passes `homeDay()` as `applyBatch`'s day key, so the counts
+  reset at midnight in Halifax (AST or ADT), and the page shows that midnight on the visitor's clock.
+- `?demo` data (and `?demo=quiet|offline|waiting`) must pass `cleanEvent` unchanged
+  (`test/page-logic.test.mjs`). If the allowlist changes, the demo changes with it. The demo names
+  only a real public repo.
+- Text colours are checked for contrast in `test/page.test.mjs`, on the page (`:root`) and on the
+  wall (`html.wall`, one fixed dark theme); a new colour goes in its list and needs a value in both.
+  Nothing on the page is under 12 px. The page stores nothing (no `localStorage`).
+- Every SVG colour is a class in `style.css` (`f-*`, `s-*`, `st-*`), never a `style` attribute or a
+  `var()` in script: the CSP allows no inline style. A wall's size comes only from `fitWall`
+  scaling the 1440 x 810 canvas; never lay the wall out at the screen's own size.
 - The page builds everything with `textContent`, never `innerHTML`; keep it that way. The CSP in
   `public/_headers` allows only same-origin scripts, styles and fonts; the fonts are self-hosted in
   `public/fonts/` (SIL OFL, licences beside them). Never add a third-party host.
