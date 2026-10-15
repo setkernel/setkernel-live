@@ -62,6 +62,45 @@ test("every @font-face file exists, is woff2 and swaps, and ships with its licen
   }
 });
 
+// ---- fonts everywhere (setkernel/hq docs/repo-standard.md, "Fonts"): the page and the design
+// mockups name only the self-hosted faces, then one generic family, and load no font CDN
+const repo = new URL("../", import.meta.url);
+const fontFiles = [
+  "public/style.css", "public/index.html",
+  ...readdirSync(new URL("docs/design/", repo), { recursive: true }).filter((f) => /\.(html|css)$/.test(f)).map((f) => `docs/design/${f}`),
+];
+// base64 data could spell anything, so drop data URLs before looking at the words
+const fontText = (file) => readFileSync(new URL(file, repo), "utf8").replace(/data:[\w/+.-]+;base64,[A-Za-z0-9+/=]+/g, "data:");
+
+test("every font stack is a self-hosted face, then one generic family", () => {
+  let stacks = 0;
+  for (const file of fontFiles) {
+    const text = fontText(file).replace(/@font-face\s*{[^}]*}/g, "");
+    for (const m of text.matchAll(/(?:font-family|--[\w-]+)\s*:\s*([^;}]*\b(?:sans-serif|serif|monospace|system-ui|cursive|fantasy)\b[^;}]*)/g)) {
+      stacks++;
+      assert.match(m[1].trim(), /^"(Manrope|IBM Plex Mono)",\s*(sans-serif|serif|monospace)$/, `${file}: ${m[0]}`);
+    }
+  }
+  assert.ok(stacks >= 6, "found the stacks in style.css and both design mockups");
+});
+
+test("no named system font and no font CDN, in the page or the design mockups", () => {
+  for (const file of [...fontFiles, "public/app.js", "public/lib/sky.js"]) {
+    const text = fontText(file);
+    assert.doesNotMatch(text, /system-ui|-apple-system|BlinkMacSystemFont|Segoe UI|ui-(sans-serif|serif|monospace)|SF Mono|Menlo|Monaco|Consolas|Helvetica|Arial|Roboto|Georgia|Courier/i, file);
+    assert.doesNotMatch(text, /fonts\.googleapis\.com|fonts\.gstatic\.com|typekit\.net|fonts\.bunny\.net|fontawesome\.com|fontshare\.com|cdnfonts\.com/i, file);
+  }
+});
+
+test("the design mockups embed the page's own font files, whose licences sit beside them", () => {
+  const ours = new Set(readdirSync(new URL("fonts/", pub)).filter((f) => f.endsWith(".woff2")).map((f) => readFileSync(new URL(`fonts/${f}`, pub)).toString("base64")));
+  for (const file of ["docs/design/v2/reference.html", "docs/design/v3/day/index.html"]) {
+    const embedded = [...readFileSync(new URL(file, repo), "utf8").matchAll(/data:font\/woff2;base64,([A-Za-z0-9+/=]+)/g)].map((m) => m[1]);
+    assert.ok(embedded.length > 0, `${file} embeds its fonts`);
+    for (const data of embedded) assert.ok(ours.has(data), `${file} embeds a font that is not in public/fonts/; rerun its build script`);
+  }
+});
+
 // ---- contrast (WCAG AA): every text colour on the ground it is drawn on, in both themes
 const css = read("style.css");
 const block = (selector) => {

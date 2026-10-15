@@ -5,9 +5,10 @@ directly below it is "the line", a board that shows where each engineer's work i
 dark sky. Day draws the same page as a printed star chart.
 
 `reference.html` is the working mockup: open it locally in a browser. It runs on **demo data**,
-faster than the real team. It loads Google Fonts and uses inline CSS and JS for convenience; the
-real page can't (see "Rules carried over"). Treat it as the visual and behavioural reference, not as
-code to paste.
+faster than the real team. It uses inline CSS and JS for convenience; the real page can't (see
+"Rules carried over"). Its fonts are the page's own from `public/fonts/`, written in as data URLs by
+`node docs/design/v2/fonts.mjs`, so it loads nothing from another host. Treat it as the visual and
+behavioural reference, not as code to paste.
 
 | Night, 1440×900 | Day, 1440×900 |
 |---|---|
