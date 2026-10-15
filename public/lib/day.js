@@ -150,6 +150,9 @@ export function poleTally(c) {
   return parts.length ? parts.join(" · ") : "nothing yet today";
 }
 
+// "Fri 16 Oct", for a stage older than yesterday
+const dayDate = (ts, timeZone) => new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone }).format(new Date(ts * 1000));
+
 // What the Now column says for a row: now (or at the last word), or at a scrubbed column `i`.
 // Returns a list of lines; an engineer's also carries `idle` and `state` (drawn as a shape).
 const THEIR_OWN = { started: "Their own issue started at", building: "Their own issue started at", review: "Their own pull request has waited since", fixing: "Changes asked on their own pull request at" };
@@ -157,6 +160,9 @@ export function moment(D, row, i, tz) {
   const s = D.s;
   if (!s.lastIngest) return [];
   const when = (ts) => clock(ts, tz);
+  // a stage can be days old (a lane keeps its job until the next one): say which day, unless today
+  const dayOf = (ts) => (ts >= D.mid ? "" : ts >= homeMidnight(D.mid - 1) ? "yesterday " : `${dayDate(ts, tz)} `);
+  const whenDay = (ts) => `${dayOf(ts)}${when(ts)}`;
   if (row.kind === "ci") {
     if (i == null) {
       const c = D.ci.at(-1);
@@ -193,10 +199,10 @@ export function moment(D, row, i, tz) {
     // the stage is the lane's own job; an idle lane keeps only a review that waits on others, and
     // someone reviewing a teammate's work has their own job said in plain words
     let own = "";
-    if (col === "merged") own = `Merged ${since < D.mid ? "yesterday " : ""}at ${when(since)}`;
-    else if (col && !live) own = col === "review" ? `Waiting for review since ${when(since)}` : "";
-    else if (col && info.state === "REVIEW") own = `${THEIR_OWN[col]} ${when(col === "building" ? lane.at : since)}`;
-    else if (col) own = `${STAGE_NAME[col]} since ${when(since)}`;
+    if (col === "merged") own = `Merged ${dayOf(since)}at ${when(since)}`;
+    else if (col && !live) own = col === "review" ? `Waiting for review since ${whenDay(since)}` : "";
+    else if (col && info.state === "REVIEW") own = `${THEIR_OWN[col]} ${whenDay(col === "building" ? lane.at : since)}`;
+    else if (col) own = `${STAGE_NAME[col]} since ${whenDay(since)}`;
     const where = live && info.repo && info.state !== "REVIEW" ? info.repo : "";
     const out = [capital(live && info.repo ? doing(info).replace(` in ${info.repo}`, "") : doing(info)), [where, own].filter(Boolean).join(" · ")];
     out.idle = !live;

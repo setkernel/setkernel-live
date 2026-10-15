@@ -108,6 +108,17 @@ test("the Now column: what each lane is doing, then where and its own stage sinc
   assert.equal(momentTitle(D, 106, false, TZ), "10:20–10:30");
 });
 
+test("the Now column: a stage from before yesterday names its day, not \"yesterday\"", () => {
+  // a lane keeps its job until the next one, so a Friday merge still shows on Monday
+  const D = day([
+    gh("Lyra", "picked_up", adt(9, 0) - 3 * 86_400), gh("Lyra", "opened_pr", adt(10, 0) - 3 * 86_400), gh("Lyra", "merged", adt(16, 2) - 3 * 86_400),
+    gh("Rigel", "picked_up", adt(9, 0) - 2 * 86_400), gh("Rigel", "opened_pr", adt(10, 0) - 2 * 86_400),
+  ]);
+  const say = (id) => moment(D, { id, kind: "eng" }, null, TZ).slice(0, 2);
+  assert.deepEqual(say("Lyra"), ["Idle", "Merged Sun 11 Oct at 16:02"]);
+  assert.deepEqual(say("Rigel"), ["Idle", "Waiting for review since Mon 12 Oct 10:00"]);
+});
+
 test("the Now column: Polaris's last action and the guardians as one count; CI's last run", () => {
   const D = day([
     gh("Kochab", "opened_pr", adt(9, 0)), gh("Kochab", "merged", adt(9, 30)), gh("Pherkad", "opened_pr", adt(10, 0)),
