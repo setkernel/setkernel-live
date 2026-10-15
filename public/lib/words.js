@@ -1,7 +1,7 @@
 // What the page says, in words: the headline, each star's label, the feed lines and the summary a
 // screen reader hears through the aria-live region. No DOM here, so it runs under `node --test`.
 // Every string is shown with textContent, never as markup.
-import { AGENTS } from "./state.js";
+import { homeMidnight } from "./state.js";
 
 export const ACTION_TEXT = {
   picked_up: "started on an issue",
@@ -58,10 +58,11 @@ export function zoneName(t, timeZone, locale) {
 
 const localDay = (ms, timeZone) => format(`day ${timeZone}`, () => new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone })).format(new Date(ms));
 
-// The counters reset at midnight UTC; say when that was on the visitor's clock -> "since 21:00 ADT
-// yesterday" in Halifax just after midnight, "since 00:00 GMT" in London in winter.
+// The counters reset at midnight in Halifax (homeMidnight); say when that was on the visitor's
+// clock -> "since 00:00 ADT" in Halifax, "since 04:00 BST" in London, "since 13:00 JST yesterday"
+// in Tokyo just after midnight there.
 export function todaySince(now, timeZone, locale) {
-  const ms = toMs(now), midnight = Math.floor(ms / 86_400_000) * 86_400_000;
+  const ms = toMs(now), midnight = homeMidnight(Math.floor(ms / 1000)) * 1000;
   const when = `since ${clock(midnight, timeZone)} ${zoneName(midnight, timeZone, locale)}`.trimEnd();
   return localDay(midnight, timeZone) === localDay(ms, timeZone) ? when : `${when} yesterday`;
 }
@@ -224,7 +225,7 @@ export function headline({ agents = {}, seen = {}, feed = [], lastIngest = 0, no
   const last = feed[0];
   const latest = last ? merge([`Latest, ${clock(last.ts, timeZone)} ${zoneName(last.ts, timeZone)}`.trimEnd() + ": ", { name: last.agent }, ` ${deed(last)}.`]) : [];
   if (!lastIngest) {
-    return { forms: [["Waiting for the office to report in."]], latest: ["Nothing has arrived yet. Replay the last 24 hours, or watch the demo."], mood: "waiting" };
+    return { forms: [["Waiting for the office to report in."]], latest: ["Nothing has arrived yet. This page fills in by itself."], mood: "waiting" };
   }
   if (now - lastIngest > OFFLINE_AFTER_MS) {
     return { forms: [[`No word from the office since ${clock(lastIngest, timeZone)}.`]], latest: ["The engineers may still be working. This page catches up by itself."], mood: "offline" };

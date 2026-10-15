@@ -1,14 +1,14 @@
 // The static page: nothing loaded from other hosts (fonts are self-hosted, the CSP says so),
-// colour contrast, share-preview tags, favicon, the live regions, and no markup from data.
-// Run: npm test
+// colour contrast on the page and on the wall, type sizes, share-preview tags, the live regions,
+// keyboard access, and no markup or inline style from script. Run: npm test
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { skyLayout } from "../public/lib/layout.js";
-import { STAGE_NAME } from "../public/lib/line.js";
+import vm from "node:vm";
 
 const pub = new URL("../public/", import.meta.url);
 const read = (name) => readFileSync(new URL(name, pub), "utf8");
+const scripts = () => ["app.js", "early.js", ...readdirSync(new URL("lib/", pub)).map((n) => `lib/${n}`)];
 
 function csp() {
   const line = read("_headers").split("\n").find((l) => l.trim().startsWith("Content-Security-Policy:"));
@@ -21,12 +21,13 @@ function csp() {
   return out;
 }
 
-test("CSP allows styles and fonts only from the page itself", () => {
+test("CSP allows scripts, styles and fonts only from the page itself", () => {
   const p = csp();
   assert.deepEqual(p["style-src"], ["'self'"]);
   assert.deepEqual(p["font-src"], ["'self'"]);
   assert.deepEqual(p["script-src"], ["'self'"]);
   assert.deepEqual(p["default-src"], ["'none'"]);
+  assert.deepEqual(p["connect-src"], ["'self'", "wss://live.setkernel.com"], "the page talks only to its own API and WebSocket");
 });
 
 test("index.html and style.css fetch nothing from another host", () => {
@@ -36,14 +37,14 @@ test("index.html and style.css fetch nothing from another host", () => {
   }
   const css = read("style.css");
   assert.doesNotMatch(css, /@import/i);
-  for (const m of css.matchAll(/url\(\s*["']?([^"')]+)/g)) assert.ok(m[1].startsWith("/"), m[1]);
+  for (const m of css.matchAll(/url\(\s*["']?([^"')]+)/g)) assert.ok(m[1].startsWith("/") || m[1].startsWith("#"), m[1]);
   assert.doesNotMatch(html + css, /google|gstatic/i);
+  for (const f of scripts()) assert.doesNotMatch(read(f), /fetch\(\s*["'`]https?:/, `${f} fetches only from this origin`);
 });
 
-test("every @font-face file exists, is woff2 and swaps, and ships with its licence", () => {
+test("fonts: Manrope 400 and 600 and IBM Plex Mono 400, self-hosted woff2 with their licences, nothing unused", () => {
   const css = read("style.css");
   const faces = [...css.matchAll(/@font-face\s*{([^}]*)}/g)].map((m) => m[1]);
-  assert.equal(faces.length, 7, "Manrope 400 to 800 and IBM Plex Mono 400 and 500");
   const used = new Set();
   for (const face of faces) {
     assert.match(face, /font-display:\s*swap/);
@@ -54,15 +55,19 @@ test("every @font-face file exists, is woff2 and swaps, and ships with its licen
     assert.equal(readFileSync(file).subarray(0, 4).toString("latin1"), "wOF2", url);
     used.add(url.slice("/fonts/".length));
   }
+  assert.deepEqual([...used].sort(), ["ibm-plex-mono-latin-400-normal.woff2", "manrope-latin-400-normal.woff2", "manrope-latin-600-normal.woff2"]);
   const files = readdirSync(new URL("fonts/", pub));
   assert.deepEqual(files.filter((f) => f.endsWith(".woff2")).sort(), [...used].sort(), "no unused font files");
-  assert.ok(!files.some((f) => /barlow/i.test(f)), "Barlow is gone now nothing uses it");
   for (const licence of ["OFL-Manrope.txt", "OFL-IBM-Plex-Mono.txt"]) {
     assert.match(read(`fonts/${licence}`), /SIL Open Font License, Version 1\.1/, licence);
   }
+  // the preloads are the faces the page uses
+  for (const m of read("index.html").matchAll(/<link rel="preload" href="\/fonts\/([^"]+)"/g)) assert.ok(used.has(m[1]), m[1]);
+  // no weight the page has no face for
+  for (const m of css.matchAll(/font(?:-weight)?:\s*(\d00)\b/g)) assert.ok(["400", "600"].includes(m[1]), m[0]);
 });
 
-// ---- contrast (WCAG AA): every text colour on the ground it is drawn on, in both themes
+// ---- contrast (WCAG): every text colour on every ground it is drawn on, on the page and the wall
 const css = read("style.css");
 const block = (selector) => {
   const at = css.indexOf(`\n${selector} {`);
@@ -70,9 +75,8 @@ const block = (selector) => {
   return css.slice(at, css.indexOf("\n}", at));
 };
 const hexes = (text) => Object.fromEntries([...text.matchAll(/--([\w-]+):\s*(#[0-9a-f]{6})/gi)].map((m) => [m[1], m[2]]));
-const night = hexes(block(":root"));
-// Day overrides Night's colours; what it leaves alone stays Night's
-const day = { ...night, ...hexes(block('html[data-theme="day"]')) };
+const page = hexes(block(":root"));
+const wall = { ...page, ...hexes(block("html.wall")) };
 const luminance = (hex) => {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
     .map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
@@ -83,94 +87,67 @@ const contrast = (vars, a, b) => {
   return (hi + 0.05) / (lo + 0.05);
 };
 
-// Text sits on the night sky, from --bg (its darkest) to --panel (the lightest card or panel), so
-// every text colour is checked on both. In Day it sits on the paper (--bg), the cards (--panel) and
-// the board's and Today strip's wash (--wash). Every new text colour goes in one of these lists.
-const THEMES = [["Night", night, ["bg", "panel"]], ["Day", day, ["bg", "panel", "wash"]]];
-for (const [theme, vars, grounds] of THEMES) {
-  test(`${theme}: all text meets WCAG contrast on every ground, AAA for body text`, () => {
+// Text sits on the page ground (--bg) and on the Now column's and Now list's (--surface).
+// Every new text colour goes in TEXT; marks and lines that carry data go in MARKS.
+const TEXT = ["ink", "ink-2", "ink-3"];
+const MARKS = ["ink", "ink-2", "ink-3", "signal", "bar"];
+for (const [name, vars] of [["Page", page], ["Wall", wall]]) {
+  test(`${name}: every text colour meets WCAG AA on both grounds, AAA for names and body text`, () => {
     const check = (fg, bg, min) => {
       const ratio = contrast(vars, fg, bg);
-      assert.ok(ratio >= min, `${theme}: --${fg} on --${bg} is ${ratio.toFixed(2)}:1, under ${min}:1`);
+      assert.ok(ratio >= min, `${name}: --${fg} on --${bg} is ${ratio.toFixed(2)}:1, under ${min}:1`);
     };
-    // ink: headings, numbers, names; ink-2: body and secondary lines; polaris: the pole star's name
-    for (const fg of ["ink", "ink-2", "polaris"]) for (const bg of grounds) check(fg, bg, 7);
-    // ink-3: times, hints, labels; accent: links; the star colours: names in the headline, the feed
-    // and the cards; the places: station names and the per-hour labels; ok, fail, warn: LIVE, the
-    // failed-run ×, REPLAY
-    for (const fg of ["ink-3", "accent", "vega", "rigel", "lyra", "orion", "pole", "claude", "github", "chat", "ok", "fail", "warn"]) {
-      for (const bg of grounds) check(fg, bg, 4.5);
+    for (const bg of ["bg", "surface"]) {
+      for (const fg of ["ink", "ink-2"]) check(fg, bg, 7);
+      for (const fg of TEXT) check(fg, bg, 4.5);
     }
-    // the ground's colour on a colour: a pressed chip or theme button (--bg on --ink) and a merged
-    // token's letter (--bg on its author's colour)
-    for (const fg of ["ink", "vega", "rigel", "lyra", "orion", "polaris", "pole"]) check("bg", fg, 4.5);
+    // the scrub cursor's time: the ground's colour on the focus colour
+    check("bg", "focus", 4.5);
+    // the stage lines, the marks, the ticks and the band's edge: at least 3:1 (WCAG 1.4.11) on the chart's ground
+    for (const fg of MARKS) check(fg, "bg", 3);
+    check("focus", "bg", 3);
   });
 }
 
-// The slip is manila in both themes; its mark in Recent work and the comet take each theme's colour
-for (const [theme, vars, grounds] of THEMES) {
-  test(`${theme}: a request slip's words are dark on manila, AAA, and its mark and the comet stand out on every ground`, () => {
-    for (const bg of ["slip", "slip-2"]) {
-      const ratio = contrast(vars, "slip-ink", bg);
-      assert.ok(ratio >= 7, `${theme}: --slip-ink on --${bg} is ${ratio.toFixed(2)}:1 (AAA)`);
-    }
-    // not text, but they carry meaning: at least 3:1 (WCAG 1.4.11) on the sky, the paper and the panels
-    for (const fg of ["slip-mark", "comet"]) {
-      for (const bg of grounds) {
-        const ratio = contrast(vars, fg, bg);
-        assert.ok(ratio >= 3, `${theme}: --${fg} on --${bg} is ${ratio.toFixed(2)}:1`);
-      }
-    }
-  });
-}
-test("in Day the comet is ink, and the legend's comet follows the theme", () => {
-  assert.equal(day.comet, day.ink);
-  const html = read("index.html");
-  const item = html.match(/<li><svg [^>]*>(.*?)<\/svg>Request: comet → the team<\/li>/)?.[1] ?? "";
-  for (const k of ["k-comet-glow", "k-comet", "k-comet-head"]) assert.match(item, new RegExp(`class="${k}"`), k);
-  assert.doesNotMatch(item, /(fill|stroke)="#/, "no fixed colours in the comet's legend mark");
-  assert.match(css, /\[data-theme="day"\] \.legend \.k-comet-glow \{ display: none; \}/, "Day's comet has no glow");
+test("every text colour in style.css is one the contrast test checks", () => {
+  const colours = new Set();
+  for (const m of css.matchAll(/(?:^|[\s;{])(?:color|fill):\s*var\(--([\w-]+)\)/g)) colours.add(m[1]);
+  const fills = new Set(["surface", "bg", "band", "focus"]); // grounds and shapes, not text: checked above as grounds or marks
+  for (const c of colours) assert.ok(TEXT.includes(c) || MARKS.includes(c) || fills.has(c), `--${c} is used as a colour but not checked`);
 });
 
-test("requests and Polaris's merges are named in words wherever their colour or shape carries meaning", () => {
-  const html = read("index.html"), app = read("app.js");
-  assert.match(html, /<svg [^>]*aria-hidden="true">.*<\/svg>Request: comet → the team<\/li>/, "the sky's legend names the comet");
-  assert.match(html, /<i class="lg s"><\/i>slip: a request/);
-  assert.match(html, /<i class="lg r"><\/i>ringed token: merged by Polaris/);
-  assert.match(app, /text: f\.action === "commented" \? "Comment" : "Request"/, "each slip says what it is");
-  assert.match(app, /title: ring \? `\$\{name\} · merged by Polaris`/, "a ringed token says so");
-  assert.match(app, /ringed: \$\{ringed\} merged by Polaris/, "and so does the pile's legend");
-  assert.match(app, /make\("p", \{ class: "stamp", id: "stamp", role: "img", hidden: "" \}/, "the stamp is hidden until Polaris merges, with no placeholder");
+test("the wall has one fixed dark theme; the page has one theme and no toggle", () => {
+  assert.ok(luminance(wall.bg) < 0.02, "the wall is dark");
+  assert.ok(luminance(page.bg) > 0.85, "the page is light");
+  assert.doesNotMatch(css, /prefers-color-scheme/, "neither follows the system's light or dark");
+  assert.doesNotMatch(read("index.html"), /data-pick|aria-label="Theme"/, "no Day/Night toggle");
+  for (const f of scripts()) assert.doesNotMatch(read(f), /localStorage|sessionStorage/, `${f} stores nothing`);
 });
 
-test("the star colours are the design's, Rigel pink so it stays apart from Vega", () => {
-  const stars = ["vega", "rigel", "lyra", "orion", "polaris", "pole"];
-  assert.deepEqual(stars.map((k) => night[k]), ["#8ab4ff", "#f472b6", "#f5d06f", "#f59e5b", "#ffffff", "#7dd3fc"]);
-  assert.deepEqual(stars.map((k) => day[k]), ["#2f5fb8", "#be185d", "#85620a", "#a64a12", "#111111", "#0b6f96"], "Day darkens them for paper");
+test("early.js picks the wall from ?wall before the first paint, and nothing else", () => {
+  const run = (search) => {
+    const classes = new Set();
+    vm.runInNewContext(read("early.js"), { location: { search }, document: { documentElement: { classList: { add: (c) => classes.add(c) } } } });
+    return [...classes];
+  };
+  assert.deepEqual(run("?wall"), ["wall"]);
+  assert.deepEqual(run("?demo&wall"), ["wall"]);
+  assert.deepEqual(run("?wall=1"), ["wall"]);
+  assert.deepEqual(run(""), []);
+  assert.deepEqual(run("?wallpaper"), []);
 });
 
-test("Day is ink on paper, and changes only colours", () => {
-  assert.equal(day.bg, "#f6f5f1");
-  assert.equal(day.ink, "#111111");
-  const decls = block('html[data-theme="day"]').split("{")[1].split(";").map((d) => d.trim()).filter(Boolean);
-  for (const d of decls) assert.match(d, /^(--[\w-]+|color-scheme):/, d);
-  assert.match(block('html[data-theme="day"]'), /color-scheme: light;/);
-});
-
-test("no tiny type: nothing in style.css is set under 13px", () => {
+test("no tiny type: nothing in style.css is set under 12px", () => {
   let checked = 0;
+  const vars = Object.fromEntries([...css.matchAll(/--(f\d):\s*(\d+)px/g)].map((m) => [m[1], Number(m[2])]));
+  assert.deepEqual(vars, { f1: 12, f2: 14, f3: 16, f4: 20, f5: 24, f6: 32 }, "the type scale");
   for (const [decl] of css.matchAll(/\bfont(?:-size)?:[^;}]*/g)) {
-    const m = decl.match(/(\d*\.?\d+)(px|rem)\b/); // the size (or a clamp's minimum) comes first
-    if (!m) continue;
-    const px = m[2] === "rem" ? Number(m[1]) * 16 : Number(m[1]);
-    assert.ok(px >= 13, `${decl} is ${px}px`);
+    const px = decl.match(/(\d*\.?\d+)px\b/)?.[1] ?? vars[decl.match(/var\(--(f\d)\)/)?.[1]];
+    if (px === undefined) continue;
+    assert.ok(Number(px) >= 12, `${decl} is ${px}px`);
     checked++;
   }
-  assert.ok(checked > 20, `${checked} font sizes checked`);
-});
-
-test("touch targets: buttons are at least 44 px", () => {
-  assert.match(css, /button \{[^}]*min-height: 44px;[^}]*min-width: 44px;/);
+  assert.ok(checked > 25, `${checked} font sizes checked`);
 });
 
 test("share preview tags point at a 1200x630 PNG on this origin", () => {
@@ -188,58 +165,66 @@ test("share preview tags point at a 1200x630 PNG on this origin", () => {
   assert.match(read("favicon.svg"), /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
 });
 
-test("share preview words describe the Sky + Line page, with star names only", () => {
+test("share preview words describe Day, with star names only and no sky", () => {
   const html = read("index.html");
   const meta = (attr, key) => html.match(new RegExp(`<meta ${attr}="${key}" content="([^"]*)">`))?.[1];
   const desc = meta("property", "og:description");
   const alt = meta("property", "og:image:alt");
   assert.equal(meta("name", "twitter:description"), desc);
   assert.equal(meta("name", "twitter:image:alt"), alt);
-  for (const text of [desc, alt]) {
-    for (const word of ["Vega", "Rigel", "Lyra", "Orion", "Polaris", "Ursa Minor"]) assert.ok(text.includes(word), `${word} in "${text}"`);
-    // the line's five columns, in order
-    const at = Object.values(STAGE_NAME).map((name) => text.indexOf(name));
-    assert.ok(at.every((i, n) => i >= 0 && (n === 0 || i > at[n - 1])), `the line's columns in order in "${text}"`);
-    assert.doesNotMatch(text, /pulses of light travelling/); // the v1 page
+  for (const text of [desc, alt, meta("name", "description")]) {
+    for (const word of ["Vega", "Rigel", "Lyra", "Orion"]) assert.ok(text.includes(word), `${word} in "${text}"`);
+    assert.doesNotMatch(text, /\bsky\b|Ursa Minor|\bstars?\b|constellation/i, "star names only, with no star imagery (hq#177)");
   }
-  assert.match(desc, /three Claude sessions/);
+  assert.match(desc, /last 24 hours/);
   assert.ok(desc.length <= 300, `og:description is ${desc.length} characters`);
 });
 
-test("status and news reach screen readers; the sky has a text alternative", () => {
+test("v2 is gone: no sky, rings, Ursa Minor, board, rail or star card", () => {
   const html = read("index.html");
-  // only the state is a live region; the age beside it ticks every second and is not read out
-  assert.match(html, /<p class="status" id="status"><i aria-hidden="true"><\/i><span id="status-text" role="status">[^<]*<\/span><span id="status-age"><\/span><\/p>/);
-  assert.equal(html.match(/role="status"/g).length, 1);
-  assert.match(html, /<p class="visually-hidden" id="announce" aria-live="polite"><\/p>/);
-  assert.match(html, /<canvas id="sky-canvas" aria-hidden="true">/);
-  assert.match(html, /<section class="sky" id="sky" aria-label="[^"]{40,}">/);
-  // the star card is a labelled dialog with a close button
-  assert.match(html, /<div class="scard" id="scard" role="dialog" aria-labelledby="sc-title" hidden>/);
-  assert.match(html, /<button type="button" class="x" id="sc-close" aria-label="Close details">/);
+  assert.doesNotMatch(html, /<canvas|id="sky|scard|id="board|class="rail|Ursa Minor/);
+  for (const f of ["lib/sky.js", "lib/card.js"]) assert.ok(!existsSync(new URL(f, pub)), `${f} deleted`);
+  assert.doesNotMatch(read("app.js"), /"LIVE"/, "\"About a minute behind\" in place of LIVE");
+  assert.match(read("app.js"), /About a minute behind · \$\{fresh\}/);
+});
+
+test("screen readers: a polite readout for scrubbing and news, a labelled slider, and the day as a table", () => {
+  const html = read("index.html"), chart = read("lib/chart.js"), app = read("app.js");
+  assert.match(html, /<p class="sr" id="readout" aria-live="polite"><\/p>/);
+  assert.match(html, /<p class="sr" id="announce" aria-live="polite"><\/p>/);
+  assert.equal(html.match(/aria-live/g).length, 2);
+  assert.match(html, /<details class="table" id="table-box">\s*<summary>The day as a table<\/summary>/);
+  assert.match(html, /<ul class="legend" id="legend" aria-label="Key"><\/ul>/);
+  assert.match(html, /<svg class="defs" width="0" height="0" aria-hidden="true">/);
+  // the chart is a focusable slider whose value is said in words
+  assert.match(chart, /tabindex: 0, role: "slider", "aria-label": label, "aria-valuemin": 0, "aria-valuemax": BINS - 1/);
+  assert.match(app, /plot\.svg\.setAttribute\("aria-valuetext", i == null \? "Now" : words\)/);
+  assert.match(app, /if \(speak\) \$\("readout"\)\.textContent = words;/);
+  // the table has a caption and column headers
+  assert.match(chart, /el\("caption"/);
+  assert.match(chart, /th\.scope = "col"/);
+  // every mark carries its words in a <title>
+  assert.match(chart, /node\("title", \{\}, g\)\.textContent = title;/);
   assert.match(html, /<script type="module" src="\/app\.js"><\/script>/);
-  // test runs: each mark carries its words for screen readers; the key gives the colours a name
-  assert.match(html, /<ol class="ticks" id="ci-runs" aria-label="[^"]+">/);
-  assert.match(html, /<span class="pass"><i><\/i>passed<\/span> <span class="fail"><i><\/i>failed \(×\)<\/span>/);
+});
+
+test("keyboard: the chart scrubs with the arrow keys and keeps focus when new data redraws it", () => {
+  const app = read("app.js"), css2 = css;
+  assert.match(app, /svg\.addEventListener\("keydown", \(ev\) => \{\s*const next = scrubKey\(ev\.key, ev\.shiftKey, scrub, D, p\.vertical\);/);
+  assert.match(app, /if \(hadFocus\) plot\.svg\.focus\(\{ preventScroll: true \}\);/);
+  assert.match(css2, /\.plot svg:focus-visible \.plotframe \{ stroke: var\(--focus\); stroke-width: 1; \}/, "a visible focus frame");
+  assert.match(css2, /a:focus-visible, summary:focus-visible \{ outline: 2px solid var\(--focus\);/);
 });
 
 test("times are the visitor's own: no hard-coded UTC on the page", () => {
-  for (const f of ["index.html", "app.js", "lib/words.js", "lib/replay.js", "lib/demo.js", "lib/card.js", "lib/line.js"]) {
+  for (const f of ["index.html", "app.js", "lib/words.js", "lib/day.js", "lib/chart.js", "lib/layout.js", "lib/replay.js", "lib/demo.js", "lib/line.js"]) {
     const text = read(f).split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n"); // comments may explain
     assert.doesNotMatch(text, /\bUTC\b|getUTC(Hours|Minutes)/, f);
   }
 });
 
-test("the status dot pulses once per arrival, and not at all under reduced motion", () => {
-  assert.match(css, /\.status i\.pulse \{ animation: beat [^;]* 1; \}/);
-  assert.doesNotMatch(css, /infinite/);
-  assert.match(css, /@keyframes beat \{ 0% \{ box-shadow: 0 0 0 0 currentColor; \}/, "rings in the dot's own colour, so the demo dot rings in the accent");
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.status i\.pulse \{ animation: none; \} \}/);
-  assert.match(read("app.js"), /if \(msg\.t === "hello" \|\| msg\.t === "batch"\) pulse\(\);/, "the first data on connect pulses too");
-});
-
 test("the page never builds markup from data", () => {
-  for (const f of ["app.js", ...readdirSync(new URL("lib/", pub)).map((n) => `lib/${n}`)]) {
+  for (const f of scripts()) {
     assert.doesNotMatch(read(f), /\.(innerHTML|outerHTML)\s*=|insertAdjacentHTML|document\.write/, f);
   }
 });
@@ -252,26 +237,14 @@ test("no inline style or script: the CSP would block them", () => {
     assert.equal(m[1].trim(), "", "with nothing inline");
   }
   assert.doesNotMatch(html, /\son[a-z]+\s*=/i, "no inline event handlers");
-  for (const f of ["app.js", ...readdirSync(new URL("lib/", pub)).map((n) => `lib/${n}`)]) {
-    assert.doesNotMatch(read(f), /setAttribute\(\s*["']style["']|\.style\.cssText|\.style\s*=/, f);
+  for (const f of scripts()) {
+    assert.doesNotMatch(read(f), /setAttribute\(\s*["']style["']|\.style\.cssText|\.style\s*=|"style":|\bstyle: /, f);
+    assert.doesNotMatch(read(f), /var\(--/, `${f} sets no colour itself: style.css's classes do`);
   }
 });
 
 test("reduced motion: nothing animates, and nothing loops forever", () => {
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\*, \*::before, \*::after \{ animation: none !important; transition: none !important;/);
-  assert.match(read("app.js"), /if \(!reduced\) \{\s*for \(const name of ENGINEERS\)/, "board cards move instantly");
-  assert.match(read("lib/sky.js"), /reduced \|\| !running/, "no pulse travels");
-});
-
-test("stars and board cards can be reached and used from the keyboard", () => {
-  const app = read("app.js");
-  assert.match(app, /make\("button", \{ type: "button", class: `star \$\{kind\}`/, "a star is a button");
-  assert.match(app, /make\("div", \{ class: "card", role: "button", tabindex: "0"/, "a board card is focusable");
-  assert.match(app, /ev\.key === "Escape" && openName\) return closeCard\(true\)/, "Esc closes the card, focus back on the star");
-  assert.match(app, /\(ev\.key === "Enter" \|\| ev\.key === " "\) && ev\.target\?\.dataset\?\.card/);
-});
-
-test("the sky lays out narrow on phones and wide everywhere else", () => {
-  assert.equal(skyLayout(343, 500).mode, "narrow");
-  for (const [w, h] of [[812, 351], [768, 594], [1440, 724], [1536, 1340]]) assert.equal(skyLayout(w, h).mode, "wide", `${w}x${h}`);
+  assert.doesNotMatch(css, /infinite|@keyframes/, "the page has no animation at all");
+  for (const f of scripts()) assert.doesNotMatch(read(f), /requestAnimationFrame|\.animate\(|behavior: "smooth"/, f);
 });

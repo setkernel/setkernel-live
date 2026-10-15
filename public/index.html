@@ -3,165 +3,79 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>setkernel Live: four AI engineers at work</title>
-  <meta name="description" content="Four AI engineers, Vega, Rigel, Lyra and Orion, building real software right now. A live night sky of their work, and the line that shows where each job is, about a minute behind.">
+  <title>setkernel live: four AI engineers at work</title>
+  <meta name="description" content="Four AI engineers, Vega, Rigel, Lyra and Orion, building real software, about a minute behind: who is doing what right now, and the last 24 hours of their work, lane by lane.">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <meta name="theme-color" content="#050a1a">
+  <meta name="theme-color" content="#f6f5f1">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="setkernel">
   <meta property="og:url" content="https://live.setkernel.com/">
-  <meta property="og:title" content="setkernel Live: four AI engineers at work">
-  <meta property="og:description" content="Four AI engineers, Vega, Rigel, Lyra and Orion, building real software as stars in a live night sky, with Polaris, the director, and its three Claude sessions as Ursa Minor. The line shows where each one's work is: Started → Building → In review → Fixing → Merged.">
+  <meta property="og:title" content="setkernel live: four AI engineers at work">
+  <meta property="og:description" content="Four AI engineers, Vega, Rigel, Lyra and Orion, building real software, with Polaris, the director. One sentence says who is doing what right now; under it, the last 24 hours, one lane each: Building, In review, Fixing, Merged.">
   <meta property="og:image" content="https://live.setkernel.com/og.png">
   <meta property="og:image:type" content="image/png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="setkernel Live at night: Polaris and Ursa Minor above four stars, Vega, Rigel, Lyra and Orion, with the headline of what they are doing, and below them the top of the line: Started, Building, In review, Fixing, Merged.">
+  <meta property="og:image:alt" content="setkernel live: a sentence naming what Vega, Rigel, Lyra and Orion are doing, and under it the last 24 hours as one lane each, with Polaris, the director, above them and CI below.">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="setkernel Live: four AI engineers at work">
-  <meta name="twitter:description" content="Four AI engineers, Vega, Rigel, Lyra and Orion, building real software as stars in a live night sky, with Polaris, the director, and its three Claude sessions as Ursa Minor. The line shows where each one's work is: Started → Building → In review → Fixing → Merged.">
+  <meta name="twitter:title" content="setkernel live: four AI engineers at work">
+  <meta name="twitter:description" content="Four AI engineers, Vega, Rigel, Lyra and Orion, building real software, with Polaris, the director. One sentence says who is doing what right now; under it, the last 24 hours, one lane each: Building, In review, Fixing, Merged.">
   <meta name="twitter:image" content="https://live.setkernel.com/og.png">
-  <meta name="twitter:image:alt" content="setkernel Live at night: Polaris and Ursa Minor above four stars, Vega, Rigel, Lyra and Orion, with the headline of what they are doing, and below them the top of the line: Started, Building, In review, Fixing, Merged.">
+  <meta name="twitter:image:alt" content="setkernel live: a sentence naming what Vega, Rigel, Lyra and Orion are doing, and under it the last 24 hours as one lane each, with Polaris, the director, above them and CI below.">
+  <link rel="preload" href="/fonts/manrope-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/fonts/manrope-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/fonts/manrope-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/fonts/ibm-plex-mono-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/ibm-plex-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css">
   <script src="/early.js"></script>
 </head>
 <body>
-  <main class="page">
-    <header class="hero" id="hero">
-      <div class="hud" id="hud">
-        <p class="brand"><svg viewBox="-32 -32 64 64" aria-hidden="true"><path d="M0 -30L3.5 -3.5L30 0L3.5 3.5L0 30L-3.5 3.5L-30 0L-3.5 -3.5Z" fill="currentColor"/></svg><a href="https://setkernel.com">setkernel</a> <b>live</b><span class="livemini" id="live-mini" aria-hidden="true">LIVE</span></p>
-        <h1 id="headline">Connecting to the office…</h1>
-        <p class="latest" id="latest"></p>
-        <p class="since" id="since"></p>
-        <ul class="legend" aria-label="How to read the sky">
-          <li><svg viewBox="0 0 36 14" aria-hidden="true"><path class="k-pulse" d="M2 7H27" stroke-width="2" stroke-linecap="round" opacity=".55"/><circle class="k-head" cx="30" cy="7" r="3.4"/></svg>Work pulse → its place</li>
-          <li><svg viewBox="0 0 36 14" aria-hidden="true"><path class="k-comet-glow" d="M1 3Q14 4 28 7" fill="none" stroke-width="5" stroke-linecap="round" opacity=".3"/><path class="k-comet" d="M1 3Q14 4 28 7" fill="none" stroke-width="2" stroke-linecap="round"/><circle class="k-comet-head" cx="30" cy="7.4" r="4"/></svg>Request: comet → the team</li>
-          <li><svg viewBox="0 0 36 14" aria-hidden="true"><path class="k-arc" d="M3 12Q18 -4 33 12" fill="none" stroke-width="1.8"/></svg>Review: reviewer → author</li>
-          <li><svg viewBox="0 0 36 14" aria-hidden="true"><circle class="k-ring" cx="7" cy="7" r="5.5" fill="none" stroke-width="1.4"/><circle class="k-core" cx="7" cy="7" r="2"/><circle class="k-ring" cx="25" cy="7" r="5.5" fill="none" stroke-width="1.6" stroke-dasharray="1.5 2.5"/><circle class="k-core" cx="25" cy="7" r="2"/></svg>Ring and glyph = state</li>
-        </ul>
-      </div>
-
-      <div class="hud-right" id="hud-right">
-        <div class="liverow">
-          <div class="theme" role="group" aria-label="Theme"><button type="button" data-pick="day" aria-pressed="false">Day</button><button type="button" data-pick="night" aria-pressed="false">Night</button></div>
-          <p class="status" id="status"><i aria-hidden="true"></i><span id="status-text" role="status">Connecting…</span><span id="status-age"></span></p>
-        </div>
-        <p class="clock"><time id="clock">--:--:--</time><small id="zone"></small></p>
-        <div class="controls" role="group" aria-label="Replay and display">
-          <span class="controls-label" id="replay-label">Replay</span>
-          <button type="button" class="chip" data-replay="1" aria-describedby="replay-label" aria-pressed="false">Last hour</button>
-          <button type="button" class="chip" data-replay="24" aria-describedby="replay-label" aria-pressed="false">24 h</button>
-          <button type="button" class="chip" id="wall-toggle" aria-pressed="false">Wall mode</button>
-        </div>
-        <p class="demo-note" id="demo-note" hidden><strong>Demo:</strong> sample data, not the real office. <a href="/">Live page</a></p>
-        <div class="replaying" id="replaying" hidden>
-          <p><span id="replay-what">Replaying the last hour</span> · <time id="replay-at"></time></p>
-          <div class="replay-track" aria-hidden="true"><i id="replay-progress"></i></div>
-          <button type="button" class="chip" id="replay-stop">Back to live</button>
-        </div>
-      </div>
-
-      <section class="sky" id="sky" aria-label="The sky: the four engineers as stars, and Polaris, the director, with its three Claude sessions, Kochab, Pherkad and Yildun, as Ursa Minor. Each pulse of light is one Claude request, GitHub action or team-chat post falling to where the work went. A comet is a request, an issue opened or a comment, arcing from its sender into the team. An arc between two stars means one reviewed the other's work. Select a star for its details.">
-        <canvas id="sky-canvas" aria-hidden="true"></canvas>
-        <div class="stars" id="stars"></div>
-        <ul class="stations" id="stations"></ul>
-        <div class="scard" id="scard" role="dialog" aria-labelledby="sc-title" hidden>
-          <button type="button" class="x" id="sc-close" aria-label="Close details">×</button>
-          <p class="eyebrow" id="sc-eyebrow"></p>
-          <h3 id="sc-title" tabindex="-1"></h3>
-          <div id="sc-body"></div>
-          <button type="button" class="seeline" id="sc-see">See it on the line ↓</button>
-        </div>
-        <p class="offer" id="offer" hidden>While it's quiet: <button type="button" class="chip" data-replay="24">Replay the last 24 hours</button> <a href="/?demo">or watch the demo</a></p>
-      </section>
-
-      <div class="kpis" role="group" aria-label="Today's numbers">
-        <span class="kl">Today</span>
-        <span><b id="k-prs">0</b> PRs opened</span>
-        <span><b id="k-reviews">0</b> reviews</span>
-        <span><b id="k-started">0</b> issues started</span>
-        <span><b id="k-ci">–</b> <span id="k-ci-words">CI passed</span></span>
-        <span class="sp claude"><span class="place claude">Claude / h</span><svg id="sp-claude" viewBox="0 0 120 28" preserveAspectRatio="none" role="img" aria-label="Claude requests per hour"></svg></span>
-        <span class="sp github"><span class="place github">GitHub / h</span><svg id="sp-github" viewBox="0 0 120 28" preserveAspectRatio="none" role="img" aria-label="GitHub actions per hour"></svg></span>
-      </div>
+  <main class="day" id="day">
+    <header class="mast">
+      <p class="brand"><a href="https://setkernel.com">setkernel</a> <span>live</span></p>
+      <p class="fresh"><span id="fresh"></span><span id="demo-note" hidden>Demo: sample data<span class="wide-only">, not the real office</span> · <a href="/">live page</a></span></p>
     </header>
-
-    <div class="lower">
-      <section class="line" id="line" aria-labelledby="line-h">
-        <div class="lineh">
-          <h2 id="line-h">The line</h2>
-          <p class="lede">Four AI engineers each run Claude on their own machine. They pick up GitHub issues, build, open pull requests, review each other, fix what reviewers ask for, and get merged while Polaris directs. This board shows where each of them is, live.</p>
-        </div>
-        <section class="director" id="director" aria-label="The director and its Claude sessions">
-          <button type="button" class="pole" id="pole-btn" data-star="Polaris" aria-label="Polaris, the director. Find Polaris in the sky.">
-            <svg class="polestar" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="31" fill="#ffffff" fill-opacity=".07"/><circle cx="32" cy="32" r="21" fill="none" stroke="#ffffff" stroke-width="1" stroke-dasharray="2 3" opacity=".45"/><path d="M32 3l3 26 26 3-26 3-3 26-3-26-26-3 26-3z" fill="#ffffff"/></svg>
-            <span class="pname">Polaris <span>· the director</span></span>
-          </button>
-          <dl class="pstats" id="pstats"></dl>
-          <span class="compact" id="director-compact"></span>
-          <div class="sess"><span class="sesslabel">Claude sessions</span><ul id="sessions"></ul></div>
-        </section>
-        <div class="board" id="board">
-          <div class="cols" id="cols"></div>
-          <svg class="links" id="links" aria-hidden="true"></svg>
-        </div>
-        <ul class="blegend" aria-label="How to read the line">
-          <li><i class="lg c"></i>card: an engineer, in the column of its current job (select it to find its star)</li>
-          <li><i class="lg s"></i>slip: a request to the team (an issue opened or a comment)</li>
-          <li><i class="lg t"></i>token: a merged pull request, in its author's colour</li>
-          <li><i class="lg r"></i>ringed token: merged by Polaris</li>
-          <li><i class="lg d"></i>dashed line: who is reviewing whom</li>
-        </ul>
-      </section>
-
-      <div class="more">
-        <section class="panel recent" aria-labelledby="feed-h">
-          <div class="ph"><h2 id="feed-h">Recent work</h2><span class="hint" id="feed-zone"></span></div>
-          <ol class="feed" id="feed"><li class="empty">Nothing yet.</li></ol>
-        </section>
-        <section class="panel" aria-labelledby="today-h">
-          <div class="ph"><h2 id="today-h">Today</h2><span class="hint" id="today-since"></span></div>
-          <dl class="nums" id="nums"></dl>
-          <table class="tbl">
-            <caption class="visually-hidden">Per engineer, today</caption>
-            <thead><tr><th scope="col">Engineer</th><th scope="col">PRs</th><th scope="col">Reviews</th><th scope="col">Claude</th></tr></thead>
-            <tbody id="per-engineer"></tbody>
-          </table>
-        </section>
-        <section class="panel" aria-labelledby="ci-h">
-          <div class="ph"><h2 id="ci-h">CI health</h2><span class="hint">last 20 runs</span></div>
-          <p class="cibig"><b id="ci-pct">–</b><span id="ci-today">No runs yet today</span></p>
-          <ol class="ticks" id="ci-runs" aria-label="Latest test runs, oldest first"></ol>
-          <div class="tickaxis" aria-hidden="true"><span>older</span><span>latest</span></div>
-          <p class="ci-key" aria-hidden="true"><span class="pass"><i></i>passed</span> <span class="fail"><i></i>failed (×)</span></p>
-          <p class="ci-last" id="ci-last"></p>
-          <figure class="hours">
-            <figcaption>Last 24 hours, per hour <span id="hours-zone"></span></figcaption>
-            <div id="hours" class="hours-rows"></div>
-            <p class="visually-hidden" id="hours-desc"></p>
-          </figure>
-        </section>
+    <section class="lead">
+      <h1 id="headline">Connecting to the office…</h1>
+      <p id="latest"></p>
+    </section>
+    <section aria-labelledby="chart-title">
+      <div class="chart-head">
+        <h2 id="chart-title">The last 24 hours</h2>
+        <p id="chart-sub"></p>
+        <p class="keys" id="keys"><kbd>←</kbd> <kbd>→</kbd> scrub · <kbd>Shift</kbd> an hour · <kbd>[</kbd> <kbd>]</kbd> previous or next action · <kbd>Esc</kbd> now</p>
       </div>
-
-      <section class="about" aria-labelledby="about-h">
-        <h2 id="about-h">What you're looking at</h2>
-        <ul>
-          <li><strong>Real events.</strong> Vega, Rigel, Lyra and Orion are AI engineers, each running Claude on its own machine and doing setkernel's engineering work.</li>
-          <li><strong>The line follows the work.</strong> Each engineer's card sits in the column of its current job: an issue picked up, being built, a pull request in review, review feedback being fixed, or merged. The columns come from the same events as the sky.</li>
-          <li><strong>Polaris is the director.</strong> The pole star is the person who directs the work. The three stars joined to it as Ursa Minor, Kochab, Pherkad and Yildun, are the director's own Claude sessions: the lead chat, cloud sessions and a machine of its own. Only what they do on GitHub reaches this page: requests (issues opened and comments, never what they say), pull requests, reviews and merges, and for Yildun its Claude requests too.</li>
-          <li><strong>About a minute behind.</strong> The office sends what happened with a short delay; the page never connects to the office. Even when nothing is happening it checks in every 30 seconds, so "updated 25 s ago" is normal.</li>
-          <li><strong>Private projects stay unnamed.</strong> Public repositories are named and linked. No code, conversations, titles or customer data appear here, only what kind of work is happening.</li>
-          <li><strong>A person reviews everything.</strong> Every change the agents make is reviewed and merged by a person.</li>
-        </ul>
-        <p class="foot">Part of <a href="https://setkernel.com">setkernel</a>, an IT company in Halifax, Nova Scotia. Add <a href="/?demo">?demo</a> for sample data or <a href="/?wall">?wall</a> for a big screen.</p>
-      </section>
-    </div>
-
-    <p class="visually-hidden" id="announce" aria-live="polite"></p>
+      <ul class="now" id="now" aria-label="Now" hidden></ul>
+      <div class="plot" id="plot"></div>
+      <p class="sr" id="readout" aria-live="polite"></p>
+      <div class="foot">
+        <ul class="legend" id="legend" aria-label="Key"></ul>
+      </div>
+    </section>
+    <details class="table" id="table-box">
+      <summary>The day as a table</summary>
+      <div class="table-scroll" id="table"></div>
+    </details>
+    <p class="sr" id="announce" aria-live="polite"></p>
   </main>
+
+  <!-- Three marks carry the story: merged, changes asked for, CI failed. A pull request opened is
+       where the heavy In review line begins, so it has no mark. The rest is the stage line, the
+       activity band, a quiet tick (Polaris's merges, CI passes), or words. A mark never relies on
+       colour alone: each has its own shape. The states before a Now line are shapes too, not
+       characters the fonts' Latin subsets don't have. -->
+  <svg class="defs" width="0" height="0" aria-hidden="true">
+    <defs>
+      <symbol id="m-merged" viewBox="-6 -6 12 12"><circle r="4.6" fill="currentColor"/></symbol>
+      <symbol id="m-requested_changes" viewBox="-6 -6 12 12"><path d="M-3.6-3.6L3.6 3.6M3.6-3.6L-3.6 3.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+      <symbol id="m-ci-fail" viewBox="-6 -6 12 12"><path d="M0-5.5V5.5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></symbol>
+      <symbol id="m-tick" viewBox="-6 -6 12 12"><path d="M0-4V4" stroke="currentColor" stroke-width="1.2"/></symbol>
+      <symbol id="s-WORKING" viewBox="-6 -6 12 12"><circle r="4.4" fill="currentColor"/></symbol>
+      <symbol id="s-REVIEW" viewBox="-6 -6 12 12"><circle r="4.4" fill="none" stroke="currentColor" stroke-width="1.3"/><circle r="2" fill="currentColor"/></symbol>
+      <symbol id="s-DISCUSS" viewBox="-6 -6 12 12"><circle cx="-3.6" r="1.3" fill="currentColor"/><circle r="1.3" fill="currentColor"/><circle cx="3.6" r="1.3" fill="currentColor"/></symbol>
+      <symbol id="s-PAUSED" viewBox="-6 -6 12 12"><path d="M-1.8-4V4M1.8-4V4" stroke="currentColor" stroke-width="1.6"/></symbol>
+      <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect class="hatch-ground" width="6" height="6"/><path class="hatch-line" d="M0 0V6" stroke-width="1"/></pattern>
+    </defs>
+  </svg>
   <script type="module" src="/app.js"></script>
 </body>
 </html>

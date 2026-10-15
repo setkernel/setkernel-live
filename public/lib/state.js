@@ -4,7 +4,7 @@
 // what the live page really shows. Run its tests with: npm test
 //
 // Two parts, stored under two keys:
-//   state   today's counts (overall and per agent), the recent-work feed, the recent CI
+//   state   today's counts (today is the Halifax day, see homeDay) (overall and per agent), the recent-work feed, the recent CI
 //           results, the agents' current state, when each agent last did anything, and each
 //           engineer's lane on the line (public/lib/line.js).
 //   replay  the last 24 hours, capped, for "replay the last hour / 24 h" and the hourly chart:
@@ -40,10 +40,37 @@ const COLUMN = new Map([
 // Where an agent's count of a kind sits in a minute row (after the minute itself), or -1.
 export const columnOf = (agent, kind) => COLUMN.get(`${agent} ${kind}`) ?? -1;
 const FEED = 30;
-const CI_RECENT = 20;
+export const CI_RECENT = 20;
 const DAY_S = 86_400;
 const REPLAY_MINUTES = 24 * 60; // one row per minute at most, so this is also the row cap
-const REPLAY_WORK = 300; // GitHub actions kept for the replay; a busy day is under 200
+export const REPLAY_WORK = 300; // GitHub actions kept for the replay; a busy day is under 200
+
+// "Today" is the day in Halifax, where setkernel is (hq#177, question 5): the counts reset at
+// midnight there, in AST or ADT, whatever zone the visitor or the Worker is in.
+export const HOME_ZONE = "America/Halifax";
+const homeParts = new Intl.DateTimeFormat("en-CA", { timeZone: HOME_ZONE, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+// The Halifax wall clock at `s` (seconds), as if it were UTC: seconds since the epoch.
+function homeClock(s) {
+  const p = Object.fromEntries(homeParts.formatToParts(new Date(s * 1000)).map((x) => [x.type, x.value]));
+  return { day: `${p.year}-${p.month}-${p.day}`, wall: Date.UTC(+p.year, p.month - 1, +p.day, +p.hour, +p.minute, +p.second) / 1000 };
+}
+
+// The Halifax date at `ms` -> "2026-10-14": the day key applyBatch is given.
+export const homeDay = (ms) => homeClock(Math.floor(ms / 1000)).day;
+
+// When the Halifax day holding `s` began, in seconds. On the days the clocks change, midnight is
+// not "now less the wall-clock time", so this steps until the wall clock reads 00:00 on that date.
+export function homeMidnight(s) {
+  const { day } = homeClock(s);
+  const target = Date.parse(`${day}T00:00:00Z`) / 1000;
+  let m = s - (homeClock(s).wall - target);
+  for (let i = 0; i < 3; i++) {
+    const off = homeClock(m).wall - target;
+    if (!off) break;
+    m -= off;
+  }
+  return m;
+}
 
 // The line's header counts too: building (jobs that got under way), changes (changes requested)
 // and merged (pull requests merged). Then the director's: requests (issues opened and comments, by
@@ -61,7 +88,8 @@ export function emptyReplay() {
   return { pulses: [], work: [] };
 }
 
-// Apply a clean batch to the state (returns a new state). Counts reset each UTC day; the feed, the
+// Apply a clean batch to the state (returns a new state). Counts reset when `day` changes (the
+// Worker passes homeDay, so at Halifax midnight); the feed, the
 // recent CI results, when each agent was last seen and the lanes carry over midnight. A state saved
 // before byAgent, seen, line, ci or a count existed is filled in rather than showing NaN.
 export function applyBatch(state, batch, now, day) {
@@ -195,8 +223,10 @@ export function replaySince(replay, since) {
   };
 }
 
-// The last 24 hours per UTC hour, oldest first: exactly 24 buckets { h, claude, chat, helper,
-// github }, where h is hours since the epoch and the last bucket is the hour `now` (ms) is in.
+// The last 24 hours per hour, oldest first: exactly 24 buckets { h, claude, chat, helper, github },
+// where h is hours since the epoch and the last bucket is the hour `now` (ms) is in. Halifax is a
+// whole number of hours from UTC in AST and ADT, so every bucket is also an hour on the Halifax
+// clock, and the 24 hours run across a change of the clocks without a gap or a double hour.
 export function hourly(replay, now) {
   const end = Math.floor(now / 3_600_000);
   const out = Array.from({ length: 24 }, (_, i) => ({ h: end - 23 + i, claude: 0, chat: 0, helper: 0, github: 0 }));

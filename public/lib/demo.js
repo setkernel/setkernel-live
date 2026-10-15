@@ -9,10 +9,11 @@
 // Worker's allowlist accepts unchanged
 // (test/page-logic.test.mjs checks that), and the page feeds them through the same reducer as the
 // Durable Object. No DOM here.
-import { AGENTS, ENGINEERS, POLE } from "./state.js";
+import { AGENTS, ENGINEERS, POLE, applyBatch, emptyReplay, emptyState, homeDay, recordReplay } from "./state.js";
 
 // Public repos are named on the live page and private ones never are; null stands for private.
-const REPOS = ["setkernel-live", null, null, "example-site", null];
+// The page names only a repo a visitor could check, so the one public repo is a real one.
+const REPOS = ["setkernel-live", null, null, null, null];
 
 const CI_PASS = 0.85; // share of test runs that pass
 
@@ -194,4 +195,99 @@ export function createDemo(seed = 17, startS = Math.trunc(Date.now() / 1000)) {
       return { events: out, agents: picture() };
     },
   };
+}
+
+// ---- the Day page's demo (setkernel-live#48): a whole day, as minute batches { at, events, agents }
+
+// The simulation runs at a quarter of its speed: at its own it makes about 800 GitHub actions a
+// day, and the replay keeps 300; a quarter is about 200, the real team's busy day. Only the times
+// change. Returns { advance(toS) } like createDemo, on the page's clock from `startS`.
+export function slowDemo(seed = 17, startS = Math.trunc(Date.now() / 1000), slow = 4) {
+  const base = 1_800_000_000;
+  const demo = createDemo(seed, base);
+  return {
+    advance(toS) {
+      const { events, agents } = demo.advance(base + (toS - startS) / slow);
+      return { agents, events: events.map((e) => ({ ...e, ts: startS + (e.ts - base) * slow })) };
+    },
+  };
+}
+
+// The busy day: the slowed simulation over the 24 hours before `nowS`, as one batch a minute.
+// `sim` keeps going afterwards for the live demo.
+export function busyDay(nowS, seed = 17) {
+  const startS = nowS - 86_400;
+  const sim = slowDemo(seed, startS);
+  const batches = [];
+  for (let t = startS + 60; t <= nowS; t += 60) batches.push({ at: t, ...sim.advance(t) });
+  return { batches, sim };
+}
+
+// The quiet day, written by hand (docs/design/v3/day): nothing is added to fill the lanes. One job
+// today: Polaris asks, Orion builds it, CI fails, Orion pushes fixes, Lyra approves, Polaris
+// merges after lunch. Rigel's job from yesterday evening was approved by Orion and merged before
+// midnight. Vega and the three Claudes do nothing. The times are the design's, with "now" at
+// 16:40: on another clock the story keeps its distance from now.
+export function quietDay(nowS) {
+  const at = (h, m) => nowS - (16 * 60 + 40 - (h * 60 + m)) * 60; // today, on the design's clock
+  const yday = (h, m) => at(h, m) - 86_400;
+  const ev = [];
+  const gh = (agent, action, repo, ts) => ev.push({ t: "msg", kind: "github", agent, action, ...(repo ? { repo } : {}), ts });
+  const pulses = (agent, kind, from, to, every) => { for (let t = from; t < to; t += every) ev.push({ t: "msg", kind, agent, ts: t }); };
+  // yesterday evening: Rigel's pull request in a private repo
+  gh("Rigel", "picked_up", null, yday(17, 4));
+  pulses("Rigel", "claude", yday(17, 5), yday(19, 18), 70);
+  pulses("Rigel", "helper", yday(17, 30), yday(19, 0), 900);
+  gh("Rigel", "opened_pr", null, yday(19, 20));
+  ev.push({ t: "msg", kind: "ci", result: "pass", ts: yday(19, 20) });
+  pulses("Orion", "claude", yday(20, 22), yday(20, 34), 60);
+  gh("Orion", "approved", null, yday(20, 35));
+  gh("Rigel", "merged", null, yday(20, 50));
+  gh("Polaris", "merged_by", null, yday(20, 50));
+  // this morning: Polaris asks, Orion builds it, Lyra reviews, Polaris merges after lunch
+  ev.push({ t: "msg", kind: "request", agent: "Polaris", action: "opened_issue", repo: "setkernel-live", ts: at(8, 50) });
+  gh("Orion", "picked_up", "setkernel-live", at(9, 12));
+  pulses("Orion", "claude", at(9, 13), at(10, 29), 45);
+  pulses("Orion", "helper", at(9, 40), at(10, 20), 600);
+  pulses("Orion", "chat", at(9, 15), at(9, 16), 60);
+  gh("Orion", "opened_pr", "setkernel-live", at(10, 31));
+  ev.push({ t: "msg", kind: "ci", result: "fail", repo: "setkernel-live", ts: at(10, 31) });
+  pulses("Orion", "claude", at(10, 33), at(10, 47), 50);
+  gh("Orion", "pushed", "setkernel-live", at(10, 48));
+  ev.push({ t: "msg", kind: "ci", result: "pass", repo: "setkernel-live", ts: at(10, 48) });
+  pulses("Lyra", "claude", at(11, 30), at(11, 41), 40);
+  pulses("Lyra", "chat", at(11, 41), at(11, 42), 60);
+  gh("Lyra", "approved", "setkernel-live", at(11, 41));
+  gh("Orion", "merged", "setkernel-live", at(14, 2));
+  gh("Polaris", "merged_by", "setkernel-live", at(14, 2));
+  ev.sort((a, b) => a.ts - b.ts);
+  // the states as they were: Orion working 09:12-10:48, Lyra reviewing 11:30-11:41
+  const agents = (t) => {
+    const a = Object.fromEntries(ENGINEERS.map((n) => [n, { state: "IDLE" }]));
+    if (t >= yday(20, 22) && t < yday(20, 36)) a.Orion = { state: "REVIEW", work: "review" };
+    if (t >= at(9, 12) && t < at(10, 49)) a.Orion = { state: "WORKING", work: "issue", repo: "setkernel-live" };
+    if (t >= at(11, 30) && t < at(11, 42)) a.Lyra = { state: "REVIEW", work: "review", repo: "setkernel-live" };
+    return a;
+  };
+  const batches = [];
+  let i = 0;
+  for (let t = nowS - 86_400 - 3600 + 60; t <= nowS; t += 60) {
+    const events = [];
+    while (i < ev.length && ev[i].ts < t) events.push(ev[i++]);
+    batches.push({ at: t, agents: agents(t), events });
+  }
+  return { batches };
+}
+
+// Minute batches through the same reducers as the Durable Object, up to `untilS` -> { state,
+// replay }. The day key is the Halifax date, as the Worker's.
+export function runDay(batches, untilS = Infinity, from = { state: null, replay: emptyReplay() }) {
+  let state = from.state ?? emptyState(homeDay((batches[0]?.at ?? 0) * 1000));
+  let replay = from.replay;
+  for (const b of batches) {
+    if (b.at > untilS) break;
+    state = applyBatch(state, b, b.at * 1000, homeDay(b.at * 1000));
+    replay = recordReplay(replay, b, b.at * 1000);
+  }
+  return { state, replay };
 }

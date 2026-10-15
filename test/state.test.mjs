@@ -2,13 +2,13 @@
 // Object and ?demo mode). Run: npm test
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyBatch, cleanBatch, emptyReplay, emptyState, hourly, recordReplay, replaySince, view } from "../src/logic.js";
+import { HOME_ZONE, applyBatch, cleanBatch, emptyReplay, emptyState, homeDay, homeMidnight, hourly, recordReplay, replaySince, view } from "../src/logic.js";
 
 const T0 = 490_000 * 3600; // seconds, on an hour boundary
 const batch = (...events) => cleanBatch({ events, agents: {} });
 const msg = (agent, kind, ts, extra = {}) => ({ t: "msg", kind, agent, ts, ...extra });
 
-test("per-agent counts: only the known agents, reset each UTC day", () => {
+test("per-agent counts: only the known agents, reset when the day changes", () => {
   const b = batch(
     msg("Vega", "github", T0, { action: "picked_up" }),
     msg("Vega", "github", T0 + 1, { action: "opened_pr", repo: "lafka-plugin" }),
@@ -198,7 +198,7 @@ test("replaySince serves the last hour or the whole buffer", () => {
   assert.deepEqual(replaySince(undefined, 0), emptyReplay());
 });
 
-test("hourly: 24 buckets per UTC hour from the replay buffer, gaps as zeros", () => {
+test("hourly: 24 buckets per hour from the replay buffer, gaps as zeros", () => {
   const r = recordReplay(emptyReplay(), batch(
     msg("Vega", "claude", T0 + 10), msg("Rigel", "claude", T0 + 3599), msg("Lyra", "helper", T0 + 3600),
     msg("Orion", "github", T0 + 5, { action: "opened_pr" }), msg("Vega", "chat", T0 - 3600),
@@ -216,4 +216,63 @@ test("hourly: 24 buckets per UTC hour from the replay buffer, gaps as zeros", ()
   const later = hourly(r, (T0 + 100 * 3600) * 1000);
   assert.equal(later.at(-1).h, T0 / 3600 + 100);
   assert.ok(later.every((b) => b.claude + b.github === 0));
+});
+
+// ---- today is the Halifax day (hq#177, question 5)
+const at = (iso) => Date.parse(iso) / 1000;
+const iso = (s) => new Date(s * 1000).toISOString();
+
+test("homeDay: the date in Halifax, in AST and ADT, whatever the UTC date", () => {
+  assert.equal(HOME_ZONE, "America/Halifax");
+  assert.equal(homeDay(at("2026-10-15T02:59:59Z") * 1000), "2026-10-14", "23:59 ADT is still the 14th, though UTC is on the 15th");
+  assert.equal(homeDay(at("2026-10-15T03:00:00Z") * 1000), "2026-10-15", "00:00 ADT");
+  assert.equal(homeDay(at("2026-01-15T03:59:59Z") * 1000), "2026-01-14", "23:59 AST");
+  assert.equal(homeDay(at("2026-01-15T04:00:00Z") * 1000), "2026-01-15", "00:00 AST");
+});
+
+test("homeMidnight: where today began, on ordinary days and both days the clocks change", () => {
+  // an ordinary day: midnight is now less the wall clock
+  assert.equal(iso(homeMidnight(at("2026-10-14T19:40:00Z"))), "2026-10-14T03:00:00.000Z");
+  // 8 March 2026: 02:00 AST becomes 03:00 ADT, a 23-hour day that began at 00:00 AST
+  for (const t of ["2026-03-08T04:00:00Z", "2026-03-08T05:59:59Z", "2026-03-08T06:00:00Z", "2026-03-08T12:00:00Z", "2026-03-09T02:59:59Z"]) {
+    assert.equal(iso(homeMidnight(at(t))), "2026-03-08T04:00:00.000Z", t);
+  }
+  assert.equal(iso(homeMidnight(at("2026-03-09T03:00:00Z"))), "2026-03-09T03:00:00.000Z", "the next day begins at 00:00 ADT");
+  // 1 November 2026: 02:00 ADT becomes 01:00 AST, a 25-hour day that began at 00:00 ADT
+  for (const t of ["2026-11-01T03:00:00Z", "2026-11-01T04:30:00Z", "2026-11-01T05:30:00Z", "2026-11-01T12:00:00Z", "2026-11-02T03:59:59Z"]) {
+    assert.equal(iso(homeMidnight(at(t))), "2026-11-01T03:00:00.000Z", t);
+  }
+  assert.equal(iso(homeMidnight(at("2026-11-02T04:00:00Z"))), "2026-11-02T04:00:00.000Z", "the next day begins at 00:00 AST");
+});
+
+test("today's counts reset at Halifax midnight, not UTC midnight, across a change of the clocks", () => {
+  const step = (s, ts) => applyBatch(s, batch(msg("Vega", "github", ts, { action: "opened_pr" })), ts * 1000, homeDay(ts * 1000));
+  // UTC midnight passes at 21:00 ADT: the same Halifax day, so the count goes on
+  let s = step(emptyState(homeDay(at("2026-10-14T20:00:00Z") * 1000)), at("2026-10-14T20:00:00Z"));
+  s = step(s, at("2026-10-15T00:30:00Z"));
+  assert.equal(s.counts.prs, 2, "21:30 ADT is still the 14th in Halifax");
+  s = step(s, at("2026-10-15T03:00:00Z"));
+  assert.equal(s.counts.prs, 1, "a fresh count from 00:00 ADT");
+  assert.equal(s.day, "2026-10-15");
+  // the night the clocks go back: 25 hours of one day, then a fresh count at 00:00 AST
+  s = step(emptyState("x"), at("2026-11-01T03:00:00Z"));
+  s = step(s, at("2026-11-02T03:30:00Z"));
+  assert.equal(s.counts.prs, 2, "23:30 AST on the 1st: the same day as 00:00 ADT");
+  s = step(s, at("2026-11-02T04:00:00Z"));
+  assert.equal(s.counts.prs, 1);
+  // the night the clocks go forward
+  s = step(emptyState("x"), at("2026-03-08T04:00:00Z"));
+  s = step(s, at("2026-03-09T02:59:00Z"));
+  assert.equal(s.counts.prs, 2, "23:59 ADT on the 8th, 23 hours on");
+  assert.equal(step(s, at("2026-03-09T03:00:00Z")).counts.prs, 1);
+});
+
+test("hourly: across a change of the clocks, still 24 buckets, each one an hour on the Halifax clock", () => {
+  const now = at("2026-11-01T12:30:00Z") * 1000; // 08:30 AST, the morning the clocks went back
+  const h = hourly(emptyReplay(), now);
+  assert.equal(h.length, 24);
+  assert.ok(h.every((b, i) => i === 0 || b.h === h[i - 1].h + 1), "no gap and no double hour");
+  const minute = new Intl.DateTimeFormat("en-GB", { timeZone: HOME_ZONE, minute: "2-digit" });
+  assert.ok(h.every((b) => Number(minute.format(new Date(b.h * 3_600_000))) === 0), "each starts on a Halifax hour");
+  assert.equal(h.at(-1).h, Math.floor(now / 3_600_000));
 });
