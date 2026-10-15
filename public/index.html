@@ -37,14 +37,15 @@
         <p class="latest" id="latest"></p>
         <p class="since" id="since"></p>
         <ul class="legend" aria-label="How to read the sky">
-          <li><svg viewBox="0 0 36 14" aria-hidden="true"><path d="M2 7H27" stroke="#e0904a" stroke-width="2" stroke-linecap="round" opacity=".55"/><circle cx="30" cy="7" r="3.4" fill="#ffe4c8"/></svg>Work pulse → its place</li>
-          <li><svg viewBox="0 0 36 14" aria-hidden="true"><path d="M3 12Q18 -4 33 12" fill="none" stroke="#f472b6" stroke-width="1.8"/></svg>Review: reviewer → author</li>
-          <li><svg viewBox="0 0 36 14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8ab4ff" stroke-width="1.4"/><circle cx="7" cy="7" r="2" fill="#ffffff"/><circle cx="25" cy="7" r="5.5" fill="none" stroke="#8ab4ff" stroke-width="1.6" stroke-dasharray="1.5 2.5"/><circle cx="25" cy="7" r="2" fill="#ffffff"/></svg>Ring and glyph = state</li>
+          <li><svg viewBox="0 0 36 14" aria-hidden="true"><path class="k-pulse" d="M2 7H27" stroke-width="2" stroke-linecap="round" opacity=".55"/><circle class="k-head" cx="30" cy="7" r="3.4"/></svg>Work pulse → its place</li>
+          <li><svg viewBox="0 0 36 14" aria-hidden="true"><path class="k-arc" d="M3 12Q18 -4 33 12" fill="none" stroke-width="1.8"/></svg>Review: reviewer → author</li>
+          <li><svg viewBox="0 0 36 14" aria-hidden="true"><circle class="k-ring" cx="7" cy="7" r="5.5" fill="none" stroke-width="1.4"/><circle class="k-core" cx="7" cy="7" r="2"/><circle class="k-ring" cx="25" cy="7" r="5.5" fill="none" stroke-width="1.6" stroke-dasharray="1.5 2.5"/><circle class="k-core" cx="25" cy="7" r="2"/></svg>Ring and glyph = state</li>
         </ul>
       </div>
 
       <div class="hud-right" id="hud-right">
         <div class="liverow">
+          <div class="theme" role="group" aria-label="Theme"><button type="button" data-pick="day" aria-pressed="false">Day</button><button type="button" data-pick="night" aria-pressed="false">Night</button></div>
           <p class="status" id="status"><i aria-hidden="true"></i><span id="status-text" role="status">Connecting…</span><span id="status-age"></span></p>
         </div>
         <p class="clock"><time id="clock">--:--:--</time><small id="zone"></small></p>

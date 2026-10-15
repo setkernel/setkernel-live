@@ -62,41 +62,63 @@ test("every @font-face file exists, is woff2 and swaps, and ships with its licen
   }
 });
 
-// ---- contrast (WCAG AA): every text colour on the ground it is drawn on
+// ---- contrast (WCAG AA): every text colour on the ground it is drawn on, in both themes
 const css = read("style.css");
-const vars = Object.fromEntries([...css.matchAll(/--([\w-]+):\s*(#[0-9a-f]{6})/gi)].map((m) => [m[1], m[2]]));
+const block = (selector) => {
+  const at = css.indexOf(`\n${selector} {`);
+  assert.ok(at >= 0, `style.css has ${selector}`);
+  return css.slice(at, css.indexOf("\n}", at));
+};
+const hexes = (text) => Object.fromEntries([...text.matchAll(/--([\w-]+):\s*(#[0-9a-f]{6})/gi)].map((m) => [m[1], m[2]]));
+const night = hexes(block(":root"));
+// Day overrides Night's colours; what it leaves alone stays Night's
+const day = { ...night, ...hexes(block('html[data-theme="day"]')) };
 const luminance = (hex) => {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
     .map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 };
-const contrast = (a, b) => {
+const contrast = (vars, a, b) => {
   const [hi, lo] = [luminance(vars[a]), luminance(vars[b])].sort((x, y) => y - x);
   return (hi + 0.05) / (lo + 0.05);
 };
 
 // Text sits on the night sky, from --bg (its darkest) to --panel (the lightest card or panel), so
-// every text colour is checked on both. Every new text colour goes in one of these lists.
-const GROUNDS = ["bg", "panel"];
-test("all text meets WCAG contrast on the night sky and its panels, AAA for body text", () => {
-  // ink: headings, numbers, names; ink-2: body and secondary lines; polaris: the pole star's name
-  for (const fg of ["ink", "ink-2", "polaris"]) {
-    for (const bg of GROUNDS) assert.ok(contrast(fg, bg) >= 7, `--${fg} on --${bg} is ${contrast(fg, bg).toFixed(2)}:1 (AAA)`);
-  }
-  // ink-3: times, hints, labels; accent: links; the star colours: names in the headline, the feed
-  // and the cards; the places: station names and the per-hour labels; ok, fail, warn: LIVE, the
-  // failed-run ×, REPLAY
-  for (const fg of ["ink-3", "accent", "vega", "rigel", "lyra", "orion", "pole", "claude", "github", "chat", "ok", "fail", "warn"]) {
-    for (const bg of GROUNDS) assert.ok(contrast(fg, bg) >= 4.5, `--${fg} on --${bg} is ${contrast(fg, bg).toFixed(2)}:1 (AA)`);
-  }
-  // dark text on light: a pressed chip (--bg on --ink) and a merged token's letter (--bg on its author's colour)
-  for (const fg of ["ink", "vega", "rigel", "lyra", "orion", "polaris", "pole"]) {
-    assert.ok(contrast("bg", fg) >= 4.5, `--bg on --${fg} is ${contrast("bg", fg).toFixed(2)}:1`);
-  }
-});
+// every text colour is checked on both. In Day it sits on the paper (--bg), the cards (--panel) and
+// the board's and Today strip's wash (--wash). Every new text colour goes in one of these lists.
+const THEMES = [["Night", night, ["bg", "panel"]], ["Day", day, ["bg", "panel", "wash"]]];
+for (const [theme, vars, grounds] of THEMES) {
+  test(`${theme}: all text meets WCAG contrast on every ground, AAA for body text`, () => {
+    const check = (fg, bg, min) => {
+      const ratio = contrast(vars, fg, bg);
+      assert.ok(ratio >= min, `${theme}: --${fg} on --${bg} is ${ratio.toFixed(2)}:1, under ${min}:1`);
+    };
+    // ink: headings, numbers, names; ink-2: body and secondary lines; polaris: the pole star's name
+    for (const fg of ["ink", "ink-2", "polaris"]) for (const bg of grounds) check(fg, bg, 7);
+    // ink-3: times, hints, labels; accent: links; the star colours: names in the headline, the feed
+    // and the cards; the places: station names and the per-hour labels; ok, fail, warn: LIVE, the
+    // failed-run ×, REPLAY
+    for (const fg of ["ink-3", "accent", "vega", "rigel", "lyra", "orion", "pole", "claude", "github", "chat", "ok", "fail", "warn"]) {
+      for (const bg of grounds) check(fg, bg, 4.5);
+    }
+    // the ground's colour on a colour: a pressed chip or theme button (--bg on --ink) and a merged
+    // token's letter (--bg on its author's colour)
+    for (const fg of ["ink", "vega", "rigel", "lyra", "orion", "polaris", "pole"]) check("bg", fg, 4.5);
+  });
+}
 
 test("the star colours are the design's, Rigel pink so it stays apart from Vega", () => {
-  assert.deepEqual(["vega", "rigel", "lyra", "orion", "polaris", "pole"].map((k) => vars[k]), ["#8ab4ff", "#f472b6", "#f5d06f", "#f59e5b", "#ffffff", "#7dd3fc"]);
+  const stars = ["vega", "rigel", "lyra", "orion", "polaris", "pole"];
+  assert.deepEqual(stars.map((k) => night[k]), ["#8ab4ff", "#f472b6", "#f5d06f", "#f59e5b", "#ffffff", "#7dd3fc"]);
+  assert.deepEqual(stars.map((k) => day[k]), ["#2f5fb8", "#be185d", "#85620a", "#a64a12", "#111111", "#0b6f96"], "Day darkens them for paper");
+});
+
+test("Day is ink on paper, and changes only colours", () => {
+  assert.equal(day.bg, "#f6f5f1");
+  assert.equal(day.ink, "#111111");
+  const decls = block('html[data-theme="day"]').split("{")[1].split(";").map((d) => d.trim()).filter(Boolean);
+  for (const d of decls) assert.match(d, /^(--[\w-]+|color-scheme):/, d);
+  assert.match(block('html[data-theme="day"]'), /color-scheme: light;/);
 });
 
 test("no tiny type: nothing in style.css is set under 13px", () => {

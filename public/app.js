@@ -39,7 +39,11 @@ const reducedQuery = matchMedia("(prefers-reduced-motion: reduce)");
 let reduced = reducedQuery.matches;
 // a star's colour is --<name>; Polaris's three Claudes share --pole
 const starVar = (n) => (POLE.includes(n) && n !== "Polaris" ? "pole" : n.toLowerCase());
-const COLORS = Object.fromEntries([...AGENTS.map((n) => [n, color(starVar(n))]), ...PLACES.map((k) => [k, color(k)]), ["pole", color("pole")]]);
+// The page styles colours by name (var(--vega)), so they follow the theme by themselves; the
+// canvas and the board's review links need the values, read again when the theme changes.
+const hue = (n) => `var(--${AGENTS.includes(n) ? starVar(n) : "vega"})`;
+const readColors = () => Object.fromEntries([...AGENTS.map((n) => [n, color(starVar(n))]), ...PLACES.map((k) => [k, color(k)]), ...["pole", "ink", "wash"].map((k) => [k, color(k)])]);
+const COLORS = readColors();
 const fmt = new Intl.NumberFormat("en");
 const rem = () => parseFloat(getComputedStyle(root).fontSize) || 16;
 const plural = (n, one, many = `${one}s`) => `${fmt.format(n)} ${n === 1 ? one : many}`;
@@ -63,7 +67,7 @@ const invert = (o) => Object.fromEntries(Object.entries(o).map(([a, b]) => [b, a
 // A name in its colour, underlined: used in the headline and the Latest line
 const nameEl = (name) => {
   const e = make("span", { class: "n", text: name });
-  e.style.setProperty("--star", COLORS[name]);
+  e.style.setProperty("--star", hue(name));
   return e;
 };
 const showParts = (el, parts) => el.replaceChildren(...parts.map((p) => (typeof p === "string" ? p : nameEl(p.name))));
@@ -71,7 +75,7 @@ const showParts = (el, parts) => el.replaceChildren(...parts.map((p) => (typeof 
 const glyph = (name) => {
   const g = svg("svg", { class: "glyph", viewBox: "0 0 24 24", "aria-hidden": "true" },
     svg("path", { d: name === "Polaris" ? "M12 0l1.7 10.3L24 12l-10.3 1.7L12 24l-1.7-10.3L0 12l10.3-1.7z" : "M12 1.5C13 8.6 15.4 11 22.5 12 15.4 13 13 15.4 12 22.5 11 15.4 8.6 13 1.5 12 8.6 11 11 8.6 12 1.5Z" }));
-  g.style.setProperty("--star", COLORS[name] || COLORS.Vega);
+  g.style.setProperty("--star", hue(name));
   return g;
 };
 // A public repo -> its name, linked to GitHub. Private repos never have a name on this page.
@@ -81,7 +85,7 @@ const repoLink = (repo) => make("a", { href: `https://github.com/setkernel/${enc
 const skyEl = $("sky");
 const stationEls = {};
 const sky = createSky($("sky-canvas"), {
-  reduced, colors: COLORS,
+  reduced, colors: COLORS, day: root.dataset.theme === "day",
   onArrive: (place) => {
     const el = stationEls[place];
     if (!el) return;
@@ -95,7 +99,7 @@ const orb = (...parts) => make("span", { class: "orb", "aria-hidden": "true" }, 
 for (const name of AGENTS) {
   const kind = ENGINEERS.includes(name) ? "eng" : name === "Polaris" ? "polaris" : "sm";
   const b = make("button", { type: "button", class: `star ${kind}`, "data-star": name, "aria-haspopup": "dialog", "aria-expanded": "false" });
-  b.style.setProperty("--star", COLORS[name]);
+  b.style.setProperty("--star", hue(name));
   if (kind === "eng") {
     b.dataset.state = "IDLE";
     b.append(orb("halo", "ring", "ring2", "core"), make("span", { class: "lbl" }, make("span", { class: "nm", text: name }), make("span", { class: "st" }), make("span", { class: "tl" })));
@@ -245,7 +249,7 @@ STAGES.forEach((stage, i) => {
 });
 for (const name of ENGINEERS) {
   const el = make("div", { class: "card", role: "button", tabindex: "0", "data-card": name });
-  el.style.setProperty("--star", COLORS[name]);
+  el.style.setProperty("--star", hue(name));
   cardEls[name] = el;
   colEls.started.append(el);
 }
@@ -264,7 +268,7 @@ function fillCard(name, pic, col, reviewer) {
   const kids = [make("div", { class: "who" }, make("span", { class: "dot", "aria-hidden": "true" }), make("span", { text: name }), make("span", { class: "t", text: since[name] ? `${dur(pic.nowS - since[name])} here` : "" })), st];
   if (reviewer) {
     const row = make("div", { class: "rrow" }, make("span", { class: "rchip" }, glyph(reviewer), `${reviewer} reviewing`));
-    row.style.setProperty("--rc", COLORS[reviewer]);
+    row.style.setProperty("--rc", hue(reviewer));
     kids.push(row);
   }
   el.replaceChildren(...kids);
@@ -355,7 +359,7 @@ function showPile() {
   const tokens = tokenPile(by, cap);
   $("tokens").replaceChildren(...tokens.map((n) => {
     const t = make("li", { class: "tok", "aria-hidden": "true", text: n[0], title: n });
-    t.style.setProperty("--star", COLORS[n]);
+    t.style.setProperty("--star", hue(n));
     return t;
   }));
   const said = by.sort((a, b) => b[1] - a[1]).map(([n, k]) => `${n} ${k}`).join(" · ");
@@ -441,7 +445,7 @@ function showHours(zone) {
     const bars = make("div", { class: "hbars", "aria-hidden": "true" }, ...vals.map((v, i) => {
       const bar = make("i", { title: `${clock(hours[i].h * 3600)}: ${fmt.format(v)} ${ROW_WORDS[key]}` });
       bar.style.setProperty("--v", peak ? String(v / peak) : "0");
-      bar.style.setProperty("--place", COLORS[key]);
+      bar.style.setProperty("--place", `var(--${key})`);
       return bar;
     }));
     said.push(total ? `${ROW_WORDS[key]}: ${total}, busiest at ${clock(hours[vals.indexOf(peak)].h * 3600)} with ${peak}.` : `${ROW_WORDS[key]}: none.`);
@@ -470,7 +474,7 @@ function showCi(zone) {
 
 function feedItem(f) {
   const who = make("b", { text: f.agent });
-  who.style.setProperty("--star", COLORS[f.agent] || COLORS.Vega);
+  who.style.setProperty("--star", hue(f.agent));
   const words = deed(f), where = whereWork(f);
   const p = make("p", {}, who, " ");
   // the repo, when public, is a link; the rest of the words stay plain text
@@ -490,7 +494,7 @@ function showCard() {
   if (!openName) return;
   const pic = picture();
   const c = starCard(openName, pic, pic.nowS, invert(reviewing(pic)));
-  card.style.setProperty("--star", COLORS[openName]);
+  card.style.setProperty("--star", hue(openName));
   $("sc-eyebrow").textContent = c.eyebrow;
   $("sc-title").textContent = c.title;
   const body = [];
@@ -854,6 +858,23 @@ wallBtn.addEventListener("click", async () => {
 });
 document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && !params.has("wall")) setWall(false); });
 if (params.has("wall")) setWall(true);
+
+// ---- Day or Night: early.js chose before the first paint (globalThis.liveTheme); the toggle
+// saves the visitor's choice, and until they make one the page follows their system
+const themeButtons = [...document.querySelectorAll("[data-pick]")];
+const themeColor = document.querySelector('meta[name="theme-color"]');
+function setTheme(theme, save) {
+  root.dataset.theme = theme;
+  if (save) liveTheme.save(theme);
+  for (const b of themeButtons) b.setAttribute("aria-pressed", String(b.dataset.pick === theme));
+  themeColor.content = theme === "day" ? "#f6f5f1" : "#050a1a";
+  Object.assign(COLORS, readColors());
+  sky.setDay(theme === "day");
+  drawLinks();
+}
+for (const b of themeButtons) b.addEventListener("click", () => setTheme(b.dataset.pick, true));
+matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => { if (liveTheme.follows()) setTheme(liveTheme.system(), false); });
+setTheme(root.dataset.theme, false);
 
 reducedQuery.addEventListener("change", (e) => {
   reduced = e.matches;
