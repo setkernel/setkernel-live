@@ -87,8 +87,10 @@ from GitHub's REST shapes, and nothing else passes. It is tested in `test/eviden
 - **Text:** none. Titles, bodies, commit messages, branches, file paths and code are read only to
   count things (words, acceptance criteria, screenshots, test files, reviewer blockers). The
   output also passes `guard()`, the page's NEVER list.
-- **Security:** a pull request labelled `security` (on it or its issue) is withheld until 24
-  hours after it merges. An unmerged one is never shown.
+- **Security:** a pull request with a security label (on it or its linked issue: `security`, `sec`,
+  `vulnerability`, `vuln`, `cve` or `ghsa` as a word anywhere in the name, so `area:security` and
+  `type/security` count) is withheld until 24 hours after it merges. An unmerged one is never shown.
+  If the linked issue can't be read, the pull request isn't shown at all.
 - **Numbers:** team totals only, never per person. Titles are read only to count reverts.
 - **The CI test** `test/private-repos.test.mjs` lists setkernel's public repos live from the
   GitHub API. Every repo named by the demo data, by `evidence.json` and by the page's and the

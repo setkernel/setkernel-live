@@ -12,7 +12,8 @@ import { guard } from "./logic.js";
 
 export const OWNER = "setkernel";
 export const SECURITY_HOLD_MS = 24 * 3600 * 1000;
-const REPO = /^[A-Za-z0-9._-]{1,100}$/;
+// A repo name; "." and ".." are refused, since fetch would resolve them into another API path.
+const REPO = /^(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$/;
 const CHECK = /^[A-Za-z0-9 ._()/:-]{1,40}$/;
 const STAR = new Map(AGENTS.map((a) => [`${a.toLowerCase()}-setkernel`, a]));
 
@@ -48,8 +49,12 @@ export function images(body) {
   return (String(body || "").match(/!\[[^\]]*\]\([^)]+\)|<img\b/gi) || []).length;
 }
 
+// Is any label a security one? The word may sit anywhere in it ("security", "sec: high", "area:security",
+// "type/security", "vulnerability", "CVE-2026-1"), bounded by anything but a letter or digit. A label
+// held by mistake only waits; one missed would show a fix before it ships everywhere.
 export function isSecurity(labels) {
-  return (labels || []).some((l) => /^(security|sec)\b/i.test(typeof l === "string" ? l : l?.name || ""));
+  const re = /(?:^|[^a-z0-9])(?:security|sec|vuln(?:erabilit(?:y|ies))?|cve|ghsa)(?:$|[^a-z0-9])/i;
+  return (labels || []).some((l) => re.test(typeof l === "string" ? l : l?.name || ""));
 }
 
 const time = (v) => {
@@ -87,9 +92,13 @@ export function publishEvidence(raw, now) {
   const { repo, pull, issue } = raw || {};
   if (!isPublicRepo(repo)) return { ok: false, reason: "That isn't one of setkernel's public repos." };
   if (!pull || pull.base?.repo?.full_name !== repo.full_name || !Number.isInteger(pull.number)) return { ok: false, reason: "That pull request isn't in this repo." };
-  const own = issue && !issue.pull_request && issue.repository_url === repo.url ? issue : null;
+  // The issue it links must be here: without it, its security label can't be checked.
+  const n = linkedIssue(pull.body, repo.name);
+  if (n && issue?.number !== n) return { ok: false, reason: "The linked issue couldn't be checked." };
+  const linked = n ? issue : null;
+  const own = linked && !linked.pull_request && linked.repository_url === repo.url ? linked : null;
   const merged = pull.merged_at ? ms(pull.merged_at) : null;
-  if (isSecurity(pull.labels) || isSecurity(own?.labels)) {
+  if (isSecurity(pull.labels) || isSecurity(linked?.labels)) {
     if (!merged || now - merged < SECURITY_HOLD_MS) return { ok: false, reason: "A security fix is shown 24 hours after it ships." };
   }
   const commitTimes = (raw.commits || []).map((c) => ms(c?.commit?.committer?.date)).filter(Number.isFinite).sort((a, b) => a - b);
@@ -122,7 +131,9 @@ export function publishEvidence(raw, now) {
 }
 
 // Everything publishEvidence reads, from the REST API. get(path) -> parsed JSON (it throws on a
-// failed request). The repo is checked first, so nothing else is asked about a private one.
+// failed request, and so does this: a linked issue that can't be read fails the call, since its
+// labels decide the security hold). The repo is checked first, so nothing else is asked about a
+// private one.
 export async function fetchEvidence(get, repoName, number) {
   if (!REPO.test(String(repoName)) || !Number.isInteger(number) || number < 1) throw new Error("Give a setkernel repo and a pull request number.");
   const path = `repos/${OWNER}/${repoName}`;
@@ -131,7 +142,7 @@ export async function fetchEvidence(get, repoName, number) {
   const pull = await get(`${path}/pulls/${number}`);
   const n = linkedIssue(pull.body, repo.name);
   const [issue, reviews, comments, commits, files, checksHead, production] = await Promise.all([
-    n ? get(`${path}/issues/${n}`).catch(() => null) : null,
+    n ? get(`${path}/issues/${n}`) : null,
     get(`${path}/pulls/${number}/reviews?per_page=100`),
     get(`${path}/issues/${number}/comments?per_page=100`),
     get(`${path}/pulls/${number}/commits?per_page=100`),

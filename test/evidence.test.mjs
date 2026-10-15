@@ -2,7 +2,7 @@
 // text, a security fix held for 24 hours, and the team's numbers. Run: npm test
 import test from "node:test";
 import assert from "node:assert/strict";
-import { criteria, fetchEvidence, images, isPublicRepo, linkedIssue, parsePull, publishEvidence, teamNumbers, who } from "../src/evidence.js";
+import { criteria, fetchEvidence, images, isPublicRepo, isSecurity, linkedIssue, parsePull, publishEvidence, teamNumbers, who } from "../src/evidence.js";
 import { hasNever } from "../src/logic.js";
 
 const NOW = Date.parse("2026-10-16T12:00:00Z");
@@ -95,6 +95,48 @@ test("a security fix waits 24 hours after it merges, labelled on the pull reques
   assert.equal(publishEvidence(viaIssue, merged + 3600_000).ok, false);
 });
 
+test("a security label is held wherever the word sits in it: prefixed, scoped, or a vulnerability or CVE", () => {
+  for (const name of ["security", "Security", "sec-fix", "sec: high", "area:security", "area: security", "type/security",
+    "security-fix", "area_security", "kind/vulnerability", "vulnerabilities", "vuln", "cve", "CVE-2026-1234", "ghsa"]) {
+    assert.equal(isSecurity([{ name }]), true, name);
+    assert.equal(isSecurity([name]), true, name);
+    const r = raw();
+    r.issue.labels = [{ name }];
+    assert.equal(publishEvidence(r, Date.parse(r.pull.merged_at) + 3600_000).ok, false, `${name} on the issue`);
+  }
+  for (const name of ["insecure-defaults", "secret-santa", "second", "documentation", "owner-review", ""]) assert.equal(isSecurity([{ name }]), false, name);
+  assert.equal(isSecurity(null), false);
+});
+
+test("a linked issue that can't be read holds the pull request back instead of skipping the security check", async () => {
+  const r = raw();
+  r.issue.labels = [{ name: "area:security" }];
+  const get = async (p) => {
+    if (p === "repos/setkernel/setkernel-live") return repo();
+    if (p.endsWith("/pulls/49")) return r.pull;
+    if (p.endsWith("/issues/48")) throw new Error("HTTP 403: API rate limit exceeded");
+    if (p.includes("check-runs")) return { check_runs: [] };
+    return [];
+  };
+  await assert.rejects(fetchEvidence(get, "setkernel-live", 49), /rate limit/);
+  // and publishEvidence refuses on its own when the linked issue is missing or isn't the one linked
+  const at = Date.parse(r.pull.merged_at) + 30 * 86_400_000;
+  for (const issue of [null, undefined, { ...r.issue, number: 47, labels: [] }]) {
+    const got = publishEvidence(raw({ issue }), at);
+    assert.equal(got.ok, false, String(issue?.number));
+    assert.match(got.reason, /linked issue/);
+  }
+  // a linked pull request ("Refs #47" where #47 is a PR) still has its labels checked, but isn't shown as the idea
+  const pr = raw({ issue: { ...r.issue, pull_request: {}, labels: [{ name: "security" }] } });
+  assert.equal(publishEvidence(pr, Date.parse(pr.pull.merged_at) + 3600_000).ok, false);
+  pr.issue.labels = [];
+  assert.equal(publishEvidence(pr, at).evidence.idea, null);
+  // no link: no issue needed
+  const none = raw({ issue: null });
+  none.pull.body = "No link here";
+  assert.equal(publishEvidence(none, at).ok, true);
+});
+
 test("names: star names for the team, 'a person' for anyone else, 'automation' for bots", () => {
   assert.equal(who({ login: "Orion-setkernel", type: "User" }), "Orion");
   assert.equal(who({ login: "polaris-setkernel", type: "User" }), "Polaris");
@@ -112,6 +154,7 @@ test("the text helpers count, and follow only an issue in the same repo", () => 
   assert.equal(images("![a](b) <IMG src=c> [not](d)"), 2);
   assert.equal(isPublicRepo(repo()), true);
   assert.equal(isPublicRepo({ ...repo(), name: "../hq" }), false);
+  for (const name of [".", ".."]) assert.equal(isPublicRepo({ ...repo(), name }), false, name);
   assert.deepEqual(parsePull("https://github.com/setkernel/setkernel-live/pull/49"), { repo: "setkernel-live", number: 49 });
   assert.deepEqual(parsePull("setkernel-live#49"), { repo: "setkernel-live", number: 49 });
   assert.equal(parsePull("https://github.com/other/x/pull/1"), null);
@@ -136,6 +179,7 @@ test("fetchEvidence asks nothing more about a private repo, and never follows an
   assert.ok(!seen.some((p) => p.includes("hq")), "no request about a private repo");
   assert.equal(got.issue, null);
   await assert.rejects(fetchEvidence(get, "../x", 1));
+  for (const name of [".", ".."]) await assert.rejects(fetchEvidence(get, name, 1), name);
 });
 
 test("team numbers: throughput, lead time, pass rate, revert rate and time to recover", () => {
