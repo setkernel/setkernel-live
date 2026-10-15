@@ -111,14 +111,16 @@ test("clock: 24-hour HH:MM in the visitor's zone, seconds or milliseconds", () =
   assert.equal(zoneName(T0 - 140 * 86_400, "America/Halifax", "en-US"), "ADT");
 });
 
-test("today: the counters' UTC midnight on the visitor's clock", () => {
-  assert.equal(todaySince(T0 * 1000, "UTC", "en-US"), "since 00:00 UTC");
-  assert.equal(todaySince(T0, "America/Halifax", "en-US"), "since 20:00 AST yesterday", "12:00 in Halifax: the count began last evening");
-  assert.equal(todaySince(T0 + 9 * 3600, "America/Halifax", "en-US"), "since 20:00 AST", "21:00 in Halifax: it began this evening");
-  assert.equal(todaySince((T0 - 140 * 86_400) * 1000, "America/Halifax", "en-US"), "since 21:00 ADT yesterday");
-  assert.equal(todaySince(T0, "Asia/Kolkata", "en-US"), "since 05:30 GMT+5:30");
+test("today: the counters' Halifax midnight on the visitor's clock, in AST and ADT", () => {
+  // T0 is 12:00 AST on 23 November 2025: the Halifax day began at 04:00 UTC
+  assert.equal(todaySince(T0 * 1000, "America/Halifax", "en-US"), "since 00:00 AST");
+  assert.equal(todaySince(T0, "UTC", "en-US"), "since 04:00 UTC");
+  assert.equal(todaySince(T0 + 9 * 3600, "America/Halifax", "en-US"), "since 00:00 AST", "21:00 in Halifax: still today");
+  assert.equal(todaySince(T0 + 12 * 3600, "America/Halifax", "en-US"), "since 00:00 AST", "a new Halifax day at its midnight");
+  assert.equal(todaySince((T0 - 140 * 86_400) * 1000, "America/Halifax", "en-US"), "since 00:00 ADT", "summer");
+  assert.equal(todaySince((T0 - 140 * 86_400) * 1000, "Europe/London", "en-GB"), "since 04:00 BST", "a visitor in London sees Halifax's midnight on their clock");
+  assert.equal(todaySince(T0 + 10 * 3600, "Asia/Kolkata", "en-US"), "since 09:30 GMT+5:30 yesterday", "02:00 in India: the Halifax day began yesterday morning there");
 });
-
 test("freshness: how long since the office last reported in, ticking up", () => {
   const now = T0 * 1000;
   assert.equal(freshness(0, now), "", "nothing yet: nothing to say");
