@@ -22,4 +22,8 @@ jobs:
           cache: npm
       - run: npm ci
       # Syntax of every script, the unit tests, and a Wrangler dry-run build (no credentials).
+      # The read-only job token only lifts the API rate limit for test/private-repos.test.mjs,
+      # which lists setkernel's public repos live; it sees nothing private.
       - run: npm run validate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
