@@ -65,6 +65,12 @@ three glyphs remain (see "Marks" below). Colour is never the only signal:
   up an issue is where the Building line begins, for the same reason.
 - Everything else (approved, pushed fixes, requests, comments, design posts, decisions, the
   guardians) is words: in the Now column, the scrub readout, the hover title and the table.
+- Two marks that would overlap go on separate levels, so the second sits above the line at the
+  same time. On the busy day, Rigel's merges at 23:17 and 23:36 are 18 minutes apart, about 9 px
+  at 1440, so the second one is raised. Time stays exact; only the height moves.
+- The state before each lane's Now line (● working, ◎ reviewing, three dots for discussing,
+  two bars for paused) is drawn as an SVG shape, not text. The embedded fonts are Latin subsets
+  without these characters, so as text they came from whatever system font the screen had.
 
 **Type and spacing.** The type is Manrope, with IBM Plex Mono for clock times only; both are the
 repo's own OFL fonts from `public/fonts/` (Google Fonts, embedded). Two families stay because the
@@ -302,8 +308,9 @@ against them: one type scale and spacing grid, calmer lanes, a stronger Now, no 
 - Offline showed "Working on an issue" in full ink under "Last word, 15:53"; the column is
   dimmed now.
 - A scrubbed line that doesn't fit drops one type step (20 to 16) instead of being cut.
-- Still to change: Polaris's marks stack three deep around a burst, and the wall's state glyph
-  (●) comes from a fallback font.
+- Polaris's three-deep stacks and the wall's fallback-font state glyph were left from this
+  round; the second review's calmer Polaris row and the drawn state shapes (see "Marks") replace
+  both.
 
 **The first prototype's rounds:**
 **Round 1** (first shots):
