@@ -70,6 +70,13 @@ a laptop.
 - The page builds everything with `textContent`, never `innerHTML`; keep it that way. The CSP in
   `public/_headers` allows only same-origin scripts, styles and fonts; the fonts are self-hosted in
   `public/fonts/` (SIL OFL, licences beside them). Never add a third-party host.
+- Fonts follow setkernel/hq `docs/repo-standard.md` ("Fonts"): every stack is a self-hosted face,
+  then one generic family (`"Manrope", sans-serif`, `"IBM Plex Mono", monospace`), never a named
+  system font. The design mockups embed the files from `public/fonts/` (`docs/design/v2/fonts.mjs`,
+  `docs/design/v3/day/build.mjs`); `test/page.test.mjs` checks all of it.
+- `public/og.png` (the share preview) is a 1200x630 browser screenshot of a local `?demo` render
+  (Night) from #42; no generator is committed. When it is next regenerated, commit the generator
+  with the fonts as TTF and a pinned `FONTCONFIG_FILE`, so every host draws the same text.
 - The Durable Object migration tag `v1` creates `Hub`; never edit an applied migration, add a new tag.
 - vitest stays on 4.1.x for now: with vitest 5.0.4, `@cloudflare/vitest-plugin` 1.4.0 fails every
   suite ("no such file or directory, readAll …/.vitest-cache/…").

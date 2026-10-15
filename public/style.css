@@ -27,8 +27,8 @@
      in Recent work */
   --comet: #d6ecff; --slip: #f1e5c4; --slip-2: #e2d1a3; --slip-ink: #33270a; --slip-mark: #f1e5c4;
   --r: 1.1rem; --peek: 11.4rem;
-  --ui: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --num: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --ui: "Manrope", sans-serif;
+  --num: "IBM Plex Mono", monospace;
   color-scheme: dark;
 }
 /* Day: ink on paper. --bg is the paper, --panel a card and --wash the board and the Today strip;
