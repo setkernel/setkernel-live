@@ -23,7 +23,9 @@ jobs:
       - run: npm ci
       # Syntax of every script, the unit tests, and a Wrangler dry-run build (no credentials).
       # The read-only job token only lifts the API rate limit for test/private-repos.test.mjs,
-      # which lists setkernel's public repos live; it sees nothing private.
+      # which lists setkernel's public repos live; it sees nothing private. LIVE_REPO_CHECK=1 makes
+      # a failed request fail that test. Only here: deploy.yml's re-gate has no token, so it skips.
       - run: npm run validate
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          LIVE_REPO_CHECK: "1"

@@ -6,7 +6,8 @@
 //    nobody wrote down, or a repo made private since.
 // 2. With SETKERNEL_REPO_TOKEN (a token that can list the org's private repos), each private name is
 //    also looked for, as a word, in the same data and in the markup's text.
-// Under CI a failed request fails the test; elsewhere, with no network, it is skipped. Run: npm test
+// With LIVE_REPO_CHECK=1 (ci.yml sets it) a failed request fails the test; elsewhere, including the
+// deploy's re-gate, which has no token, a failed request skips it. Run: npm test
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -55,8 +56,8 @@ async function publicRepos(t) {
     live ??= await repos("public", process.env.GITHUB_TOKEN);
     return live;
   } catch (err) {
-    if (process.env.CI) throw err;
-    t.skip(`no GitHub API here (${err.message}); CI runs this`);
+    if (process.env.LIVE_REPO_CHECK === "1") throw err;
+    t.skip(`no GitHub API here (${err.message}); ci.yml runs this`);
     return null;
   }
 }
