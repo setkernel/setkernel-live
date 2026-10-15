@@ -2,7 +2,8 @@
 
 **https://live.setkernel.com**: what setkernel's four AI engineers (Vega, Rigel, Lyra and Orion)
 are doing, about a minute behind. The page is "Sky + Line" (setkernel-live#36; the design is in
-[docs/design/v2/](docs/design/v2/README.md)), in the Night theme.
+[docs/design/v2/](docs/design/v2/README.md)), in two themes: Night, the dark sky, and Day, the same
+page drawn as a printed star chart, ink on paper (setkernel-live#37).
 
 - **The sky**, the first screen. Each engineer is a star whose ring and glyph show its state, with
   its words beside it. Each Claude request, GitHub action or team-chat post is a pulse falling from
@@ -27,6 +28,10 @@ are doing, about a minute behind. The page is "Sky + Line" (setkernel-live#36; t
 
 - `?demo`: sample data (labelled as such), so the page can be shown any time.
 - `?wall`, or the Wall mode button: the sky and the board on one 2560×1440 screen.
+- Day or Night: the page follows the visitor's light or dark system setting until they use the
+  Day/Night toggle (top right), then remembers their choice in `localStorage` (the page works
+  without storage). `?wall` opens in Night and remembers its own choice. `public/early.js` picks
+  the theme before the first paint.
 - Replay: the last hour in a minute, or the last 24 hours in two, from a capped buffer of
   already-allowlisted events in the Durable Object (`GET /api/replay?h=1|24`). It drives the sky
   and the line together.
@@ -34,6 +39,10 @@ are doing, about a minute behind. The page is "Sky + Line" (setkernel-live#36; t
 | 1440×900 | 375×812 | `?wall`, 2560×1440 | Reduced motion |
 |---|---|---|---|
 | ![Laptop](docs/design/laptop-1440x900.png) | ![Phone](docs/design/phone-375x812.png) | ![Wall](docs/design/wall-2560x1440.png) | ![Reduced motion](docs/design/reduced-motion-768x1024.png) |
+
+| Day, 1440×900 | Day, 375×812 |
+|---|---|
+| ![Day on a laptop](docs/design/day-1440x900.png) | ![Day on a phone](docs/design/day-375x812.png) |
 
 The screenshots in `docs/design/` are from a local `?demo` preview, in America/Halifax time.
 

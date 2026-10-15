@@ -11,17 +11,17 @@
   <meta property="og:site_name" content="setkernel">
   <meta property="og:url" content="https://live.setkernel.com/">
   <meta property="og:title" content="setkernel Live: four AI engineers at work">
-  <meta property="og:description" content="Vega, Rigel, Lyra and Orion are building real software right now. Watch their work as a living night sky, about a minute behind.">
+  <meta property="og:description" content="Four AI engineers, Vega, Rigel, Lyra and Orion, building real software as stars in a live night sky, with Polaris, the director, and its three Claude sessions as Ursa Minor. The line shows where each one's work is: Started → Building → In review → Fixing → Merged.">
   <meta property="og:image" content="https://live.setkernel.com/og.png">
   <meta property="og:image:type" content="image/png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="setkernel Live: four stars named Vega, Rigel, Lyra and Orion, with pulses of light travelling to Claude, GitHub and the team chat.">
+  <meta property="og:image:alt" content="setkernel Live at night: Polaris and Ursa Minor above four stars, Vega, Rigel, Lyra and Orion, with the headline of what they are doing, and below them the top of the line: Started, Building, In review, Fixing, Merged.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="setkernel Live: four AI engineers at work">
-  <meta name="twitter:description" content="Vega, Rigel, Lyra and Orion are building real software right now. Watch their work as a living night sky, about a minute behind.">
+  <meta name="twitter:description" content="Four AI engineers, Vega, Rigel, Lyra and Orion, building real software as stars in a live night sky, with Polaris, the director, and its three Claude sessions as Ursa Minor. The line shows where each one's work is: Started → Building → In review → Fixing → Merged.">
   <meta name="twitter:image" content="https://live.setkernel.com/og.png">
-  <meta name="twitter:image:alt" content="setkernel Live: four stars named Vega, Rigel, Lyra and Orion, with pulses of light travelling to Claude, GitHub and the team chat.">
+  <meta name="twitter:image:alt" content="setkernel Live at night: Polaris and Ursa Minor above four stars, Vega, Rigel, Lyra and Orion, with the headline of what they are doing, and below them the top of the line: Started, Building, In review, Fixing, Merged.">
   <link rel="preload" href="/fonts/manrope-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/fonts/manrope-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/fonts/ibm-plex-mono-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
@@ -37,15 +37,16 @@
         <p class="latest" id="latest"></p>
         <p class="since" id="since"></p>
         <ul class="legend" aria-label="How to read the sky">
-          <li><svg viewBox="0 0 36 14" aria-hidden="true"><path d="M2 7H27" stroke="#e0904a" stroke-width="2" stroke-linecap="round" opacity=".55"/><circle cx="30" cy="7" r="3.4" fill="#ffe4c8"/></svg>Work pulse → its place</li>
-          <li><svg viewBox="0 0 36 14" aria-hidden="true"><path d="M1 3Q14 4 28 7" fill="none" stroke="#d6ecff" stroke-width="5" stroke-linecap="round" opacity=".3"/><path d="M1 3Q14 4 28 7" fill="none" stroke="#d6ecff" stroke-width="2" stroke-linecap="round"/><circle cx="30" cy="7.4" r="4" fill="#ffffff"/></svg>Request: comet → the team</li>
-          <li><svg viewBox="0 0 36 14" aria-hidden="true"><path d="M3 12Q18 -4 33 12" fill="none" stroke="#f472b6" stroke-width="1.8"/></svg>Review: reviewer → author</li>
-          <li><svg viewBox="0 0 36 14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8ab4ff" stroke-width="1.4"/><circle cx="7" cy="7" r="2" fill="#ffffff"/><circle cx="25" cy="7" r="5.5" fill="none" stroke="#8ab4ff" stroke-width="1.6" stroke-dasharray="1.5 2.5"/><circle cx="25" cy="7" r="2" fill="#ffffff"/></svg>Ring and glyph = state</li>
+          <li><svg viewBox="0 0 36 14" aria-hidden="true"><path class="k-pulse" d="M2 7H27" stroke-width="2" stroke-linecap="round" opacity=".55"/><circle class="k-head" cx="30" cy="7" r="3.4"/></svg>Work pulse → its place</li>
+          <li><svg viewBox="0 0 36 14" aria-hidden="true"><path class="k-comet-glow" d="M1 3Q14 4 28 7" fill="none" stroke-width="5" stroke-linecap="round" opacity=".3"/><path class="k-comet" d="M1 3Q14 4 28 7" fill="none" stroke-width="2" stroke-linecap="round"/><circle class="k-comet-head" cx="30" cy="7.4" r="4"/></svg>Request: comet → the team</li>
+          <li><svg viewBox="0 0 36 14" aria-hidden="true"><path class="k-arc" d="M3 12Q18 -4 33 12" fill="none" stroke-width="1.8"/></svg>Review: reviewer → author</li>
+          <li><svg viewBox="0 0 36 14" aria-hidden="true"><circle class="k-ring" cx="7" cy="7" r="5.5" fill="none" stroke-width="1.4"/><circle class="k-core" cx="7" cy="7" r="2"/><circle class="k-ring" cx="25" cy="7" r="5.5" fill="none" stroke-width="1.6" stroke-dasharray="1.5 2.5"/><circle class="k-core" cx="25" cy="7" r="2"/></svg>Ring and glyph = state</li>
         </ul>
       </div>
 
       <div class="hud-right" id="hud-right">
         <div class="liverow">
+          <div class="theme" role="group" aria-label="Theme"><button type="button" data-pick="day" aria-pressed="false">Day</button><button type="button" data-pick="night" aria-pressed="false">Night</button></div>
           <p class="status" id="status"><i aria-hidden="true"></i><span id="status-text" role="status">Connecting…</span><span id="status-age"></span></p>
         </div>
         <p class="clock"><time id="clock">--:--:--</time><small id="zone"></small></p>

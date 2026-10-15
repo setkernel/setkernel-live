@@ -1,4 +1,5 @@
-/* live.setkernel.com, v2 "Sky + Line" in Night (setkernel-live#36; docs/design/v2/README.md).
+/* live.setkernel.com, v2 "Sky + Line" (setkernel-live#36; docs/design/v2/README.md), in Night and,
+   under html[data-theme="day"], Day (setkernel-live#37): the same page as a printed star chart.
    The sky is the first screen, and the line, a board of where each engineer's work is, sits right
    under it. Fonts are self-hosted (the CSP allows no other host): Manrope for words, IBM Plex Mono
    for numbers and times. Every text colour is checked for contrast in test/page.test.mjs. */
@@ -22,12 +23,26 @@
   /* the places work goes, and the test-run marks */
   --claude: #e0904a; --github: #7d9bff; --chat: #4ade80;
   --ok: #4ade80; --fail: #fb7185; --warn: #fbbf24; --accent: #a5c4ff;
-  /* requests (setkernel-live#35): the comet in the sky and the manila slip on the line */
-  --comet: #d6ecff; --slip: #f1e5c4; --slip-2: #e2d1a3; --slip-ink: #33270a;
+  /* requests (setkernel-live#35): the comet in the sky, the manila slip on the line and its mark
+     in Recent work */
+  --comet: #d6ecff; --slip: #f1e5c4; --slip-2: #e2d1a3; --slip-ink: #33270a; --slip-mark: #f1e5c4;
   --r: 1.1rem; --peek: 11.4rem;
   --ui: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
   --num: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color-scheme: dark;
+}
+/* Day: ink on paper. --bg is the paper, --panel a card and --wash the board and the Today strip;
+   text is checked on all three. The star and place colours are darkened so they read on paper. */
+html[data-theme="day"] {
+  --bg: #f6f5f1; --panel: #fffefb; --wash: #efede6;
+  --ink: #111111; --ink-2: #3a3832; --ink-3: #5c5950;
+  --edge: #dad6cb; --edge-2: #c6c1b4;
+  --glass-a: #fffefb; --glass-b: #fffefb; --shadow: 0 0 0 transparent;
+  --vega: #2f5fb8; --rigel: #be185d; --lyra: #85620a; --orion: #a64a12; --polaris: #111111; --pole: #0b6f96;
+  --claude: #a3541c; --github: #3553c9; --chat: #156b3d;
+  --ok: #166a38; --fail: #b3261e; --warn: #8a5a00; --accent: #2f5fb8;
+  --comet: #111111; --slip-mark: #6b5410;
+  color-scheme: light;
 }
 html { font-size: clamp(15px, .45vw + 9px, 22px); overflow-x: clip; }
 html.wall { font-size: clamp(16px, .42vw + 10px, 24px); }
@@ -69,8 +84,19 @@ h1 { font-size: clamp(1.25rem, .95rem + .55vw, 2.2rem); font-weight: 600; letter
 .legend { list-style: none; display: grid; grid-template-columns: repeat(2, auto); justify-content: start; gap: .3rem 1.1rem; margin-top: .7rem; font-size: .875rem; color: var(--ink-2); padding: .5rem .85rem; border-radius: .9rem; border: 1px solid var(--edge); background: rgba(8, 12, 28, .7); text-shadow: none; width: max-content; max-width: 100%; }
 .legend li { display: flex; align-items: center; gap: .5rem; }
 .legend svg { width: 2.2rem; height: .9rem; flex: none; overflow: visible; }
+.legend .k-pulse { stroke: var(--claude); }
+.legend .k-head { fill: #ffe4c8; }
+.legend .k-arc { stroke: var(--rigel); }
+.legend .k-ring { stroke: var(--vega); }
+.legend .k-core { fill: #ffffff; }
+.legend .k-comet, .legend .k-comet-glow { stroke: var(--comet); }
+.legend .k-comet-head { fill: #ffffff; }
 
 .hud-right { grid-area: sky; align-self: start; justify-self: end; z-index: 4; display: grid; justify-items: end; gap: .5rem; text-align: right; padding: 1.2rem 1.5rem 0; max-width: 30rem; }
+.theme { display: inline-flex; padding: 2px; border-radius: 99px; border: 1px solid var(--edge); background: rgba(14, 20, 40, .7); }
+.theme button { font-size: .875rem; font-weight: 700; padding: 0 .8rem; border: 0; border-radius: 99px; background: none; color: var(--ink-2); }
+.theme button:hover { color: var(--ink); }
+.theme button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 .liverow { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: .5rem .7rem; font-size: .875rem; color: var(--ink-2); }
 .status { display: inline-flex; align-items: center; gap: .5rem; font-size: .875rem; color: var(--ink-2); }
 .status #status-text { font: 600 .875rem var(--num); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); padding: .2rem .75rem; border-radius: 99px; border: 1px solid var(--edge-2); }
@@ -308,7 +334,7 @@ h1 { font-size: clamp(1.25rem, .95rem + .55vw, 2.2rem); font-weight: 600; letter
 .feed time { font: 500 .875rem/1.55 var(--num); color: var(--ink-3); }
 .feed .glyph { margin-top: .2rem; }
 .feed li.req { background: linear-gradient(90deg, rgba(241, 229, 196, .12), transparent 70%); border-radius: .4rem; }
-.feed .slipmark { fill: none; stroke: var(--slip); stroke-width: 1.8; }
+.feed .slipmark { fill: none; stroke: var(--slip-mark); stroke-width: 1.8; }
 .feed b { color: var(--star); font-weight: 700; }
 .feed a { color: var(--ink); font-weight: 600; text-decoration-color: var(--edge-2); }
 .nums { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem .75rem; }
@@ -348,12 +374,56 @@ h1 { font-size: clamp(1.25rem, .95rem + .55vw, 2.2rem); font-weight: 600; letter
 .about strong { color: var(--ink); }
 .about .foot { margin-top: 1rem; font-size: .875rem; color: var(--ink-3); }
 
+/* ---------- Day: paper cards with hairline rules, ink, no glow ---------- */
+[data-theme="day"] body { background-image: none; }
+[data-theme="day"] .hud { text-shadow: none; }
+[data-theme="day"] .legend, [data-theme="day"] .chip, [data-theme="day"] .theme, [data-theme="day"] .offer, [data-theme="day"] .schip,
+[data-theme="day"] .rchip, [data-theme="day"] .pile, [data-theme="day"] .lg.c { background: var(--panel); }
+[data-theme="day"] .chip[aria-pressed="true"] { background: var(--ink); }
+[data-theme="day"] .legend .k-head { fill: var(--claude); }
+[data-theme="day"] .legend .k-core { fill: var(--ink); }
+[data-theme="day"] .legend .k-comet-head { fill: var(--comet); }
+[data-theme="day"] .legend .k-comet-glow { display: none; }
+[data-theme="day"] .status.live i { box-shadow: none; }
+[data-theme="day"] .status.live #status-text { border-color: var(--ok); background: none; }
+[data-theme="day"] .status.replay #status-text { border-color: var(--warn); background: none; }
+[data-theme="day"] .orb .halo { display: none; }
+[data-theme="day"] .orb .core { background: var(--ink); box-shadow: none; }
+[data-theme="day"] [data-state="PAUSED"] .core { background: transparent; border: 1.5px solid var(--ink); filter: none; }
+[data-theme="day"] .star.polaris svg { filter: none; }
+[data-theme="day"] .star.polaris svg path { fill: var(--ink); }
+[data-theme="day"] .star.polaris svg circle { stroke: var(--ink); }
+[data-theme="day"] .star.polaris svg circle:last-child { fill: var(--bg); stroke: none; }
+[data-theme="day"] .lbl { background: rgba(246, 245, 241, .9); }
+[data-theme="day"] .star:hover .lbl, [data-theme="day"] .star[aria-expanded="true"] .lbl { background: var(--panel); }
+[data-theme="day"] .star.spot .lbl { background: var(--panel); box-shadow: none; }
+[data-theme="day"] .station.hit { box-shadow: 0 0 0 1px var(--place); }
+[data-theme="day"] .kpis { background: var(--wash); border-top: 1px solid var(--edge); }
+[data-theme="day"] .scard { background: var(--panel); box-shadow: 0 18px 40px -18px rgba(40, 30, 10, .35); }
+[data-theme="day"] .scard .x, [data-theme="day"] .cnums div { background: var(--wash); }
+[data-theme="day"] .scard h3::before, [data-theme="day"] .who .dot { box-shadow: none; }
+[data-theme="day"] .life .mk { background: var(--panel); }
+[data-theme="day"] .life .done .mk { background: color-mix(in srgb, var(--star) 24%, var(--panel)); }
+[data-theme="day"] .pole.spot, [data-theme="day"] .schip.spot { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+[data-theme="day"] .polestar path, [data-theme="day"] .polestar circle:first-child { fill: var(--ink); }
+[data-theme="day"] .polestar circle + circle { stroke: var(--ink); }
+[data-theme="day"] .board { background: var(--wash); }
+[data-theme="day"] .colhead { border-bottom-color: var(--ink); }
+[data-theme="day"] .colhead:not(.last)::after { border-left-color: var(--ink); }
+[data-theme="day"] .card { background: var(--panel); }
+[data-theme="day"] .card.idle { background: transparent; }
+[data-theme="day"] .card.spot { box-shadow: 0 0 0 2px var(--star); }
+[data-theme="day"] .feed li { border-top-color: var(--edge); }
+[data-theme="day"] .tbl td { border-bottom-color: var(--edge); }
+[data-theme="day"] .slip, [data-theme="day"] .lg.s { box-shadow: 0 1px 0 #d9c78a, 0 3px 8px rgba(70, 55, 0, .12); }
+[data-theme="day"] .feed li.req { background: linear-gradient(90deg, rgba(217, 199, 138, .4), transparent 70%); }
+
 /* ---------- wall (?wall): sky left, the line right, one screen ---------- */
 @media (min-width: 1200px) {
   html.wall body { overflow: hidden; }
   html.wall .page { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); height: 100vh; }
   html.wall .hero { height: 100vh; min-height: 0; }
-  html.wall .hud { max-width: 38rem; }
+  html.wall .hud { max-width: min(38rem, calc(100% - 24rem)); } /* clear of the top-right HUD on a narrow wall */
   html.wall .kpis { gap: .2rem 1.1rem; }
   html.wall .kpis .sp svg { width: 4.8rem; }
   html.wall .lower { display: flex; flex-direction: column; height: 100vh; overflow: hidden; padding: 1rem 1.4rem 1rem .5rem; }
@@ -361,6 +431,7 @@ h1 { font-size: clamp(1.25rem, .95rem + .55vw, 2.2rem); font-weight: 600; letter
   html.wall .col { grid-template-columns: 10.5rem minmax(0, 1fr); grid-template-rows: none; grid-row: auto; border-left: 0; border-top: 1px solid var(--edge); }
   html.wall .col:first-child { border-top: 0; }
   html.wall .colhead { border-bottom: 0; border-right: 2px solid var(--ink-2); padding: .45rem .7rem; }
+  html[data-theme="day"].wall .colhead { border-right-color: var(--ink); }
   html.wall .sesslabel, html.wall .schip .sn, html.wall .pname span { display: none; }
   html.wall .colhead::after, html.wall .tput i { display: none; }
   html.wall .tput { display: block; }
@@ -417,6 +488,7 @@ h1 { font-size: clamp(1.25rem, .95rem + .55vw, 2.2rem); font-weight: 600; letter
   .hud-right { justify-self: stretch; justify-items: start; text-align: left; max-width: none; padding: .9rem 1rem; border: 1px solid var(--edge); border-radius: var(--r); background: linear-gradient(180deg, var(--glass-a), var(--glass-b)); }
   .liverow, .controls { justify-content: flex-start; }
   .replaying { justify-items: start; }
+  [data-theme="day"] .sky { background: var(--panel); }
   .scard { position: fixed; left: 16px; right: 16px; bottom: 16px; top: auto; width: auto; max-height: 72vh; z-index: 30; }
   .offer { left: .6rem; right: .6rem; bottom: 6.6rem; }
   .lower { padding: 1.2rem 16px 4.5rem; }

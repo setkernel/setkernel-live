@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { skyLayout } from "../public/lib/layout.js";
+import { STAGE_NAME } from "../public/lib/line.js";
 
 const pub = new URL("../public/", import.meta.url);
 const read = (name) => readFileSync(new URL(name, pub), "utf8");
@@ -61,45 +62,74 @@ test("every @font-face file exists, is woff2 and swaps, and ships with its licen
   }
 });
 
-// ---- contrast (WCAG AA): every text colour on the ground it is drawn on
+// ---- contrast (WCAG AA): every text colour on the ground it is drawn on, in both themes
 const css = read("style.css");
-const vars = Object.fromEntries([...css.matchAll(/--([\w-]+):\s*(#[0-9a-f]{6})/gi)].map((m) => [m[1], m[2]]));
+const block = (selector) => {
+  const at = css.indexOf(`\n${selector} {`);
+  assert.ok(at >= 0, `style.css has ${selector}`);
+  return css.slice(at, css.indexOf("\n}", at));
+};
+const hexes = (text) => Object.fromEntries([...text.matchAll(/--([\w-]+):\s*(#[0-9a-f]{6})/gi)].map((m) => [m[1], m[2]]));
+const night = hexes(block(":root"));
+// Day overrides Night's colours; what it leaves alone stays Night's
+const day = { ...night, ...hexes(block('html[data-theme="day"]')) };
 const luminance = (hex) => {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
     .map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 };
-const contrast = (a, b) => {
+const contrast = (vars, a, b) => {
   const [hi, lo] = [luminance(vars[a]), luminance(vars[b])].sort((x, y) => y - x);
   return (hi + 0.05) / (lo + 0.05);
 };
 
 // Text sits on the night sky, from --bg (its darkest) to --panel (the lightest card or panel), so
-// every text colour is checked on both. Every new text colour goes in one of these lists.
-const GROUNDS = ["bg", "panel"];
-test("all text meets WCAG contrast on the night sky and its panels, AAA for body text", () => {
-  // ink: headings, numbers, names; ink-2: body and secondary lines; polaris: the pole star's name
-  for (const fg of ["ink", "ink-2", "polaris"]) {
-    for (const bg of GROUNDS) assert.ok(contrast(fg, bg) >= 7, `--${fg} on --${bg} is ${contrast(fg, bg).toFixed(2)}:1 (AAA)`);
-  }
-  // ink-3: times, hints, labels; accent: links; the star colours: names in the headline, the feed
-  // and the cards; the places: station names and the per-hour labels; ok, fail, warn: LIVE, the
-  // failed-run ×, REPLAY
-  for (const fg of ["ink-3", "accent", "vega", "rigel", "lyra", "orion", "pole", "claude", "github", "chat", "ok", "fail", "warn"]) {
-    for (const bg of GROUNDS) assert.ok(contrast(fg, bg) >= 4.5, `--${fg} on --${bg} is ${contrast(fg, bg).toFixed(2)}:1 (AA)`);
-  }
-  // dark text on light: a pressed chip (--bg on --ink) and a merged token's letter (--bg on its author's colour)
-  for (const fg of ["ink", "vega", "rigel", "lyra", "orion", "polaris", "pole"]) {
-    assert.ok(contrast("bg", fg) >= 4.5, `--bg on --${fg} is ${contrast("bg", fg).toFixed(2)}:1`);
-  }
-});
+// every text colour is checked on both. In Day it sits on the paper (--bg), the cards (--panel) and
+// the board's and Today strip's wash (--wash). Every new text colour goes in one of these lists.
+const THEMES = [["Night", night, ["bg", "panel"]], ["Day", day, ["bg", "panel", "wash"]]];
+for (const [theme, vars, grounds] of THEMES) {
+  test(`${theme}: all text meets WCAG contrast on every ground, AAA for body text`, () => {
+    const check = (fg, bg, min) => {
+      const ratio = contrast(vars, fg, bg);
+      assert.ok(ratio >= min, `${theme}: --${fg} on --${bg} is ${ratio.toFixed(2)}:1, under ${min}:1`);
+    };
+    // ink: headings, numbers, names; ink-2: body and secondary lines; polaris: the pole star's name
+    for (const fg of ["ink", "ink-2", "polaris"]) for (const bg of grounds) check(fg, bg, 7);
+    // ink-3: times, hints, labels; accent: links; the star colours: names in the headline, the feed
+    // and the cards; the places: station names and the per-hour labels; ok, fail, warn: LIVE, the
+    // failed-run ×, REPLAY
+    for (const fg of ["ink-3", "accent", "vega", "rigel", "lyra", "orion", "pole", "claude", "github", "chat", "ok", "fail", "warn"]) {
+      for (const bg of grounds) check(fg, bg, 4.5);
+    }
+    // the ground's colour on a colour: a pressed chip or theme button (--bg on --ink) and a merged
+    // token's letter (--bg on its author's colour)
+    for (const fg of ["ink", "vega", "rigel", "lyra", "orion", "polaris", "pole"]) check("bg", fg, 4.5);
+  });
+}
 
-test("a request slip's words are dark on manila, AAA, and its mark and the comet stand out on the sky", () => {
-  for (const bg of ["slip", "slip-2"]) assert.ok(contrast("slip-ink", bg) >= 7, `--slip-ink on --${bg} is ${contrast("slip-ink", bg).toFixed(2)}:1 (AAA)`);
-  // not text, but they carry meaning: at least 3:1 (WCAG 1.4.11) on the sky and its panels
-  for (const fg of ["slip", "comet"]) {
-    for (const bg of GROUNDS) assert.ok(contrast(fg, bg) >= 3, `--${fg} on --${bg} is ${contrast(fg, bg).toFixed(2)}:1`);
-  }
+// The slip is manila in both themes; its mark in Recent work and the comet take each theme's colour
+for (const [theme, vars, grounds] of THEMES) {
+  test(`${theme}: a request slip's words are dark on manila, AAA, and its mark and the comet stand out on every ground`, () => {
+    for (const bg of ["slip", "slip-2"]) {
+      const ratio = contrast(vars, "slip-ink", bg);
+      assert.ok(ratio >= 7, `${theme}: --slip-ink on --${bg} is ${ratio.toFixed(2)}:1 (AAA)`);
+    }
+    // not text, but they carry meaning: at least 3:1 (WCAG 1.4.11) on the sky, the paper and the panels
+    for (const fg of ["slip-mark", "comet"]) {
+      for (const bg of grounds) {
+        const ratio = contrast(vars, fg, bg);
+        assert.ok(ratio >= 3, `${theme}: --${fg} on --${bg} is ${ratio.toFixed(2)}:1`);
+      }
+    }
+  });
+}
+test("in Day the comet is ink, and the legend's comet follows the theme", () => {
+  assert.equal(day.comet, day.ink);
+  const html = read("index.html");
+  const item = html.match(/<li><svg [^>]*>(.*?)<\/svg>Request: comet → the team<\/li>/)?.[1] ?? "";
+  for (const k of ["k-comet-glow", "k-comet", "k-comet-head"]) assert.match(item, new RegExp(`class="${k}"`), k);
+  assert.doesNotMatch(item, /(fill|stroke)="#/, "no fixed colours in the comet's legend mark");
+  assert.match(css, /\[data-theme="day"\] \.legend \.k-comet-glow \{ display: none; \}/, "Day's comet has no glow");
 });
 
 test("requests and Polaris's merges are named in words wherever their colour or shape carries meaning", () => {
@@ -114,7 +144,17 @@ test("requests and Polaris's merges are named in words wherever their colour or 
 });
 
 test("the star colours are the design's, Rigel pink so it stays apart from Vega", () => {
-  assert.deepEqual(["vega", "rigel", "lyra", "orion", "polaris", "pole"].map((k) => vars[k]), ["#8ab4ff", "#f472b6", "#f5d06f", "#f59e5b", "#ffffff", "#7dd3fc"]);
+  const stars = ["vega", "rigel", "lyra", "orion", "polaris", "pole"];
+  assert.deepEqual(stars.map((k) => night[k]), ["#8ab4ff", "#f472b6", "#f5d06f", "#f59e5b", "#ffffff", "#7dd3fc"]);
+  assert.deepEqual(stars.map((k) => day[k]), ["#2f5fb8", "#be185d", "#85620a", "#a64a12", "#111111", "#0b6f96"], "Day darkens them for paper");
+});
+
+test("Day is ink on paper, and changes only colours", () => {
+  assert.equal(day.bg, "#f6f5f1");
+  assert.equal(day.ink, "#111111");
+  const decls = block('html[data-theme="day"]').split("{")[1].split(";").map((d) => d.trim()).filter(Boolean);
+  for (const d of decls) assert.match(d, /^(--[\w-]+|color-scheme):/, d);
+  assert.match(block('html[data-theme="day"]'), /color-scheme: light;/);
 });
 
 test("no tiny type: nothing in style.css is set under 13px", () => {
@@ -146,6 +186,24 @@ test("share preview tags point at a 1200x630 PNG on this origin", () => {
   assert.ok(png.length < 300_000, "small enough for every card scraper");
   assert.match(html, /<link rel="icon" href="\/favicon\.svg" type="image\/svg\+xml">/);
   assert.match(read("favicon.svg"), /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+});
+
+test("share preview words describe the Sky + Line page, with star names only", () => {
+  const html = read("index.html");
+  const meta = (attr, key) => html.match(new RegExp(`<meta ${attr}="${key}" content="([^"]*)">`))?.[1];
+  const desc = meta("property", "og:description");
+  const alt = meta("property", "og:image:alt");
+  assert.equal(meta("name", "twitter:description"), desc);
+  assert.equal(meta("name", "twitter:image:alt"), alt);
+  for (const text of [desc, alt]) {
+    for (const word of ["Vega", "Rigel", "Lyra", "Orion", "Polaris", "Ursa Minor"]) assert.ok(text.includes(word), `${word} in "${text}"`);
+    // the line's five columns, in order
+    const at = Object.values(STAGE_NAME).map((name) => text.indexOf(name));
+    assert.ok(at.every((i, n) => i >= 0 && (n === 0 || i > at[n - 1])), `the line's columns in order in "${text}"`);
+    assert.doesNotMatch(text, /pulses of light travelling/); // the v1 page
+  }
+  assert.match(desc, /three Claude sessions/);
+  assert.ok(desc.length <= 300, `og:description is ${desc.length} characters`);
 });
 
 test("status and news reach screen readers; the sky has a text alternative", () => {

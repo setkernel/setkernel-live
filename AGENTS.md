@@ -15,7 +15,8 @@ Public repo: everything here is visible to anyone.
 # install:  npm ci
 # test:     npm test                 (node --test: allowlist, state and replay buffer, the line's columns,
 #                                    Access token check, GitHub receiver, page wording/headline/star card/
-#                                    demo/replay/layout, page hosts and contrast, the smoke check)
+#                                    demo/replay/layout, page hosts and contrast, Day/Night choice and
+#                                    the Day sky, the smoke check)
 # worker:   npm run test:worker      (vitest in workerd: the real Worker and Hub, see test/worker/)
 # lint:     npm run check            (node --check on every script)
 # validate: npm run validate         (check + test + test:worker + wrangler deploy --dry-run; what CI runs)
@@ -62,7 +63,10 @@ a laptop.
   stays under 128 KiB even at its worst (`test/state.test.mjs`); keep that test passing if you add a column.
 - `?demo` data must pass `cleanEvent` unchanged (`test/page-logic.test.mjs`). If the allowlist
   changes, the demo changes with it.
-- Text colours are checked for contrast in `test/page.test.mjs`; a new colour goes in its list.
+- Text colours are checked for contrast in `test/page.test.mjs`, in Night (`:root`) and Day
+  (`html[data-theme="day"]`); a new colour goes in its list and needs a value in both themes.
+- `public/early.js` picks Day or Night before the first paint and is the only place that touches
+  `localStorage`; keep every read and write in its try/catch.
 - The page builds everything with `textContent`, never `innerHTML`; keep it that way. The CSP in
   `public/_headers` allows only same-origin scripts, styles and fonts; the fonts are self-hosted in
   `public/fonts/` (SIL OFL, licences beside them). Never add a third-party host.
