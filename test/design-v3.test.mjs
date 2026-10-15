@@ -20,6 +20,8 @@ test("roster prototype: one file, no network", () => {
   assert.match(html, /@font-face\{font-family:"Manrope";[^}]*src:url\(data:font\/woff2;base64,/);
 });
 
+const PUBLIC_REPOS = ["setkernel-live", "example-site"];
+
 test("roster prototype: every mood for both days, and nothing private in the fixtures", () => {
   for (const day of ["busy", "quiet"]) {
     for (const mood of ["live", "quiet", "offline", "waiting"]) {
@@ -29,12 +31,18 @@ test("roster prototype: every mood for both days, and nothing private in the fix
         assert.equal(s.mood, mood);
         assert.deepEqual(s.rows.map((r) => r.name), ["Vega", "Rigel", "Lyra", "Orion"]);
         assert.ok(s.log.every((e) => e.name === "" || AGENTS.includes(e.name)));
+        // a row's repo is stored bare ("in" is added in the browser)
+        for (const r of s.rows) assert.ok(["", "a private project", ...PUBLIC_REPOS].includes(r.where), `row where: ${r.where}`);
       }
     }
   }
   assert.ok(!hasNever(DATA), "a NEVER field in the fixtures");
-  // a repo is named only when it is public (the demo's two); anything else is "a private project"
-  const named = strings(DATA).flatMap((s) => [...s.matchAll(/\bin (?!a private project|a design discussion|the team chat)([\w-]+(?:\.[\w-]+)*)/g)].map((m) => m[1]));
-  assert.deepEqual([...new Set(named)].filter((r) => !["setkernel-live", "example-site"].includes(r)), []);
+  // a repo is named only when it is public (the demo's two); anything else is "a private project".
+  // In text it reads "in <repo>", or "Last merge: <agent>, <repo>, at …" on the quiet line.
+  const named = strings(DATA).flatMap((s) => [
+    ...[...s.matchAll(/\bin (?!a private project|a design discussion|the team chat)([\w-]+(?:\.[\w-]+)*)/g)].map((m) => m[1]),
+    ...[...s.matchAll(/Last merge: [^,]+, (.+?), at /g)].map((m) => m[1]),
+  ]);
+  assert.deepEqual([...new Set(named)].filter((r) => ![...PUBLIC_REPOS, "a private project"].includes(r)), []);
   assert.ok(strings(DATA).some((s) => s === "a private project" || s.includes("in a private project")));
 });

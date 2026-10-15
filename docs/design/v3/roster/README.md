@@ -161,7 +161,8 @@ PLAYWRIGHT=… node docs/design/v3/roster/shoot.mjs v2   # the v2 control, from 
 
 The sources are in `src/` (`page.html`, `roster.css`, `roster.js`), and `index.html` is built from
 them. `test/design-v3.test.mjs` checks that `index.html` makes no network request and that its
-fixtures carry no NEVER field and no repo name beyond the demo's public ones.
+fixtures carry no NEVER field and no repo name beyond the demo's public ones (in each row's
+`where`, in "in <repo>" text and in the quiet line's "Last merge").
 
 ## Limits of the prototype
 
