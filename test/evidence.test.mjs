@@ -4,6 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { criteria, fetchEvidence, images, isPublicRepo, isSecurity, linkedIssue, parsePull, publishEvidence, teamNumbers, who } from "../src/evidence.js";
 import { hasNever } from "../src/logic.js";
+import { readFileSync } from "node:fs";
 
 const NOW = Date.parse("2026-10-16T12:00:00Z");
 const API = "https://api.github.com/repos/setkernel/setkernel-live";
@@ -198,4 +199,16 @@ test("team numbers: throughput, lead time, pass rate, revert rate and time to re
   const empty = teamNumbers({ pulls: [], runs: [] }, NOW);
   assert.equal(empty.passRate, null);
   assert.equal(empty.recoverMinutes, null);
+});
+
+test("the v4 prototype's inlined publisher is src/evidence.js as it is now (rerun build.mjs after changing it)", () => {
+  const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+  const html = read("docs/design/v4/showcase/index.html");
+  const lib = /\/\* lib \*\/([\s\S]*?)\/\* end lib \*\//.exec(html)?.[1];
+  assert.ok(lib, "index.html has a lib block");
+  // the same stripping build.mjs does: imports and exports go, the rest is verbatim
+  const strip = (src) => src.replace(/^import .*$/gm, "").replace(/^export \{[^}]*\}.*$/gm, "").replace(/^export /gm, "");
+  assert.ok(lib.includes(strip(read("src/evidence.js"))), "index.html is stale: run node docs/design/v4/showcase/build.mjs");
+  const logic = read("src/logic.js");
+  assert.ok(lib.includes(strip(logic.slice(logic.indexOf("export const NEVER"), logic.indexOf("function cleanAgentInfo")))), "index.html's guard is stale");
 });
