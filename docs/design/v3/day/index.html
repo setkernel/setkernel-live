@@ -15,8 +15,9 @@
 /* end fonts */
 
 /* One type scale, one spacing scale. Every font size and every gap below is a step of these two;
-   the SVG text classes use them too. The wall is the same scale with --u at 1.8 (the type, the
-   gutters and the gaps) and the row heights at 1.5 (drawH), so the page fits a 1440 px screen. */
+   the SVG text classes use them too. The wall is not a second scale: it is the page drawn once on a
+   fixed 1440 x 810 canvas and scaled to the screen as a whole (fitWall), so it fills any 16:9 screen
+   and keeps every proportion. */
 :root {
   --bg: #f6f5f1; --surface: #ecebe4; --ink: #18181a; --ink-2: #4a4945; --ink-3: #66645e;
   --rule: #e6e3db; --rule-2: #cdc9be; --band: #e1ded4; --bar: #918d82; --hatch: #e6e3db;
@@ -33,7 +34,6 @@
 }
 /* The wall has one theme, fixed (hq#177, question 7): dark, for a screen that is on all day. */
 html.wall {
-  --u: 1.8;
   --bg: #111214; --surface: #1b1c20; --ink: #eeede9; --ink-2: #bdbbb5; --ink-3: #9a9892;
   --rule: #232427; --rule-2: #3d3e42; --band: #25262a; --bar: #77756f; --hatch: #1d1e21;
   --signal: #f2735f; --focus: #8fb0ff; --focus-bg: #1c2540;
@@ -101,11 +101,14 @@ b { font-weight: 600; }
 .t-now-do.idle { font-weight: 400; fill: var(--ink-3); }
 .t-now-detail { font: 400 var(--f2) var(--sans); fill: var(--ink-2); }
 .t-now-pole { font: 400 var(--f3) var(--sans); fill: var(--ink); }
-.m-sig { color: var(--signal); }
 .mark { color: var(--ink); }
+.tick { color: var(--bar); }
+.m-sig, .mark.m-sig { color: var(--signal); }
 
-/* the wall: the same view at --u 1.8, so the type runs from 22 px (the axis) to 58 px (the headline) */
-html.wall .day { max-width: none; padding-bottom: var(--s3); }
+/* the wall: a 1440 x 810 canvas (16:9), scaled whole to the screen by fitWall. On a 2560 x 1440
+   wall that is 1.78 times, so the type runs from 21 px (the axis) to 57 px (the headline). */
+html.wall, html.wall body { height: 100%; overflow: hidden; }
+html.wall .day { position: absolute; left: 0; top: 0; width: 1440px; height: 810px; max-width: none; margin: 0; padding: 0 var(--s6) var(--s3); overflow: hidden; transform-origin: 0 0; }
 html.wall .lead { padding: var(--s3) 0; }
 html.wall .foot { padding-top: var(--s2); margin-top: 0; }
 html.wall .lead { max-width: none; }
@@ -164,23 +167,17 @@ html.narrow .keys { display: none; }
   </details>
 </main>
 
-<!-- One shape per action, so a mark never relies on colour. Labels are in the key, on hover, in the
-     scrub readout and in the table. -->
+<!-- Three marks carry the story: merged, changes asked for, CI failed. A pull request opened is
+     where the thick In review line begins, so it needs no mark of its own. The rest is the stage
+     line, the activity band, a quiet tick (Polaris's merges, CI passes), or words in the moment
+     column and the table. A mark never relies on colour: each has its own shape. -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
-    <symbol id="m-picked_up" viewBox="-6 -6 12 12"><circle r="4.2" style="fill:var(--bg)" stroke="currentColor" stroke-width="1.6"/></symbol>
     <symbol id="m-opened_pr" viewBox="-6 -6 12 12"><path d="M0-5.2L5.2 0L0 5.2L-5.2 0Z" fill="currentColor"/></symbol>
-    <symbol id="m-pushed" viewBox="-6 -6 12 12"><path d="M0-4.6L4.6 3.6H-4.6Z" style="fill:var(--bg)" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
-    <symbol id="m-approved" viewBox="-6 -6 12 12"><path d="M-4.2 0.2L-1.3 3.2L4.4-3.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-    <symbol id="m-requested_changes" viewBox="-6 -6 12 12"><path d="M-3.6-3.6L3.6 3.6M3.6-3.6L-3.6 3.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
     <symbol id="m-merged" viewBox="-6 -6 12 12"><circle r="4.6" fill="currentColor"/></symbol>
-    <symbol id="m-merged_by" viewBox="-6 -6 12 12"><circle r="2.4" fill="currentColor"/><circle r="4.8" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
-    <symbol id="m-posted_round" viewBox="-6 -6 12 12"><circle cx="-3.6" r="1.4" fill="currentColor"/><circle r="1.4" fill="currentColor"/><circle cx="3.6" r="1.4" fill="currentColor"/></symbol>
-    <symbol id="m-decision_pr" viewBox="-6 -6 12 12"><rect x="-4" y="-4" width="8" height="8" fill="currentColor"/></symbol>
-    <symbol id="m-opened_issue" viewBox="-6 -6 12 12"><rect x="-3.9" y="-3.9" width="7.8" height="7.8" style="fill:var(--bg)" stroke="currentColor" stroke-width="1.6"/></symbol>
-    <symbol id="m-commented" viewBox="-6 -6 12 12"><path d="M0-4.4L4.4 0L0 4.4L-4.4 0Z" style="fill:var(--bg)" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
-    <symbol id="m-ci-pass" viewBox="-6 -6 12 12"><path d="M0-5V5" stroke="currentColor" stroke-width="1.6"/></symbol>
-    <symbol id="m-ci-fail" viewBox="-6 -6 12 12"><path d="M-3.6-3.6L3.6 3.6M3.6-3.6L-3.6 3.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+    <symbol id="m-requested_changes" viewBox="-6 -6 12 12"><path d="M-3.6-3.6L3.6 3.6M3.6-3.6L-3.6 3.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+    <symbol id="m-ci-fail" viewBox="-6 -6 12 12"><path d="M0-5.5V5.5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></symbol>
+    <symbol id="m-tick" viewBox="-6 -6 12 12"><path d="M0-4V4" stroke="currentColor" stroke-width="1.2"/></symbol>
     <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" style="fill:var(--bg)"/><path d="M0 0V6" style="stroke:var(--rule-2)" stroke-width="1"/></pattern>
   </defs>
 </svg>
@@ -805,10 +802,16 @@ function moment(d, row, i) {
   }
   const mine = d.work.filter((w) => w.agent === row.id);
   if (row.kind !== "eng") {
-    // the pole stars: their last action (where it was is in the table and on hover)
-    if (i != null) { const here = inBin(mine, i); return here.length ? [`${capital(ACTION_TEXT[here[0].action])}${here.length > 1 ? `, and ${here.length - 1} more` : ""}`] : [""]; }
+    // Polaris: its last action; the guardians folded in as one count (who did what is in the
+    // table, on hover and in the scrub readout)
+    const guard = d.work.filter((w) => SUBS.includes(w.agent));
+    if (i != null) {
+      const here = inBin(mine, i), g = inBin(guard, i);
+      return [here.length ? `${capital(ACTION_TEXT[here[0].action])}${here.length > 1 ? `, and ${here.length - 1} more` : ""}` : "", g.length ? `Guardians: ${g.map((w) => `${w.agent} ${ACTION_TEXT[w.action]}`).join(", ")}` : ""];
+    }
     const last = mine.at(-1);
-    return last ? [`${when(last.ts)} ${ACTION_TEXT[last.action]}`] : [""];
+    const per = SUBS.map((n) => [n, guard.filter((w) => w.agent === n).length]).filter(([, k]) => k);
+    return [last ? `${when(last.ts)} ${ACTION_TEXT[last.action]}` : "", per.length ? `Guardians: ${plural(guard.length, "action", "actions")} · ${per.map(([n, k]) => `${n} ${k}`).join(" · ")}` : "Guardians: nothing in 24 hours"];
   }
   if (i == null) {
     const info = s.agents?.[row.id];
@@ -817,8 +820,10 @@ function moment(d, row, i) {
     const col = lane?.job ? column(lane, info, d.lastS ?? NOW) : null;
     const since = col && (lane.steps?.[col] ?? lane.at);
     // the stage is the lane's own job; an idle lane only keeps a stage that waits on someone else
-    const own = !col ? "" : col === "merged" ? `Merged ${since < d.mid ? "yesterday " : ""}at ${when(since)}` : !live && col !== "review" ? "" : !live ? `Waiting for review since ${when(since)}` : `${info.state === "REVIEW" ? "Own pull request: " : ""}${info.state === "REVIEW" ? STAGE_NAME[col].toLowerCase() : STAGE_NAME[col]} since ${when(since)}`;
-    const where = live && info.repo ? info.repo : "";
+    // someone reviewing a teammate's work still has a job of their own: say it in plain words
+    const theirs = { started: "Their own issue started at", building: "Their own issue started at", review: "Their own pull request has waited since", fixing: "Changes asked on their own pull request at" };
+    const own = !col ? "" : col === "merged" ? `Merged ${since < d.mid ? "yesterday " : ""}at ${when(since)}` : !live && col !== "review" ? "" : !live ? `Waiting for review since ${when(since)}` : info.state === "REVIEW" ? `${theirs[col]} ${when(col === "building" ? lane.at : since)}` : `${STAGE_NAME[col]} since ${when(since)}`;
+    const where = live && info.repo && info.state !== "REVIEW" ? info.repo : "";
     const out = [live ? `${stateWords(info).glyph} ${capital(doing(info).replace(` in ${info.repo}`, ""))}` : capital(doing(info)), [where, own].filter(Boolean).join(" · ")];
     out.idle = !live;
     return out;
@@ -835,24 +840,23 @@ const node = (tag, attrs, parent) => { const n = document.createElementNS(SVGNS,
 const text = (parent, x, y, s, cls, anchor) => { const t = node("text", { x, y, class: cls, ...(anchor ? { "text-anchor": anchor } : {}) }, parent); t.textContent = s; return t; };
 const fit = (t, w) => { if (!t.textContent || t.getComputedTextLength() <= w) return t; let s = t.textContent; while (s.length > 1 && t.getComputedTextLength() > w) { s = s.slice(0, -1); t.textContent = `${s.trimEnd()}…`; } return t; };
 const mark = (parent, id, x, y, r, title, cls = "mark") => { const g = node("g", { class: cls }, parent); node("use", { href: `#m-${id}`, x: x - r, y: y - r, width: 2 * r, height: 2 * r }, g); node("title", {}, g).textContent = title; return g; };
+// The marks that carry the story; every other action is words (moment column, table, readout).
+// Changes asked for is drawn where it lands, on the author's lane at the start of Fixing.
+const KEY = new Set(["merged", "requested_changes"]);
 const markId = (e) => e.action;
 const markCls = (e) => (e.action === "requested_changes" ? "mark m-sig" : "mark");
+// Polaris's row is one idea: a quiet tick per merge
+const poleMerges = (d) => d.work.filter((w) => w.agent === "Polaris" && w.action === "merged_by");
 
-// One grid for both layouts: widths and gaps in multiples of 8 (4 for the half step), times --u;
-// row heights times --v (the wall's rows are 1.5 times the page's, not 1.8, to fit the screen).
-const GRID = { gutL: 232, gutR: 376, gap: 24, r: 5, rs: 4, axis: 32, pole: 64, sub: 24, eng: 88, ci: 40, sep: 16 };
-const SCALE = { page: { u: 1, v: 1 }, wall: { u: 1.8, v: 1.5 } };
-function sizes() {
-  const { u, v } = SCALE[opts.layout === "wall" ? "wall" : "page"];
-  const h = (k) => GRID[k] * u, w = (k) => GRID[k] * v;
-  return { u, v, gutL: h("gutL"), gutR: h("gutR"), gap: h("gap"), r: h("r"), rs: h("rs"), axis: w("axis"), pole: w("pole"), sub: w("sub"), eng: w("eng"), ci: w("ci"), sep: w("sep") };
-}
+// One grid for both layouts: widths, gaps and row heights in multiples of 8 (4 for the half step).
+// The wall uses the same numbers: fitWall scales the whole canvas, so u and v stay 1.
+const GRID = { gutL: 232, gutR: 376, gap: 24, r: 5, axis: 32, pole: 64, eng: 88, ci: 40, sep: 16 };
+const sizes = () => ({ u: 1, v: 1, ...GRID });
 
+// Polaris's guardians (Kochab, Pherkad, Yildun) have no rows of their own: they are a count in
+// Polaris's moment line, with their actions in the table and the scrub readout.
 function rowsFor() {
-  return [
-    { id: "Polaris", kind: "pole" }, ...SUBS.map((id) => ({ id, kind: "sub" })), { kind: "sep" },
-    ...ENG.map((id) => ({ id, kind: "eng" })), { kind: "sep" }, { id: "CI", kind: "ci" },
-  ];
+  return [{ id: "Polaris", kind: "pole" }, { kind: "sep" }, ...ENG.map((id) => ({ id, kind: "eng" })), { kind: "sep" }, { id: "CI", kind: "ci" }];
 }
 
 // Marks that would sit on top of each other go on separate levels (offsets from the row's line),
@@ -888,7 +892,7 @@ function drawH(d) {
   d.drawn = drawn;
 
   // the Now column sits on its own ground, so it is the first thing to land on
-  node("rect", { x: px1 + S.gap / 2, y: top - 8 * v, width: W - px1 - S.gap / 2, height: H - top + 8 * v, rx: 4 * S.u, fill: "var(--surface)" }, bg);
+  node("rect", { x: px1 + S.gap / 2, y: -8 * v, width: W - px1 - S.gap / 2, height: H + 8 * v, rx: 4 * S.u, fill: "var(--surface)" }, bg);
 
   // hour rules and labels; Halifax midnight is "today"
   for (let h = Math.ceil(T0 / 3600) * 3600; h <= NOW; h += 3600) {
@@ -916,7 +920,7 @@ function drawH(d) {
   for (const r of rows) {
     if (r.kind === "sep") continue;
     const base = r.y + r.h;
-    if (r.kind !== "sub" || r.id === "Yildun") node("line", { x1: 0, x2: px1 + S.gap / 2, y1: base + (r.kind === "ci" ? 0 : 0), y2: base, stroke: "var(--rule)" }, bg);
+    node("line", { x1: 0, x2: px1 + S.gap / 2, y1: base + (r.kind === "ci" ? 0 : 0), y2: base, stroke: "var(--rule)" }, bg);
     const g = node("g", {}, fg);
     if (r.kind === "eng") {
       fit(text(g, 0, ys(r, 48), r.id, "t-name"), S.gutL);
@@ -925,10 +929,6 @@ function drawH(d) {
       const n = text(g, 0, ys(r, 28), "Polaris", "t-name");
       text(g, n.getComputedTextLength() + 8 * S.u, ys(r, 28), STAR_NOTE.Polaris, "t-meta");
       fit(text(g, 0, ys(r, 52), d.s.lastIngest ? poleTally(d.s.byAgent?.Polaris) : "", "t-meta"), S.gutL);
-    } else if (r.kind === "sub") {
-      const nm = text(g, 16 * S.u, ys(r, 17), r.id, "t-sub");
-      const c = d.s.byAgent?.[r.id];
-      fit(text(g, S.gutL, ys(r, 17), d.s.lastIngest && c ? tally(c) : "", "t-label", "end"), S.gutL - 32 * S.u - nm.getComputedTextLength());
     } else if (r.kind === "ci") {
       text(g, 0, ys(r, 20), "CI", "t-name");
       fit(text(g, 0, ys(r, 36), d.s.lastIngest ? ciSummary(d.s.counts) : "", "t-label"), S.gutL);
@@ -952,7 +952,7 @@ function drawH(d) {
   if (d.workFrom) for (const r of rows.filter((r) => r.kind === "eng" || r.kind === "pole")) hatch(T0, d.workFrom, r.y + 4 * v, r.y + r.h - 4 * v, "Older actions aren't kept");
 
   // engineer lanes: one quiet activity band, and the stage track as the line through the lane
-  const STAGE_STYLE = { started: { w: 1.5, c: "var(--ink-3)" }, building: { w: 2.5, c: "var(--ink-2)" }, review: { w: 5, c: "var(--ink)" }, fixing: { w: 2.5, c: "var(--signal)", dash: 6 } };
+  const STAGE_STYLE = { started: { w: 2.5, c: "var(--ink-2)" }, building: { w: 2.5, c: "var(--ink-2)" }, review: { w: 5, c: "var(--ink)" }, fixing: { w: 2.5, c: "var(--signal)", dash: 6 } };
   for (const r of rows.filter((r) => r.kind === "eng")) {
     const base = ys(r, 48), bandH = 32 * v, track = ys(r, 68);
     // the band: ten-minute totals, smoothed over three, one fill with a light edge
@@ -962,7 +962,9 @@ function drawH(d) {
       const pts = sm.map((n, i) => [x(binTime(i) + BIN / 2), base - (bandH * n) / maxAct]);
       const line = pts.map(([px, py], i) => `${i ? "L" : "M"}${px.toFixed(1)} ${py.toFixed(1)}`).join("");
       node("path", { d: `${line}L${pts.at(-1)[0].toFixed(1)} ${base}L${pts[0][0].toFixed(1)} ${base}Z`, fill: "var(--band)" }, fg);
-      node("path", { d: line, fill: "none", stroke: "var(--bar)", "stroke-width": 1, "stroke-linejoin": "round" }, fg);
+      // the edge only where there is activity: an empty stretch draws nothing, not a second rule
+      const edge = pts.map(([px, py], i) => (sm[i] > 0 || sm[i - 1] > 0 ? `${i && (sm[i - 1] > 0 || sm[i - 2] > 0) ? "L" : "M"}${px.toFixed(1)} ${py.toFixed(1)}` : "")).join("");
+      node("path", { d: edge, fill: "none", stroke: "var(--bar)", "stroke-width": 1, "stroke-linejoin": "round" }, fg);
     }
     node("line", { x1: px0, x2: px1, y1: track, y2: track, stroke: "var(--rule-2)", "stroke-width": 1 }, fg);
     for (const sp of d.spans[r.id]) {
@@ -970,22 +972,25 @@ function drawH(d) {
       const a = x(sp.from), z = Math.max(x(sp.to), a + 1);
       node("line", { x1: a, x2: z, y1: track, y2: track, stroke: st.c, "stroke-width": st.w * S.u, ...(st.dash ? { "stroke-dasharray": `${st.dash * S.u} ${4 * S.u}` } : {}) }, fg);
     }
-    // a start or a pull request is already where a stage begins; it gets a mark only when no stage says it
-    const mine = d.work.filter((w) => w.agent === r.id && !(["picked_up", "opened_pr"].includes(w.action) && d.spans[r.id].some((sp) => Math.abs(sp.from - w.ts) < 300)));
-    for (const { w, dy } of levels(mine, x, 2 * S.r + 2 * S.u, [0, 12 * S.u])) { mark(fg, markId(w), x(w.ts), track + dy, S.r, label(w), markCls(w)); drawn.add(w.action); }
+    // two marks on the line: a merge, and changes asked for where this lane's Fixing begins (the
+    // reviewer's side of it is words); a pull request opened is where the thick line begins
+    const asks = d.spans[r.id].filter((sp) => sp.stage === "fixing" && !sp.seeded).map((sp) => {
+      const by = d.work.find((w) => w.action === "requested_changes" && Math.abs(w.ts - sp.from) < 300);
+      return { action: "requested_changes", ts: sp.from, title: by ? label(by) : `Changes asked for, ${when(sp.from)}` };
+    });
+    const mine = [...d.work.filter((w) => w.agent === r.id && w.action === "merged"), ...asks];
+    for (const { w, dy } of levels(mine, x, 2 * S.r + 2 * S.u, [0, -12 * S.u])) { mark(fg, markId(w), x(w.ts), track + dy, S.r, w.title ?? label(w), markCls(w)); drawn.add(w.action); }
   }
-  // the pole stars: actions only (their chat and Claude never reach the replay)
-  for (const r of rows.filter((r) => r.kind === "pole" || r.kind === "sub")) {
-    const pole = r.kind === "pole";
-    const yy = pole ? ys(r, 32) : ys(r, 12);
+  // Polaris: one quiet tick per merge, on a light rule; the requests and the guardians are counts
+  for (const r of rows.filter((r) => r.kind === "pole")) {
+    const yy = ys(r, 40);
     node("line", { x1: px0, x2: px1, y1: yy, y2: yy, stroke: "var(--rule)", "stroke-width": 1 }, bg);
-    const rad = pole ? S.r : S.rs;
-    for (const { w, dy } of levels(d.work.filter((w) => w.agent === r.id), x, 2 * rad + 2 * S.u, pole ? [0, -12 * S.u, 12 * S.u] : [0])) { mark(fg, markId(w), x(w.ts), yy + dy, rad, label(w), markCls(w)); drawn.add(w.action); }
+    for (const w of poleMerges(d)) mark(fg, "tick", x(w.ts), yy, 2 * S.r, label(w), "tick");
   }
-  // CI: one shared band, no owner
+  // CI: one shared row, no owner; a pass is a quiet tick, a failure the red bar
   {
     const yy = ciRow.y + 16 * v;
-    for (const c of d.ci) mark(fg, c.result === "pass" ? "ci-pass" : "ci-fail", x(c.ts), yy, c.result === "pass" ? S.r : S.r * 0.85, ciLabel(c), c.result === "pass" ? "mark" : "mark m-sig");
+    for (const c of d.ci) mark(fg, c.result === "pass" ? "tick" : "ci-fail", x(c.ts), yy, c.result === "pass" ? 1.6 * S.r : S.r * 1.2, ciLabel(c), c.result === "pass" ? "tick" : "mark m-sig");
   }
   node("rect", { class: "plotframe", x: px0 - 4, y: top, width: pw + 8, height: H - top - 2, fill: "none", stroke: "none" }, bg);
 
@@ -1006,8 +1011,10 @@ function drawH(d) {
         text(mom, mx, ys(r, 24), lines[0] ? r.id : "", "t-now-who");
         big(mom, ys(r, 48), lines[0] ?? "", lines.idle);
         fit(text(mom, mx, ys(r, 72), lines[1] ?? "", "t-now-detail"), room);
-      } else if (r.kind === "pole") fit(text(mom, mx, ys(r, 28), lines[0] ?? "", "t-now-pole"), room);
-      else if (r.kind === "sub") fit(text(mom, mx, ys(r, 17), lines[0] ?? "", "t-meta"), room);
+      } else if (r.kind === "pole") {
+        fit(text(mom, mx, ys(r, 28), lines[0] ?? "", "t-now-pole"), room);
+        fit(text(mom, mx, ys(r, 52), lines[1] ?? "", "t-label"), room);
+      }
       else if (r.kind === "ci") {
         fit(text(mom, mx, ys(r, 20), lines[0] ?? "", "t-now-pole"), room);
         if (lines[1]) fit(text(mom, mx, ys(r, 36), lines[1], "t-label"), room);
@@ -1026,7 +1033,7 @@ function drawH(d) {
     node("rect", { x: cx - w / 2, y: lab - 14 * S.u, width: w, height: 20 * S.u, rx: 2, fill: "var(--focus)" }, cur).after(t);
   }
   drawMoment(null);
-  return { svg, drawMoment, drawCursor, pick: (ev) => { const r = svg.getBoundingClientRect(); const px = ev.clientX - r.left; return px < px0 - 2 || px > px1 + 2 ? undefined : Math.min(BINS - 1, Math.max(0, Math.floor(((px - px0) / pw) * BINS))); } };
+  return { svg, drawMoment, drawCursor, pick: (ev) => { const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) * (W / r.width); return px < px0 - 2 || px > px1 + 2 ? undefined : Math.min(BINS - 1, Math.max(0, Math.floor(((px - px0) / pw) * BINS))); } };
 }
 
 // narrow: time runs down the page, newest at the top; one column per lane
@@ -1034,7 +1041,7 @@ function drawV(d) {
   const box = $("plot");
   box.textContent = "";
   const W = box.clientWidth;
-  const ax = 40, colW = { pole: 18, sub: 14, eng: Math.floor((W - ax - 18 - 42 - 24 - 12) / 4), ci: 24 };
+  const ax = 40, colW = { pole: 24, eng: Math.floor((W - ax - 24 - 24 - 12) / 4), ci: 24 };
   const cols = [];
   let cx = ax;
   for (const r of rowsFor()) {
@@ -1090,15 +1097,15 @@ function drawV(d) {
         const style = { started: { w: 1, c: "var(--ink-3)" }, building: { w: 2, c: "var(--ink-2)" }, review: { w: 4, c: "var(--ink)" }, fixing: { w: 2, c: "var(--signal)", dash: "4 4" } }[sp.stage];
         node("line", { x1: track, x2: track, y1: y(sp.to), y2: Math.max(y(sp.from), y(sp.to) + 1), stroke: style.c, "stroke-width": style.w, ...(style.dash ? { "stroke-dasharray": style.dash } : {}) }, fg);
       }
-      const mine = d.work.filter((w) => w.agent === c.id && !(["picked_up", "opened_pr"].includes(w.action) && d.spans[c.id].some((sp) => Math.abs(sp.from - w.ts) < 300)));
-      for (const w of mine) { mark(fg, markId(w), track, y(w.ts), 4.5, label(w), markCls(w)); drawn.add(w.action); }
+      const asks = d.spans[c.id].filter((sp) => sp.stage === "fixing" && !sp.seeded).map((sp) => ({ action: "requested_changes", ts: sp.from, title: `Changes asked for, ${when(sp.from)}` }));
+      for (const w of [...d.work.filter((w) => w.agent === c.id && w.action === "merged"), ...asks]) { mark(fg, markId(w), track, y(w.ts), 4.5, w.title ?? label(w), markCls(w)); drawn.add(w.action); }
       node("line", { x1: c.x + c.w, x2: c.x + c.w, y1: top, y2: H - 12, stroke: "var(--rule)" }, bg);
     } else if (c.kind === "ci") {
-      for (const r of d.ci) mark(fg, r.result === "pass" ? "ci-pass" : "ci-fail", c.x + c.w / 2, y(r.ts), 4, ciLabel(r), r.result === "pass" ? "mark" : "mark m-sig");
+      for (const r of d.ci) { const g = mark(fg, r.result === "pass" ? "tick" : "ci-fail", c.x + c.w / 2, y(r.ts), r.result === "pass" ? 6 : 5, ciLabel(r), r.result === "pass" ? "tick" : "mark m-sig"); g.setAttribute("transform", `rotate(90 ${c.x + c.w / 2} ${y(r.ts)})`); }
       text(bg, c.x + c.w / 2, top - 10, "CI", "t-sub", "middle");
     } else {
       node("line", { x1: c.x + c.w / 2, x2: c.x + c.w / 2, y1: top, y2: H - 12, stroke: "var(--rule)" }, bg);
-      for (const w of d.work.filter((w) => w.agent === c.id)) { mark(fg, markId(w), c.x + c.w / 2, y(w.ts), c.kind === "pole" ? 4.5 : 3.5, label(w), markCls(w)); drawn.add(w.action); }
+      for (const w of poleMerges(d)) { const g = mark(fg, "tick", c.x + c.w / 2, y(w.ts), 8, label(w), "tick"); g.setAttribute("transform", `rotate(90 ${c.x + c.w / 2} ${y(w.ts)})`); }
     }
   }
   node("rect", { class: "plotframe", x: ax - 4, y: top - 2, width: W - ax + 4, height: H - top - 8, fill: "none", stroke: "none" }, bg);
@@ -1114,7 +1121,7 @@ function drawV(d) {
   return {
     svg, drawCursor,
     drawMoment: (i) => drawNowList(d, i),
-    pick: (ev) => { const r = svg.getBoundingClientRect(); const py = ev.clientY - r.top; return py < top ? undefined : Math.min(BINS - 1, Math.max(0, BINS - 1 - Math.floor((py - top) / binH))); },
+    pick: (ev) => { const r = svg.getBoundingClientRect(); const py = (ev.clientY - r.top) * (H / r.height); return py < top ? undefined : Math.min(BINS - 1, Math.max(0, BINS - 1 - Math.floor((py - top) / binH))); },
     vertical: true,
   };
 }
@@ -1133,14 +1140,14 @@ function drawNowList(d, i) {
     const lines = moment(d, r, i);
     const li = document.createElement("li");
     const who = document.createElement("span");
-    who.className = `who${r.kind === "sub" ? " sub" : ""}`;
+    who.className = "who";
     who.textContent = r.id;
     const a = document.createElement("span");
     a.className = r.kind === "eng" ? `l1${lines.idle ? " idle" : ""}` : "l2";
-    a.textContent = lines[0] || (r.kind === "eng" ? "" : r.kind === "pole" ? poleTally(d.s.byAgent?.Polaris) : tally(d.s.byAgent?.[r.id]));
+    a.textContent = lines[0] || (r.kind === "eng" ? "" : r.kind === "pole" ? poleTally(d.s.byAgent?.Polaris) : "");
     li.append(who, a);
-    if (r.kind === "eng" || r.kind === "ci") {
-      const extra = r.kind === "eng" ? lines[1] ?? "" : [lines[1], ciSummary(d.s.counts)].filter(Boolean).join(" · ");
+    if (r.kind !== "sep") {
+      const extra = r.kind === "eng" || r.kind === "pole" ? lines[1] ?? "" : [lines[1], ciSummary(d.s.counts)].filter(Boolean).join(" · ");
       const b = document.createElement("span");
       b.className = "l2";
       b.textContent = extra;
@@ -1161,7 +1168,7 @@ function fillWords(d) {
   const put = (el, parts) => { el.textContent = ""; for (const p of parts) { if (typeof p === "string") el.append(p); else { const b = document.createElement("b"); b.textContent = p.name; el.append(b); } } };
   const lh = parseFloat(getComputedStyle(h1).lineHeight);
   const maxLines = document.documentElement.classList.contains("narrow") ? 4 : 2;
-  put(h1, fitHeadline(hl.forms, (f) => { put(h1, f); return h1.getBoundingClientRect().height <= lh * maxLines + 1; }));
+  put(h1, fitHeadline(hl.forms, (f) => { put(h1, f); return h1.offsetHeight <= lh * maxLines + 1; }));
   put($("latest"), hl.latest);
   // "about a minute behind" in place of LIVE (hq#177, question 4): events leave sk-obs01 60 s late
   const fresh = freshness(s.lastIngest, NOW_MS);
@@ -1179,24 +1186,25 @@ function fillLegend(d) {
   const line = (w, c, dash) => (s) => { s.setAttribute("class", "sw"); s.setAttribute("viewBox", "0 0 24 16"); node("line", { x1: 0, x2: 24, y1: 8, y2: 8, stroke: c, "stroke-width": w, ...(dash ? { "stroke-dasharray": dash } : {}) }, s); };
   // the key lists only what this day draws, so it never explains a mark that isn't there
   const band = (s) => { s.setAttribute("class", "sw"); s.setAttribute("viewBox", "0 0 24 16"); node("path", { d: "M0 14L6 9L12 11L18 4L24 8V14Z", fill: "var(--band)" }, s); node("path", { d: "M0 14L6 9L12 11L18 4L24 8", fill: "none", stroke: "var(--bar)" }, s); };
-  item(band, "Claude and chat activity");
-  const staged = new Set(ENG.flatMap((n) => D.spans[n].map((sp) => sp.stage)));
-  for (const st of ["started", "building", "review", "fixing"]) if (staged.has(st)) item(line(st === "review" ? 5 : st === "started" ? 1.5 : 2.5, st === "fixing" ? "var(--signal)" : st === "review" ? "var(--ink)" : st === "building" ? "var(--ink-2)" : "var(--ink-3)", st === "fixing" ? "6 4" : ""), STAGE_NAME[st]);
-  const acts = ["picked_up", "opened_pr", "pushed", "approved", "requested_changes", "merged", "merged_by", "opened_issue", "commented", "posted_round", "decision_pr"];
-  for (const a of acts) if (d.drawn.has(a)) item(sym(a, a === "requested_changes" ? "m-sig" : ""), ACTION_TEXT[a].replace("a teammate's ", "a "));
-  if (d.ci.length) {
-    const li = document.createElement("li");
-    for (const [id, cls] of [["ci-pass", ""], ["ci-fail", "m-sig"]]) { const sv = document.createElementNS(SVGNS, "svg"); sym(id, cls)(sv); sv.setAttribute("aria-hidden", "true"); li.appendChild(sv); }
-    li.append("CI passed, failed");
-    ul.appendChild(li);
+  item(band, "Claude and chat");
+  // the stages as one entry: three short swatches, the words beside them
+  const staged = new Set(ENG.flatMap((n) => D.spans[n].map((sp) => (sp.stage === "started" ? "building" : sp.stage))));
+  const stages = ["building", "review", "fixing"].filter((st) => staged.has(st));
+  if (stages.length) {
+    const STY = { building: [2.5, "var(--ink-2)", ""], review: [5, "var(--ink)", ""], fixing: [2.5, "var(--signal)", "6 4"] };
+    item((sv) => { sv.setAttribute("class", "sw"); sv.setAttribute("viewBox", `0 0 ${stages.length * 28 - 4} 16`); sv.style.width = `calc(var(--s4) * ${stages.length} + var(--s1) * ${stages.length - 1})`; stages.forEach((st, k) => { const [w, c, dash] = STY[st]; node("line", { x1: k * 28, x2: k * 28 + 24, y1: 8, y2: 8, stroke: c, "stroke-width": w, ...(dash ? { "stroke-dasharray": dash } : {}) }, sv); }); }, stages.map((st) => STAGE_NAME[st]).join(", "));
   }
+  const words = { merged: "Merged", requested_changes: "Changes asked for" };
+  for (const a of ["merged", "requested_changes"]) if (d.drawn.has(a)) item(sym(a, a === "requested_changes" ? "m-sig" : ""), words[a]);
+  if (d.ci.some((c) => c.result === "fail")) item(sym("ci-fail", "m-sig"), "CI failed");
 }
 
 function fillTable(d) {
   const box = $("table");
   box.textContent = "";
-  const rows = [...d.work.map((w) => ({ ts: w.ts, who: w.agent, id: w.action, sig: w.action === "requested_changes", what: deed(w) })),
-    ...d.ci.map((c) => ({ ts: c.ts, who: "CI", id: c.result === "pass" ? "ci-pass" : "ci-fail", sig: c.result === "fail", what: `${ciWord(c)} in ${ciWhere(c)}` }))].sort((a, b) => b.ts - a.ts);
+  // the table names every action; only the four key marks carry a glyph here too
+  const rows = [...d.work.map((w) => ({ ts: w.ts, who: w.agent, id: KEY.has(w.action) ? w.action : null, sig: w.action === "requested_changes", what: deed(w) })),
+    ...d.ci.map((c) => ({ ts: c.ts, who: "CI", id: c.result === "pass" ? null : "ci-fail", sig: c.result === "fail", what: `${ciWord(c)} in ${ciWhere(c)}` }))].sort((a, b) => b.ts - a.ts);
   const t = document.createElement("table");
   const cap = document.createElement("caption");
   cap.textContent = rows.length ? `${plural(rows.length, "action", "actions")} in the last 24 hours, newest first. Claude requests and chat posts are counted per minute, not listed.` : "Nothing in the last 24 hours.";
@@ -1213,7 +1221,7 @@ function fillTable(d) {
     s.setAttribute("viewBox", "-6 -6 12 12");
     s.setAttribute("aria-hidden", "true");
     if (r.sig) s.setAttribute("class", "m-sig");
-    node("use", { href: `#m-${r.id}`, x: -6, y: -6, width: 12, height: 12 }, s);
+    if (r.id) node("use", { href: `#m-${r.id}`, x: -6, y: -6, width: 12, height: 12 }, s);
     td.append(s, r.what);
   }
   box.appendChild(t);
@@ -1290,6 +1298,17 @@ function render() {
   fillTable(D);
   wire();
   if (opts.scrub != null) setScrub(+opts.scrub);
+  fitWall();
+}
+// The wall: the 1440 x 810 canvas, scaled whole to the space under the prototype's switcher and
+// centred. A 16:9 screen is filled edge to edge; any other shape gets bars of the background on
+// two sides, never scrolling or clipping.
+function fitWall() {
+  const day = $("day");
+  if (opts.layout !== "wall") { day.style.transform = ""; return; }
+  const top = opts.shot ? 0 : document.querySelector(".proto").offsetHeight;
+  const k = Math.min(innerWidth / 1440, (innerHeight - top) / 810);
+  day.style.transform = `translate(${(innerWidth - 1440 * k) / 2}px, ${top + (innerHeight - top - 810 * k) / 2}px) scale(${k})`;
 }
 for (const b of document.querySelectorAll(".proto button")) b.addEventListener("click", () => {
   opts[b.dataset.k] = b.dataset.v;
@@ -1298,7 +1317,7 @@ for (const b of document.querySelectorAll(".proto button")) b.addEventListener("
 });
 opts.scrub = new URLSearchParams(location.hash.slice(1)).get("scrub");
 let lastW = innerWidth;
-addEventListener("resize", () => { if (innerWidth !== lastW) { lastW = innerWidth; render(); } });
+addEventListener("resize", () => { if (innerWidth !== lastW && opts.layout !== "wall") { lastW = innerWidth; render(); } else fitWall(); });
 document.fonts.ready.then(render);
 </script>
 </body>

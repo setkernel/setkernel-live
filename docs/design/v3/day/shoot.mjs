@@ -20,7 +20,12 @@ const SHOTS = [
   ["day-live-375x812.png", 375, 812, "mood=live&data=busy"],
   ["day-quiet-375x812.png", 375, 812, "mood=quiet&data=quiet"],
   ["day-live-375-full.png", 375, 812, "mood=live&data=busy", true],
+  // the wall fills any 16:9 screen; a 4:3-ish window gets bars above and below
   ["day-wall-live-2560x1440.png", 2560, 1440, "mood=live&data=busy&layout=wall"],
+  ["day-wall-live-1920x1080.png", 1920, 1080, "mood=live&data=busy&layout=wall"],
+  ["day-wall-live-1440x810.png", 1440, 810, "mood=live&data=busy&layout=wall"],
+  ["day-wall-quiet-1920x1080.png", 1920, 1080, "mood=quiet&data=quiet&layout=wall"],
+  ["day-wall-live-1280x1024.png", 1280, 1024, "mood=live&data=busy&layout=wall"],
 ];
 const only = process.argv.slice(2);
 const browser = await chromium.launch();
@@ -34,6 +39,12 @@ for (const [name, width, height, hash, full] of SHOTS) {
   await p.goto(`${page.href}#${hash}&shot`);
   await p.waitForFunction(() => document.querySelector("#plot svg"));
   if (hash.includes("scrub")) await p.focus("#plot svg");
+  if (hash.includes("wall")) {
+    // the canvas must hold everything, and its scaled box must sit inside the window
+    const fit = await p.evaluate(() => { const d = document.getElementById("day"), r = d.getBoundingClientRect(); return { sh: d.scrollHeight, sw: d.scrollWidth, r: [r.left, r.top, r.right, r.bottom], w: innerWidth, h: innerHeight, page: [document.documentElement.scrollWidth, document.documentElement.scrollHeight] }; });
+    const ok = fit.sh <= 810 && fit.sw <= 1440 && fit.r[0] >= -0.5 && fit.r[1] >= -0.5 && fit.r[2] <= fit.w + 0.5 && fit.r[3] <= fit.h + 0.5 && fit.page[0] <= fit.w && fit.page[1] <= fit.h;
+    if (!ok) errors.push(`wall does not fit: ${JSON.stringify(fit)}`);
+  }
   await p.screenshot({ path: out(name), fullPage: !!full });
   if (errors.length) { console.error(name, errors); process.exitCode = 1; }
   console.log(name);
