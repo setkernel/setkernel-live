@@ -1,15 +1,12 @@
-// The page's pure modules: the words it shows, the ?demo simulation, the replay show and the sky
-// layout. Run: npm test
+// The page's pure modules: the words it shows, the ?demo simulation and its days, and the replay
+// show. Run: npm test
 import test from "node:test";
 import assert from "node:assert/strict";
 import { COLUMNS, POLE, cleanBatch, cleanEvent, emptyReplay, emptyState, recordReplay, applyBatch } from "../src/logic.js";
 import { ENGINEERS } from "../src/logic.js";
 import { STAR_NOTE, ciSummary, ciWhere, ciWord, clock, createAnnouncer, deed, doing, fitHeadline, freshness, headline, headlineForms, plain, reviewTarget, sentence, stateWords, summarise, tally, todaySince, whereWork, zoneName } from "../public/lib/words.js";
-import { SESSION_NOTE, cardText, cardWords, ringPile, starCard, tokenPile } from "../public/lib/card.js";
-import { stepLines } from "../public/lib/line.js";
-import { createDemo, seeded } from "../public/lib/demo.js";
+import { busyDay, createDemo, quietDay, runDay, seeded, slowDemo } from "../public/lib/demo.js";
 import { eventsBefore, plan } from "../public/lib/replay.js";
-import { skyLayout } from "../public/lib/layout.js";
 
 const T0 = 490_000 * 3600; // seconds; 2025-11-23 16:00 UTC
 
@@ -250,107 +247,6 @@ test("replay plan: an hour in a minute, thinned evenly, GitHub actions all kept"
   assert.deepEqual(plan(undefined, { from: 0, to: 1, durationMs: 1, maxPulses: 1 }), []);
 });
 
-test("sky layout: every star inside the sky at every size, the engineers never crowded", () => {
-  const sizes = [[320, 500], [343, 500], [375, 500], [812, 351], [768, 560], [1024, 600], [1440, 724], [1536, 1340], [2560, 1300], [3840, 1600]];
-  for (const [w, h] of sizes) {
-    const L = skyLayout(w, h);
-    const points = [...Object.values(L.stars), ...Object.values(L.faint)];
-    for (const p of points) assert.ok(p.x >= 16 && p.x <= w - 16 && p.y >= 16 && p.y < L.horizon, `${w}x${h}: ${JSON.stringify(p)}`);
-    for (let i = 0; i < ENGINEERS.length; i++) {
-      for (let j = i + 1; j < ENGINEERS.length; j++) {
-        const [a, b] = [L.stars[ENGINEERS[i]], L.stars[ENGINEERS[j]]];
-        assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= 80, `${w}x${h}: ${ENGINEERS[i]} and ${ENGINEERS[j]}`);
-      }
-    }
-    // Ursa Minor keeps its shape: Polaris at the top, the bowl to its right
-    assert.ok(L.stars.Polaris.y < Math.min(...ENGINEERS.map((n) => L.stars[n].y)), `${w}x${h}: Polaris above the engineers`);
-    assert.ok(L.stars.Kochab.x > L.stars.Yildun.x && L.stars.Pherkad.y > L.stars.Kochab.y);
-  }
-});
-
-test("sky layout: Polaris and its group clear the headline and the controls over the sky", () => {
-  const hud = { right: 560, bottom: 300 }, status = { left: 1100, bottom: 140 };
-  const L = skyLayout(1440, 724, { hud, status });
-  assert.ok(L.stars.Polaris.x - 1.9 * 16 - 9 * 16 > hud.right, "its label is right of the headline");
-  for (const n of ENGINEERS) assert.ok(L.stars[n].y > hud.bottom, `${n} under the headline`);
-  for (const n of ["Yildun", "Kochab", "Pherkad"]) {
-    const p = L.stars[n];
-    assert.ok(p.x + 7.8 * 16 < status.left || p.y > status.bottom, `${n} and its label clear the controls`);
-  }
-});
-
-test("star card: state, column, five steps with times, today's numbers and the latest three", () => {
-  const events = [
-    { t: "msg", kind: "github", agent: "Vega", action: "picked_up", repo: "hq", ts: T0 },
-    { t: "msg", kind: "claude", agent: "Vega", ts: T0 + 60 },
-    { t: "msg", kind: "github", agent: "Vega", action: "opened_pr", repo: "hq", ts: T0 + 900 },
-  ];
-  const v = {
-    agents: { Vega: { state: "REVIEW", work: "review", repo: "setkernel-live" } },
-    byAgent: { Vega: { prs: 2, reviews: 6, claude: 340 }, Kochab: { prs: 4, merged: 1 }, Polaris: { reviews: 3, requests: 5, merges: 7 }, Yildun: { prs: 1, claude: 40 } },
-    line: stepLines({}, events, ENGINEERS).lines,
-    feed: [
-      { agent: "Kochab", action: "opened_pr", ts: T0 + 950 },
-      ...events.filter((e) => e.kind === "github").reverse().map(({ agent, action, repo, ts }) => ({ agent, action, repo, ts })),
-      { agent: "Vega", action: "merged", ts: T0 - 99 }, { agent: "Vega", action: "pushed", ts: T0 - 100 },
-    ],
-  };
-  const c = starCard("Vega", v, T0 + 1000, { Vega: "Lyra" });
-  assert.equal(c.director, false);
-  assert.deepEqual(c.state, { glyph: "◎", state: "Reviewing", words: "reviewing Lyra's pull request", repo: "setkernel-live" });
-  assert.equal(c.column, "In review", "its own pull request is open while it reviews a teammate's");
-  assert.equal(c.task, "Current task");
-  assert.deepEqual(c.steps.map((s) => [s.stage, s.status, s.ts]), [["started", "done", T0], ["building", "done", T0 + 60], ["review", "now", T0 + 900], ["fixing", "todo", null], ["merged", "todo", null]]);
-  assert.deepEqual(c.numbers, [[2, "PRs opened"], [6, "reviews"], [340, "Claude requests"]]);
-  assert.deepEqual(c.latest.map((l) => l.text), ["opened a pull request in hq", "started on an issue in hq", "had a pull request merged in a private project"], "its own three, newest first");
-  const k = starCard("Kochab", v, T0 + 1000);
-  assert.equal(k.director, true);
-  assert.equal(k.column, "the director strip");
-  assert.match(k.note, /^the lead chat · /);
-  assert.deepEqual(k.numbers, [[4, "PRs opened"], [1, "merged"]]);
-  assert.equal(k.steps, undefined, "no state, so no steps");
-  assert.deepEqual(starCard("Polaris", v, T0).numbers, [[5, "requests"], [7, "merges"], [3, "reviews"], [0, "PRs opened"]]);
-  const y = starCard("Yildun", v, T0);
-  assert.deepEqual(y.numbers, [[1, "PRs opened"], [0, "merged"], [40, "Claude requests"]]);
-  assert.match(y.note, /^its own machine · seen only through GitHub and its Claude requests, /);
-  assert.equal(starCard("Mallory", v, T0), null);
-  assert.deepEqual(SESSION_NOTE, { Kochab: "the lead chat", Pherkad: "cloud sessions", Yildun: "its own machine" });
-});
-
-test("board card words: the state, then what and where, private projects unnamed", () => {
-  assert.equal(cardText(cardWords({ state: "WORKING", work: "issue", repo: "hq" }, undefined, "building")), "Working · on an issue · hq");
-  assert.equal(cardText(cardWords({ state: "WORKING", work: "changes" }, undefined, "fixing")), "Working · addressing review feedback · private project");
-  assert.equal(cardText(cardWords({ state: "REVIEW", repo: "hq" }, undefined, "review", "Lyra")), "Reviewing · Lyra's pull request · hq");
-  assert.equal(cardText(cardWords({ state: "REVIEW" }, undefined, "merged")), "Reviewing · a pull request · private project");
-  assert.equal(cardText(cardWords({ state: "IDLE" }, { job: "review", repo: "hq" }, "review")), "Idle · pull request open · hq");
-  assert.equal(cardText(cardWords({ state: "IDLE" }, { job: "merged" }, "merged")), "Idle · last job merged");
-  assert.equal(cardText(cardWords(undefined, undefined, "started")), "Idle · between jobs");
-  assert.equal(cardText(cardWords({ state: "DISCUSS", work: "discussion", repo: "hq" }, undefined, "started")), "Discussing · in a design discussion");
-  assert.equal(cardText(cardWords({ state: "PAUSED" }, undefined, "started")), "Paused");
-});
-
-test("the Merged pile: a token per merge up to the cap, then every author in proportion", () => {
-  assert.deepEqual(tokenPile([["Vega", 2], ["Rigel", 0], ["Lyra", 1]], 36), ["Vega", "Vega", "Lyra"]);
-  const pile = tokenPile([["Rigel", 23], ["Orion", 20], ["Lyra", 18], ["Kochab", 1]], 10);
-  assert.equal(pile.length, 10);
-  for (const n of ["Rigel", "Orion", "Lyra", "Kochab"]) assert.ok(pile.includes(n), `${n} keeps a token`);
-  assert.ok(pile.filter((n) => n === "Rigel").length >= pile.filter((n) => n === "Kochab").length);
-  const skewed = tokenPile([["Rigel", 100], ["Orion", 1], ["Lyra", 1], ["Vega", 1], ["Polaris", 1], ["Kochab", 1], ["Pherkad", 1], ["Yildun", 1]], 10);
-  assert.equal(skewed.length, 10, "one each for the small ones doesn't push it past the cap");
-  assert.equal(new Set(skewed).size, 8);
-  assert.equal(skewed.filter((n) => n === "Rigel").length, 3);
-});
-
-test("the Merged pile: tokens Polaris merged are ringed, in proportion when the pile is cut down", () => {
-  assert.deepEqual(ringPile([["Vega", 2, 1], ["Lyra", 1, 0]], 36), [{ name: "Vega", ring: true }, { name: "Vega", ring: false }, { name: "Lyra", ring: false }]);
-  assert.deepEqual(ringPile([["Vega", 2]], 36).map((t) => t.ring), [false, false], "no ringed count, nothing ringed");
-  assert.deepEqual(ringPile([["Vega", 1, 5]], 36), [{ name: "Vega", ring: true }], "never more rings than tokens");
-  const pile = ringPile([["Rigel", 40, 30], ["Orion", 20, 1], ["Lyra", 10, 0]], 10);
-  assert.deepEqual(pile.map((t) => t.name), tokenPile([["Rigel", 40], ["Orion", 20], ["Lyra", 10]], 10), "the same tokens as without rings");
-  const rings = (n) => pile.filter((t) => t.name === n && t.ring).length;
-  assert.deepEqual([rings("Rigel"), rings("Orion"), rings("Lyra")], [5, 1, 0], "Rigel: 6 tokens, three quarters of 6 rounded; Orion: at least one");
-});
-
 test("replay: the events before the show, so the line can catch up first", () => {
   const { events, agents } = createDemo(17, T0).advance(T0 + 7200);
   const r = recordReplay(emptyReplay(), { events, agents }, (T0 + 7200) * 1000);
@@ -364,4 +260,46 @@ test("replay: the events before the show, so the line can catch up first", () =>
   const mid = { pulses: [[(T0 + 3600) / 60, 2]], work: [] };
   assert.equal(plan(mid, { from: T0 + 3630, to: T0 + 7200, durationMs: 60_000, maxPulses: 900, rand: () => 0.5 }).length, 2);
   assert.deepEqual(eventsBefore(mid, T0 + 3630), []);
+});
+
+test("the Day demo: the busy day is the simulation at a quarter speed, and every event passes the allowlist", () => {
+  const now = Date.UTC(2026, 9, 14, 19, 40) / 1000; // 16:40 ADT, the design's clock
+  const { batches, sim } = busyDay(now);
+  assert.equal(batches.length, 1440, "one batch a minute for 24 hours");
+  const events = batches.flatMap((b) => b.events);
+  for (const e of events) assert.deepEqual(cleanEvent(e), e, JSON.stringify(e));
+  for (const b of batches) assert.deepEqual(cleanBatch({ events: [], agents: b.agents }).agents, b.agents);
+  assert.ok(events.every((e) => e.ts > now - 86_400 && e.ts <= now), "inside the 24 hours");
+  assert.doesNotMatch(JSON.stringify(batches), /example-site/, "no made-up public repo: a repo is named only when it's public");
+  const { state, replay } = runDay(batches);
+  // a busy day stays inside the replay's 300-action cap at a quarter speed
+  assert.ok(replay.work.length < 300, `${replay.work.length} actions`);
+  assert.equal(state.day, "2026-10-14", "the Halifax date");
+  assert.equal(state.lastIngest, now * 1000);
+  // the design's fixture (docs/design/v3/day/build.mjs) is this same day
+  assert.deepEqual([state.byAgent.Vega.prs, state.byAgent.Vega.reviews, state.byAgent.Vega.claude], [5, 7, 948]);
+  assert.deepEqual([state.byAgent.Polaris.requests, state.byAgent.Polaris.merges, state.byAgent.Polaris.reviews], [3, 20, 3]);
+  // it carries on from where it stopped
+  assert.ok(sim.advance(now + 600).events.every((e) => e.ts >= now - 5 * 4 && e.ts <= now + 600));
+  // a quarter of the speed: the same story, four times as long
+  const fast = createDemo(17, 1_800_000_000).advance(1_800_000_000 + 3600).events.filter((e) => e.kind === "github");
+  const slow = slowDemo(17, 0).advance(4 * 3600).events.filter((e) => e.kind === "github");
+  assert.deepEqual(slow.map((e) => [e.agent, e.action, e.ts]), fast.map((e) => [e.agent, e.action, (e.ts - 1_800_000_000) * 4]));
+});
+
+test("the Day demo: the quiet day is the design's, nothing added, and passes the allowlist", () => {
+  const now = Date.UTC(2026, 9, 14, 19, 40) / 1000;
+  const { batches } = quietDay(now);
+  const events = batches.flatMap((b) => b.events);
+  for (const e of events) assert.deepEqual(cleanEvent(e), e, JSON.stringify(e));
+  for (const b of batches) assert.deepEqual(cleanBatch({ events: [], agents: b.agents }).agents, b.agents);
+  const work = events.filter((e) => e.kind === "github" || e.kind === "request");
+  assert.equal(work.length, 12);
+  assert.ok(!events.some((e) => e.agent === "Vega"), "Vega does nothing");
+  const { state } = runDay(batches);
+  // counts reset at Halifax midnight: Rigel's job was yesterday evening
+  assert.equal(state.byAgent.Rigel, undefined, "nothing yet today");
+  assert.deepEqual([state.byAgent.Orion.prs, state.byAgent.Lyra.reviews, state.byAgent.Polaris.merges], [1, 1, 1]);
+  assert.equal(state.line.Rigel.job, "merged");
+  assert.equal(state.line.Orion.job, "merged");
 });

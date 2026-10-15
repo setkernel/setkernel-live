@@ -225,7 +225,7 @@ export function headline({ agents = {}, seen = {}, feed = [], lastIngest = 0, no
   const last = feed[0];
   const latest = last ? merge([`Latest, ${clock(last.ts, timeZone)} ${zoneName(last.ts, timeZone)}`.trimEnd() + ": ", { name: last.agent }, ` ${deed(last)}.`]) : [];
   if (!lastIngest) {
-    return { forms: [["Waiting for the office to report in."]], latest: ["Nothing has arrived yet. Replay the last 24 hours, or watch the demo."], mood: "waiting" };
+    return { forms: [["Waiting for the office to report in."]], latest: ["Nothing has arrived yet. This page fills in by itself."], mood: "waiting" };
   }
   if (now - lastIngest > OFFLINE_AFTER_MS) {
     return { forms: [[`No word from the office since ${clock(lastIngest, timeZone)}.`]], latest: ["The engineers may still be working. This page catches up by itself."], mood: "offline" };
