@@ -44,6 +44,12 @@ function run(batches, snapshots) {
 // about 800 GitHub actions a day and the replay's 300-action cap keeps only the last 9 hours; a
 // quarter is about 200 a day, the real team's busy day (state.js: "a busy day is under 200").
 // Only the times change: every event is the demo's own.
+// The demo names one made-up repo, "example-site". The page shows only what a visitor could check, so
+// in the fixtures it is a private project, as the demo's other repo-less jobs already are.
+const noExample = (o) => {
+  const walk = (v) => (v && v.repo === "example-site" ? Object.fromEntries(Object.entries(v).filter(([k]) => k !== "repo")) : v);
+  return o.repo !== undefined || o.t ? walk(o) : Object.fromEntries(Object.entries(o).map(([k, v]) => [k, walk(v)]));
+};
 function busyBatches() {
   const SLOW = 4;
   const demoStart = 1_800_000_000;
@@ -51,14 +57,15 @@ function busyBatches() {
   const out = [];
   for (let t = DAY_START + 60; t <= NOW; t += 60) {
     const { events, agents } = demo.advance(demoStart + (t - DAY_START) / SLOW);
-    out.push({ at: t, agents, events: events.map((e) => ({ ...e, ts: DAY_START + (e.ts - demoStart) * SLOW })) });
+    out.push({ at: t, agents: noExample(agents), events: events.map((e) => ({ ...noExample(e), ts: DAY_START + (e.ts - demoStart) * SLOW })) });
   }
   return out;
 }
 
 // The quiet day, written by hand: one job all day (Orion's, reviewed by Lyra, merged by Polaris
-// at 14:02), Rigel's pull request from yesterday evening, and one request. Vega and the three
-// Claudes do nothing. Nothing is added to fill the lanes (hq#177: "they must not be padded").
+// at 14:02), Rigel's job from yesterday evening, which was reviewed by Orion and merged before
+// midnight, and one request. Rigel, Vega and the three Claudes do nothing today, so "nothing yet
+// today" is true for them and no review is left open across the day. Nothing is added to fill the lanes (hq#177: "they must not be padded").
 // `live` adds Vega picking up an issue at 16:31, for the live mood on a quiet day.
 function quietBatches(live) {
   const adt = (h, m) => Date.UTC(2026, 9, 14, h + 3, m) / 1000; // Halifax time today
@@ -72,6 +79,10 @@ function quietBatches(live) {
   pulses("Rigel", "helper", yday(17, 30), yday(19, 0), 900);
   gh("Rigel", "opened_pr", null, yday(19, 20));
   ev.push({ t: "msg", kind: "ci", result: "pass", ts: yday(19, 20) });
+  pulses("Orion", "claude", yday(20, 22), yday(20, 34), 60);
+  gh("Orion", "approved", null, yday(20, 35));
+  gh("Rigel", "merged", null, yday(20, 50));
+  gh("Polaris", "merged_by", null, yday(20, 50));
   // this morning: Polaris asks, Orion builds it, Lyra reviews, Polaris merges after lunch
   ev.push({ t: "msg", kind: "request", agent: "Polaris", action: "opened_issue", repo: "setkernel-live", ts: adt(8, 50) });
   gh("Orion", "picked_up", "setkernel-live", adt(9, 12));
@@ -89,16 +100,17 @@ function quietBatches(live) {
   gh("Orion", "merged", "setkernel-live", adt(14, 2));
   gh("Polaris", "merged_by", "setkernel-live", adt(14, 2));
   if (live) {
-    gh("Vega", "picked_up", "example-site", adt(16, 31));
+    gh("Vega", "picked_up", null, adt(16, 31));
     pulses("Vega", "claude", adt(16, 32), adt(16, 40), 35);
   }
   ev.sort((a, b) => a.ts - b.ts);
   // agent states as they were: Orion working 09:12-10:48, Lyra reviewing 11:30-11:41, Vega from 16:31
   const at = (t) => {
     const a = Object.fromEntries(ENGINEERS.map((n) => [n, { state: "IDLE" }]));
+    if (t >= yday(20, 22) && t < yday(20, 36)) a.Orion = { state: "REVIEW", work: "review" };
     if (t >= adt(9, 12) && t < adt(10, 49)) a.Orion = { state: "WORKING", work: "issue", repo: "setkernel-live" };
     if (t >= adt(11, 30) && t < adt(11, 42)) a.Lyra = { state: "REVIEW", work: "review", repo: "setkernel-live" };
-    if (live && t >= adt(16, 31)) a.Vega = { state: "WORKING", work: "issue", repo: "example-site" };
+    if (live && t >= adt(16, 31)) a.Vega = { state: "WORKING", work: "issue" };
     return a;
   };
   const out = [];
@@ -138,7 +150,7 @@ const lib = [
 ].join("\n");
 
 const font = (file) => readFileSync(new URL(`public/fonts/${file}`, root)).toString("base64");
-const faces = [["Manrope", 400, "manrope-latin-400-normal"], ["Manrope", 600, "manrope-latin-600-normal"], ["Manrope", 700, "manrope-latin-700-normal"], ["IBM Plex Mono", 400, "ibm-plex-mono-latin-400-normal"], ["IBM Plex Mono", 500, "ibm-plex-mono-latin-500-normal"]]
+const faces = [["Manrope", 400, "manrope-latin-400-normal"], ["Manrope", 600, "manrope-latin-600-normal"], ["IBM Plex Mono", 400, "ibm-plex-mono-latin-400-normal"]]
   .map(([family, weight, file]) => `@font-face{font-family:"${family}";font-weight:${weight};font-style:normal;font-display:block;src:url(data:font/woff2;base64,${font(`${file}.woff2`)}) format("woff2")}`)
   .join("\n");
 

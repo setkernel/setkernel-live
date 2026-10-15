@@ -46,19 +46,28 @@ gradient or card. Colour is never the only signal:
 - the stages differ in line weight and dash;
 - the one signal colour, red, always comes with a glyph (✕ for changes asked and CI failed).
 
-**Type and grid.** The type is Manrope, with IBM Plex Mono for times; both are the repo's own OFL
-fonts from `public/fonts/`, embedded.
+**Type and spacing.** The type is Manrope, with IBM Plex Mono for clock times only; both are the
+repo's own OFL fonts from `public/fonts/` (Google Fonts, embedded). Two families stay because the
+mono gives the axis digits one width, and it is used for nothing else. Weights are 400 and 600,
+and the mono is 400, so only three faces are embedded.
 
-| Element | Page | Wall |
-|---|---|---|
-| Headline | 34/42 | 62/74 |
-| "Latest" line | 16 | 30 |
-| Lane names | 16 bold | 44 |
-| Labels | 13 | 26 |
-| Axis | 11 mono | 22 |
+One type scale (px; the wall is the same steps at 1.8×) and one spacing scale (4 · 8 · 16 · 24 ·
+32 · 48) are CSS variables, and every font size and gap in the file, SVG text included, takes one:
 
-On the page, the grid is a 48 px margin, then a 216 px name gutter, the plot (144 ten-minute
-columns), and a 320 px "moment" column, with 24 px gaps.
+| Step | Page | Wall | Used for |
+|---|---|---|---|
+| f1 | 12 | 22 | axis, legend, small labels, the lane name tag in Now |
+| f2 | 14 | 25 | tallies, stage lines, secondary text |
+| f3 | 16 | 29 | lane names, body, the Polaris line in Now |
+| f4 | 20 | 36 | what each lane is doing now |
+| f5 | 24 | 43 | headline on the phone |
+| f6 | 32 | 58 | headline |
+
+The grid is 8 px (4 for the half step). On the page: 48 margin, 232 name gutter, 24 gaps, the
+plot, then a 376 Now column. Rows are 88 (lane), 64 (Polaris), 24 (each pole star), 40 (CI)
+and 16 between groups. Inside a lane, shared baselines: the name, the activity band's floor and
+the Now line sit at 48 down; the tally, the stage track and the Now stage line sit at 72/68. The
+wall uses 1.8 for the type, gutters and gaps, and 1.5 for row heights so it fits 1440 px tall.
 
 ## Regions and their data
 Every field below is one that `cleanEvent` keeps. The page reads only `state.js`'s view and the
@@ -69,24 +78,22 @@ replay buffer.
 | Masthead, right | "About a minute behind · updated 6 s ago"; when offline, only "updated 47 min ago" | `freshness()` (`words.js`); the delay is hq `observability/wall/public.py` `DELAY = 60` |
 | Headline and "Latest" | the sentence for the mood | `headline()`, `headlineForms()` and `fitHeadline()` (`words.js`), with `reviewers()` (`line.js`) for "reviewing Vega's pull request" |
 | Name gutter | name, and today's tally | `tally()` on `byAgent` (`words.js`); Polaris's requests, merges and reviews in the same form |
-| Lane, top: grey bars | Claude requests per 10 minutes, on one scale for all four lanes (the key gives the tallest) | `replay.pulses`, the per-minute rows, summed into 10-minute columns |
-| Lane, middle: the track | the job's stage: hairline Started, line Building, heavy In review, red dashed Fixing | `replay.work` and the Claude pulses, run through `line.js`'s own `stepLines()`, from `seedLanes()` of the live lanes |
-| Lane, track marks | each action: ○ started on an issue, ◆ opened a pull request, △ pushed fixes, ✓ approved, ✕ asked for changes, ● had a pull request merged, ⋯ posted in a design discussion, ■ wrote up a decision | `replay.work`, labelled with `deed()` |
-| Lane, bottom: short bars | team chat posts per 10 minutes | `replay.pulses` |
-| Polaris and its three Claudes | one Polaris row with Kochab, Pherkad and Yildun as sub-lines (hq#177 "Pole stars"); actions only: □ sent the team a request, ◇ commented, ◉ merged a pull request, plus their pull requests and reviews | `replay.work` |
+| Lane, band | one quiet activity band per lane: Claude requests and chat posts together, per 10 minutes, smoothed over three, on one scale for all four lanes | `replay.pulses`, the per-minute rows, summed into 10-minute columns |
+| Lane, the track | the one clear line through each lane: a faint line all day, with the job's stage on it: Started thin, Building line, In review heavy, Fixing red dashed | `replay.work` and the Claude pulses, run through `line.js`'s own `stepLines()`, from `seedLanes()` of the live lanes |
+| Lane, marks on the track | an action that no stage line already says: ✓ approved, ✕ asked for changes, △ pushed fixes, ● had a pull request merged, ⋯ posted in a design discussion, ■ wrote up a decision. A start (○) or a pull request (◆) gets a mark only when no stage begins there. Marks that would overlap go on a second level below the line | `replay.work`, labelled with `deed()` |
+| Polaris and its three Claudes | one Polaris row with Kochab, Pherkad and Yildun as sub-lines (hq#177 "Pole stars"); actions only: □ sent the team a request, ◇ commented, ◉ merged a pull request, plus their pull requests and reviews. Polaris's marks go on three levels, so a burst reads as a stack | `replay.work` |
 | CI band | one shared band with no owner: a tick for passed, a red ✕ for failed | `state.ci` (CI runs are not in the replay; see Found) |
-| Moment column | Now: the state in words (`doing()`), then the stage and since when (`column()`, `STAGE_NAME`). Scrubbed: that ten minutes' actions or counts, and the stage then | `words.js`, `line.js` |
+| Now column | on its own ground, at 20 px: each lane's name tag, what it is doing (`doing()`, in bold; Idle is light), then where, and the stage and since when (`column()`, `STAGE_NAME`). An idle lane keeps only a review that waits on others ("Waiting for review since"). Scrubbed: that ten minutes' actions or counts, and the stage then | `words.js`, `line.js` |
 | Hatching | where the page doesn't know: no word since the last report, older CI runs not kept, older actions not kept (above `REPLAY_WORK`), or nothing arrived yet | `lastIngest`, `state.ci` length, `replay.work` length |
-| Key | only the marks that are on this day | `ACTION_TEXT` and `STAGE_NAME` |
+| Key | only what this day draws: the band, the stages in use, the marks that are drawn | `ACTION_TEXT` and `STAGE_NAME` |
 | "The day as a table" | every action and CI run, newest first, with a glyph and the `deed()` words | the same data |
 
 There are **no deploy marks** (hq#177). The helper column (subagents and skills) is in the data but
-not drawn. Adding it would mean a third density row per lane, which I left out to keep the lane
-readable.
+not drawn, to keep the lane calm.
 
 ## Phone (375)
-- The lanes run down the page, with now at the top. Each lane is a column with the Claude bars,
-  the stage track and the chat bars.
+- The lanes run down the page, with now at the top. Each lane is a column with the activity band
+  and the stage track.
 - The pole stars' names are set vertically, so each column has its full name.
 - Above the chart, the moment column becomes a list: one line per row, with the tally. It
   answers the 10-second question before the chart, and it changes with scrubbing like the wide
@@ -95,9 +102,9 @@ readable.
 ## Wall (2560×1440): what I chose and why
 hq#177 gave Day no wall layout. My proposal is **the same view, set larger, in one fixed dark
 theme**, with no second layout.
-- **The type** is set for about 6 m (Lyra's target): names at 44 px, the headline at 62 px, the
-  moment column at 32 px, and nothing smaller than 22 px.
-- **The moment column is wider (760 px).** From across a room, the right edge carries the "now"
+- **The type** is the page's scale at 1.8×, for about 6 m (Lyra's target): the Now column's
+  activity text at 36 px, the headline at 58 px, and nothing smaller than 22 px.
+- **The Now column is wider (677 px).** From across a room, the right edge carries the "now"
   answer, and the lanes show the day behind it.
 - **The switcher, the keyboard hints and the table are hidden.** Nobody scrubs a wall.
 - **The theme is dark and fixed.** A screen that is on all day should not change theme with the
@@ -132,17 +139,23 @@ What I rejected:
 
 ## The quiet day (the risk hq#177 names)
 The quiet-day dataset is written by hand, and nothing is added to fill the lanes. It contains:
-- one job: Polaris asks at 08:50, Orion picks it up at 09:12, CI fails, Orion pushes fixes, Lyra
-  approves at 11:41, and Polaris merges at 14:02;
-- Rigel's pull request from yesterday evening;
+- one job today: Polaris asks at 08:50, Orion picks it up at 09:12, CI fails, Orion pushes fixes,
+  Lyra approves at 11:41, and Polaris merges at 14:02;
+- Rigel's job from yesterday evening, which Orion approved at 20:35 and Polaris merged at 20:50,
+  so it is finished before today starts;
 - nothing from Vega or the three Claudes.
 
-On this data the design reads as a day with one finished job and one pull request that has
-waited all day. The empty lanes show as empty, and the gutter says "nothing yet today"
-(`tally()`'s own words).
-- Rigel's heavy "In review since 19:20" bar spanning the whole day is the most useful thing on
-  this screen: it shows work waiting on a reviewer.
-- Lyra's lane is a single ✓ and 17 Claude requests.
+The first version had Rigel's pull request open all day, so Rigel read "Idle", "nothing yet today"
+and "In review since 19:20" with a review bar across the whole day. Now the lane says Idle,
+"nothing yet today" and "Merged yesterday at 20:50", and the track ends at the merge. Lyra's lane is one ✓.
+Contradictions checked in every mood and day:
+- an idle lane never has a Building or Fixing line running to the edge: `prep()` ends it at the
+  last sign of work, and the Now column says nothing about a stage it isn't in;
+- an idle lane with a review waiting says "Waiting for review since …", not "In review";
+- an engineer reviewing someone else's pull request has their own job's stage labelled "Own pull
+  request: in review since …";
+- the offline mood dims the Now column and its header says "Last word, 15:53".
+- the fixtures' one made-up repo ("example-site") is a private project everywhere.
 
 ## Open questions for Raghav
 These are hq#177's recommendations as they show in the prototype, and what the build would need
@@ -210,6 +223,30 @@ PLAYWRIGHT_DIR="$TMPDIR/pw" node docs/design/v3/day/shoot.mjs   # retake every P
 `shoot.mjs` fails if the page throws or makes any request that isn't to `file:` or `data:`.
 
 ## Review rounds
+**Refinement for Raghav's four points (setkernel-live#47)**, two rounds of reading my own PNGs
+against them: one type scale and spacing grid, calmer lanes, a stronger Now, no data glitches.
+
+**Refinement round 1** (live, quiet and wall shots):
+- Uniform: the headline, names and tallies sat on three unrelated sizes and the gutters were
+  picked per element. All now come from the scales above.
+- Calm: the Claude bars plus chat ticks plus ten rules read as a barcode. They are one light
+  band per lane now, and the track is the line through it.
+- Now: the column was 14 px text on the page ground. It is on its own ground, with 20 px
+  activity text.
+- Faults seen: Polaris's tally cut ("3 revie…"), so the gutter went from 208 to 232; "21:00"
+  sat on "Yesterday"; CI's name overlapped its tally; Rigel's "Merged at 20:50" didn't say
+  yesterday; the wall's key overflowed the screen.
+
+**Refinement round 2** (after those fixes; wall, scrub, offline, phone):
+- The wall now fits at 1.8× the type and 1.5× the rows.
+- The phone's Now list ran tallies into the stage line; it shows the stage only.
+- Offline showed "Working on an issue" in full ink under "Last word, 15:53"; the column is
+  dimmed now.
+- A scrubbed line that doesn't fit drops one type step (20 to 16) instead of being cut.
+- Still to change: Polaris's marks stack three deep around a burst, and the wall's state glyph
+  (●) comes from a fallback font.
+
+**The first prototype's rounds:**
 **Round 1** (first shots):
 - Tallies and the pole-star lines in the moment column were cut off ("948 Clau…", "had a pull
   request merged in a private proj…").
