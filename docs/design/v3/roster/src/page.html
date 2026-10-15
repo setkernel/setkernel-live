@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>setkernel live · v3 prototype: Roster</title>
+<!-- Built by build.mjs from src/; edit those, then run: node docs/design/v3/roster/build.mjs -->
+<style>
+/*FONTS*/
+/*CSS*/
+</style>
+</head>
+<body>
+<main class="board" aria-labelledby="head">
+  <header class="mast">
+    <p class="brand">setkernel <b>live</b></p>
+    <p class="fresh"><span id="fresh"></span><span class="dot" aria-hidden="true"> · </span><time id="clock"></time></p>
+    <h1 id="head"></h1>
+    <p id="sub" class="sub"></p>
+  </header>
+
+  <section class="roster" aria-label="Who is doing what">
+    <div class="heads" aria-hidden="true">
+      <span class="h-name"></span><span class="h-state" id="h-state">Now</span><span class="h-what"></span>
+      <span class="h-stage">On the line</span><span class="h-time">For</span><span class="h-today" id="h-today">Today</span>
+    </div>
+    <div id="pole" class="pole"></div>
+    <ol id="rows" class="rows"></ol>
+  </section>
+
+  <section class="log" aria-labelledby="log-h">
+    <h2 id="log-h">What happened</h2>
+    <ol id="log"></ol>
+  </section>
+
+  <section class="day" aria-labelledby="day-h">
+    <h2 id="day-h">The last 24 hours</h2>
+    <div id="strip"></div>
+  </section>
+</main>
+
+<aside class="proto" id="proto" aria-label="Prototype controls">
+  <p class="proto-title">Prototype · not part of the design</p>
+  <div class="proto-row" role="group" aria-label="Mood"><span>Mood</span>
+    <button data-k="mood" data-v="live">Live</button><button data-k="mood" data-v="quiet">Quiet</button><button data-k="mood" data-v="offline">Offline</button><button data-k="mood" data-v="waiting">Waiting</button>
+  </div>
+  <div class="proto-row" role="group" aria-label="Data"><span>Data</span>
+    <button data-k="data" data-v="busy">Busy day</button><button data-k="data" data-v="quiet">Quiet day</button>
+  </div>
+  <div class="proto-row" role="group" aria-label="Layout"><span>Layout</span>
+    <button data-k="layout" data-v="page">Page</button><button data-k="layout" data-v="wall">Wall</button>
+    <button id="play" class="play" type="button">Replay last 8 min</button>
+  </div>
+</aside>
+
+<script>
+const DATA = /*DATA*/;
+/*JS*/
+</script>
+</body>
+</html>

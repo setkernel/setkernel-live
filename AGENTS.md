@@ -16,7 +16,7 @@ Public repo: everything here is visible to anyone.
 # test:     npm test                 (node --test: allowlist, state and replay buffer, the line's columns,
 #                                    Access token check, GitHub receiver, page wording/headline/star card/
 #                                    demo/replay/layout, page hosts and contrast, Day/Night choice and
-#                                    the Day sky, the smoke check)
+#                                    the Day sky, the smoke check, the v3 Roster prototype)
 # worker:   npm run test:worker      (vitest in workerd: the real Worker and Hub, see test/worker/)
 # lint:     npm run check            (node --check on every script)
 # validate: npm run validate         (check + test + test:worker + wrangler deploy --dry-run; what CI runs)

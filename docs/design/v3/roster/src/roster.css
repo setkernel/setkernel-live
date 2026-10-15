@@ -1,0 +1,234 @@
+/* Roster: a typeset status board. One family (Manrope), with tabular figures for every time and count.
+   Type scale (page): 13 / 15 / 17 / 26 / 40 px. 12-column grid, 1280 px wide at most.
+   Page: ink on paper. Wall: one fixed dark theme. Colour marks state only beside a glyph and a word. */
+
+:root {
+  --paper: #f5f3ee;
+  --ink: #17171b;
+  --ink-2: #45454d;   /* 9.0:1 on paper */
+  --ink-3: #64636a;   /* 5.6:1 on paper */
+  --rule: #d8d4ca;
+  --faint: #e4e0d7;
+  --working: #1d7348;
+  --review: #2456b0;
+  --discuss: #9a5800;
+  --idle: #8a8990;    /* glyphs only, 3.2:1 */
+  --flash: #f2e8c2;
+  --bar: #45454d;
+  --bar-old: #a9a6a0;
+  --text: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --cols: 8.5rem 8rem minmax(0, 1fr) 10.5rem 5.5rem 15.5rem;
+  --gap: 1.5rem;
+  color-scheme: light;
+}
+
+html.wall {
+  --paper: #111214;
+  --ink: #f1efe9;
+  --ink-2: #c5c3bc;   /* 11:1 */
+  --ink-3: #a3a19b;   /* 7.4:1 */
+  --rule: #2e2f33;
+  --faint: #232427;
+  --working: #4cc38a;
+  --review: #86a9ff;
+  --discuss: #e3a84d;
+  --idle: #74737a;
+  --flash: #3a3420;
+  --bar: #c5c3bc;
+  --bar-old: #5d5c61;
+  --cols: 7rem 7.5rem minmax(0, 1fr) 8rem 4.25rem;
+  --gap: 1.25rem;
+  color-scheme: dark;
+  font-size: calc(100vw / 80); /* 32 px at 2560 */
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: var(--paper); color: var(--ink); font-family: var(--text); font-size: 16px; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+html.wall { font-size: calc(100vw / 80); }
+body { min-height: 100vh; }
+ol { list-style: none; }
+h1, h2 { font-weight: inherit; }
+
+/* ---- the board ---- */
+.board {
+  max-width: 90rem; /* 1280 px of content inside the padding */
+  margin: 0 auto;
+  padding: 2rem 5rem 4rem;
+  display: grid;
+  grid-template-columns: 7fr 5fr;
+  grid-template-areas: "mast mast" "roster roster" "log day";
+  column-gap: 4rem;
+}
+.mast { grid-area: mast; display: grid; grid-template-columns: 1fr auto; align-items: baseline; row-gap: .5rem; padding-bottom: 1.75rem; }
+.brand { font-size: .9375rem; font-weight: 500; color: var(--ink-2); letter-spacing: .01em; }
+.brand b { font-weight: 700; color: var(--ink); }
+.fresh { font-size: .9375rem; color: var(--ink-2); justify-self: end; }
+.mast h1 { grid-column: 1 / -1; font-size: 2.5rem; line-height: 1.1; font-weight: 700; letter-spacing: -.02em; margin-top: 1rem; max-width: 32em; text-wrap: balance; }
+.mast .sub { grid-column: 1 / -1; font-size: 1.0625rem; line-height: 1.45; color: var(--ink-2); max-width: 46em; }
+
+/* ---- the roster: one grid template for the heads, Polaris and the engineers ---- */
+.roster { grid-area: roster; }
+.heads, .row, .sub-line { display: grid; grid-template-columns: var(--cols); column-gap: var(--gap); align-items: baseline; }
+.heads { font-size: .8125rem; font-weight: 500; color: var(--ink-3); padding-bottom: .5rem; border-bottom: 2px solid var(--ink); }
+.h-time { text-align: right; }
+
+.pole { border-bottom: 1px solid var(--rule); padding: .875rem 0 .75rem; }
+.pole .row { padding-bottom: .375rem; }
+.pole .what { grid-column: 3 / 5; }
+.sub-line { font-size: .9375rem; line-height: 1.6; color: var(--ink-2); }
+.sub-line .what { font-size: inherit; }
+.sub-line { min-height: 1.6em; }
+.sub-line .name { font-size: .9375rem; font-weight: 600; color: var(--ink); padding-left: 1rem; border-left: 1px solid var(--rule); }
+.sub-line .what { grid-column: 3 / 5; }
+.sub-line .time, .pole .time { text-align: right; font-size: .875rem; }
+
+.rows > li { border-bottom: 1px solid var(--rule); }
+.row { padding: .875rem 0; }
+.rows .row { min-height: 3.75rem; }
+.name { font-size: 1.625rem; font-weight: 700; letter-spacing: -.01em; line-height: 1.15; }
+.note { font-size: .9375rem; font-weight: 500; color: var(--ink-3); }
+.state { font-size: 1.0625rem; font-weight: 700; white-space: nowrap; display: flex; align-items: baseline; gap: .5rem; }
+.what { font-size: 1.0625rem; line-height: 1.4; }
+.what .where { color: var(--ink-2); }
+.stage { font-size: .9375rem; font-weight: 500; display: flex; align-items: baseline; gap: .625rem; white-space: nowrap; }
+.time { font-size: .9375rem; font-weight: 600; text-align: right; white-space: nowrap; }
+.time small { display: block; font-size: .8125rem; font-weight: 400; color: var(--ink-3); }
+.today { font-size: .9375rem; color: var(--ink-2); }
+.dim { color: var(--ink-3); }
+
+/* the state glyph: a mark beside the word, never on its own */
+.glyph { width: .75em; height: .75em; flex: none; align-self: center; transform: translateY(-.02em); }
+.glyph * { vector-effect: non-scaling-stroke; }
+.s-WORKING .glyph { color: var(--working); }
+.s-REVIEW .glyph { color: var(--review); }
+.s-DISCUSS .glyph { color: var(--discuss); }
+.s-IDLE .glyph, .s-PAUSED .glyph, .s-NONE .glyph { color: var(--idle); }
+.s-IDLE .state, .s-PAUSED .state, .s-NONE .state { font-weight: 500; color: var(--ink-2); }
+.offline .state { color: var(--ink-2); font-weight: 500; }
+.offline .glyph { color: var(--idle); }
+
+/* the five steps of the job: done, now, passed without stopping, not yet */
+.track { display: inline-flex; gap: 3px; align-self: center; }
+.track i { width: .75rem; height: .3125rem; border-radius: 1px; background: var(--faint); }
+.track i.done { background: var(--ink-3); }
+.track i.now { background: var(--ink); }
+.track i.skip { background: transparent; box-shadow: inset 0 0 0 1px var(--ink-3); }
+
+/* motion: a state word changing, and a short highlight on its row */
+.rows .row { position: relative; }
+.rows .row > * { position: relative; }
+.row.changed::before { content: ""; position: absolute; inset: 0 -1rem; border-radius: 3px; background: var(--flash); opacity: 0; animation: flash 1.8s ease-out; }
+.row.changed .word { animation: word .4s ease-out; }
+@keyframes flash { from { opacity: 1; } to { opacity: 0; } }
+@keyframes word { from { opacity: 0; transform: translateY(.25em); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .row.changed::before, .row.changed .word { animation: none; }
+}
+
+/* ---- underneath: the log, and the 24-hour strip ---- */
+.log, .day { padding-top: 2rem; }
+.log h2, .day h2 { font-size: .8125rem; font-weight: 500; color: var(--ink-3); padding-bottom: .5rem; border-bottom: 1px solid var(--ink); margin-bottom: .625rem; display: flex; justify-content: space-between; }
+.log h2 small, .day h2 small { font-size: inherit; font-weight: inherit; }
+.log { grid-area: log; }
+.log li { display: grid; grid-template-columns: 3.25rem 1fr; gap: .75rem; font-size: .9375rem; line-height: 1.6; }
+.log li time { font-size: .8125rem; color: var(--ink-3); padding-top: .1em; }
+.log li b { font-weight: 700; }
+.log .empty { display: block; color: var(--ink-2); }
+
+.day { grid-area: day; }
+.series { display: grid; grid-template-columns: 1fr; margin-bottom: 1rem; }
+.series-head { display: flex; justify-content: space-between; align-items: baseline; font-size: .8125rem; color: var(--ink-2); margin-bottom: .375rem; }
+.series-head .peak { color: var(--ink-3); }
+.bars { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; align-items: end; height: 3.5rem; border-bottom: 1px solid var(--ink-3); position: relative; }
+.bars.short { height: 2.25rem; }
+.bars i { display: block; background: var(--bar); border-radius: 2px 2px 0 0; min-height: 0; }
+.bars i.old { background: var(--bar-old); }
+.bars i.zero { height: 0; }
+.bars .midnight { position: absolute; top: -.25rem; bottom: -.25rem; width: 0; border-left: 1px dashed var(--ink-3); }
+.hours { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; font-size: .8125rem; color: var(--ink-3); margin-top: .375rem; }
+.hours span { white-space: nowrap; }
+.hours .today-mark { color: var(--ink); font-family: var(--text); font-weight: 600; font-size: .8125rem; }
+.strip-note { font-size: .875rem; color: var(--ink-2); margin-top: .75rem; line-height: 1.5; }
+
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---- wall: the same rows at a larger scale, the log in the right third. One fixed theme. ---- */
+html.wall .board {
+  max-width: none; height: 100vh; padding: 1.75rem 2.25rem 1.5rem;
+  grid-template-columns: 2fr 1fr; grid-template-rows: auto 1fr auto;
+  grid-template-areas: "mast log" "roster log" "day log";
+  column-gap: 2.5rem;
+}
+html.wall .mast { padding-bottom: .75rem; }
+html.wall .brand, html.wall .fresh { font-size: .8125rem; }
+html.wall .fresh time { font-size: .8125rem; }
+html.wall .mast h1 { font-size: 1.875rem; margin-top: .75rem; }
+html.wall .mast .sub { font-size: .875rem; }
+html.wall .heads { font-size: .625rem; }
+html.wall .h-today, html.wall .today { display: none; }
+html.wall .name { font-size: 1.625rem; }
+html.wall .state { font-size: 1.125rem; }
+html.wall .what { font-size: .9375rem; }
+html.wall .stage { font-size: .875rem; }
+html.wall .time { font-size: .875rem; }
+html.wall .time small { font-size: .625rem; }
+html.wall .sub-line, html.wall .sub-line .name { font-size: .75rem; line-height: 1.45; }
+html.wall .note { font-size: .75rem; }
+html.wall .rows .row { min-height: 0; padding: .5rem 0; }
+html.wall .pole { padding: .5rem 0; }
+html.wall .tally { display: block; font-size: .75rem; color: var(--ink-2); margin-top: .125rem; }
+html.wall .log { padding-top: 0; border-left: 1px solid var(--rule); padding-left: 2.5rem; overflow: hidden; }
+html.wall .log h2, html.wall .day h2 { font-size: .625rem; }
+html.wall .log li { font-size: .8125rem; grid-template-columns: 2.75rem 1fr; line-height: 1.45; margin-bottom: .5rem; }
+html.wall .log li time { font-size: .6875rem; }
+html.wall .day { padding-top: .75rem; }
+html.wall .series { margin-bottom: .25rem; }
+html.wall .day h2 { margin-bottom: .375rem; }
+html.wall .series-head { font-size: .625rem; }
+html.wall .bars { height: 1.75rem; }
+html.wall .bars.short { height: 1rem; }
+html.wall .hours { font-size: .625rem; }
+html.wall .hours .today-mark { font-size: .6875rem; }
+html.wall .strip-note { display: none; }
+.tally { display: none; }
+
+/* ---- phone: each row becomes a two-line block. Name, state and stage; then what and how long. ---- */
+@media (max-width: 640px) {
+  html:not(.wall) .board { padding: 1.25rem 1.25rem 3rem; grid-template-columns: 1fr; grid-template-areas: "mast" "roster" "log" "day"; }
+  html:not(.wall) .mast { padding-bottom: 1.25rem; }
+  html:not(.wall) .mast h1 { font-size: 1.625rem; margin-top: .75rem; }
+  html:not(.wall) .mast .sub { font-size: .9375rem; }
+  html:not(.wall) .brand, html:not(.wall) .fresh { font-size: .8125rem; }
+  html:not(.wall) .heads { display: none; }
+  html:not(.wall) .roster { border-top: 2px solid var(--ink); }
+  html:not(.wall) .row { grid-template-columns: auto auto 1fr auto; grid-template-areas: "name state . stage" "what what what time"; column-gap: .625rem; row-gap: .25rem; padding: .75rem 0; }
+  html:not(.wall) .rows .row { min-height: 0; }
+  html:not(.wall) .row .name { grid-area: name; font-size: 1.25rem; }
+  html:not(.wall) .row .state { grid-area: state; font-size: .9375rem; }
+  html:not(.wall) .row .stage { grid-area: stage; font-size: .8125rem; color: var(--ink-2); gap: .375rem; }
+  html:not(.wall) .row .track i { width: .4375rem; height: .25rem; }
+  html:not(.wall) .row .what { grid-area: what; font-size: .9375rem; }
+  html:not(.wall) .row .time { grid-area: time; font-size: .8125rem; font-weight: 500; color: var(--ink-2); align-self: baseline; }
+  html:not(.wall) .row .time small, html:not(.wall) .row .today { display: none; }
+  html:not(.wall) .pole .row { grid-template-areas: "name state . time" "what what what what"; }
+  html:not(.wall) .pole .what { grid-column: auto; font-size: .9375rem; }
+  html:not(.wall) .pole .row .today { display: none; }
+  html:not(.wall) .sub-line { display: flex; gap: .75rem; align-items: baseline; }
+  html:not(.wall) .sub-line .name { font-size: .875rem; width: 5.5rem; }
+  html:not(.wall) .sub-line .what, html:not(.wall) .sub-line .time { display: none; }
+  html:not(.wall) .sub-line .today { font-size: .875rem; }
+  html:not(.wall) .log, html:not(.wall) .day { padding-top: 1.75rem; }
+  html:not(.wall) .log li { font-size: .875rem; grid-template-columns: 2.75rem 1fr; }
+}
+
+/* ---- prototype controls: outside the design ---- */
+.proto { position: fixed; right: 1rem; bottom: 1rem; z-index: 9; background: #26262b; color: #f1efe9; font: 12px/1.3 system-ui, sans-serif; padding: .625rem .75rem; border-radius: 6px; display: grid; gap: .375rem; }
+html.clean .proto { display: none; }
+.proto-title { color: #b9b7b0; }
+.proto-row { display: flex; align-items: center; gap: .25rem; flex-wrap: wrap; }
+.proto-row > span { width: 3.5rem; color: #b9b7b0; }
+.proto button { font: inherit; color: inherit; background: transparent; border: 1px solid #55555c; border-radius: 4px; padding: .1875rem .5rem; cursor: pointer; }
+.proto button[aria-pressed="true"] { background: #f1efe9; color: #17171b; border-color: #f1efe9; }
+.proto button:focus-visible { outline: 2px solid #86a9ff; outline-offset: 1px; }
+.proto .play { margin-left: .5rem; }
+html.wall .proto { font-size: 12px; }
