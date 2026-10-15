@@ -715,13 +715,13 @@ const opts = { mood: "live", data: "busy", layout: "page", shot: false };
 for (const kv of location.hash.slice(1).split("&")) {
   const [k, v] = kv.split("=");
   if (k === "shot") opts.shot = true;
-  else if (k in opts && v) opts[k] = v;
+  else if (Object.hasOwn(opts, k) && v) opts[k] = v;
 }
 
 // ---- data: the fixture for the chosen mood and day
 function scenario() {
   if (opts.mood === "waiting") return { agents: {}, counts: {}, byAgent: {}, seen: {}, line: {}, feed: [], ci: [], lastIngest: 0, replay: { pulses: [], work: [] } };
-  const day = FIXTURES[opts.data];
+  const day = FIXTURES[opts.data] ?? FIXTURES.busy;
   return day[opts.mood] ?? day.live;
 }
 
@@ -1252,7 +1252,9 @@ function fillTable(d) {
 function say(i) {
   if (i == null) { $("readout").textContent = "Back to now."; return; }
   const parts = [`${clock(binTime(i), TZ)} to ${clock(binTime(i) + BIN, TZ)}.`];
-  for (const n of ENG) {
+  // waiting: nothing has arrived, so there is no moment to read out
+  if (!D.s.lastIngest) parts.push("Nothing has arrived yet.");
+  else for (const n of ENG) {
     const [what, st] = moment(D, { id: n, kind: "eng" }, i);
     if (what !== "No activity" || st) parts.push(`${n}: ${[st, what.charAt(0).toLowerCase() + what.slice(1)].filter(Boolean).join(", ")}.`);
   }
@@ -1318,6 +1320,7 @@ function render() {
   fillLegend(D);
   fillTable(D);
   wire();
+  scrub = null;
   if (opts.scrub != null) setScrub(+opts.scrub);
   fitWall();
 }
@@ -1333,6 +1336,7 @@ function fitWall() {
 }
 for (const b of document.querySelectorAll(".proto button")) b.addEventListener("click", () => {
   opts[b.dataset.k] = b.dataset.v;
+  opts.scrub = null;
   history.replaceState(null, "", `#mood=${opts.mood}&data=${opts.data}&layout=${opts.layout}`);
   render();
 });

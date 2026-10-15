@@ -154,7 +154,7 @@ What I rejected:
 
 ## Accessibility
 - **Glyph and label on every mark.** Each mark has its own shape and carries a `<title>` with
-  its label (for example "Orion opened a pull request in setkernel-live, 10:31"). The key, the
+  its label (for example "Orion had a pull request merged in setkernel-live, 14:02"). The key, the
   scrub readout and the table give the same words.
 - **Keyboard scrubbing.** The chart is a focusable `role="slider"`. The keys:
   - ← and → move ten minutes; ↑ and ↓ do on the phone.
@@ -182,13 +182,15 @@ The quiet-day dataset is written by hand, and nothing is added to fill the lanes
 
 The first version had Rigel's pull request open all day, so Rigel read "Idle", "nothing yet today"
 and "In review since 19:20" with a review bar across the whole day. Now the lane says Idle,
-"nothing yet today" and "Merged yesterday at 20:50", and the track ends at the merge. Lyra's lane is one ✓.
+"nothing yet today" and "Merged yesterday at 20:50", and the track ends at the merge. Lyra's
+lane has no mark: approving is not one of the three marks, so it is words only: the scrub
+readout at 11:40 says "Lyra: approved a teammate's pull request", and the table lists it.
 Contradictions checked in every mood and day:
 - an idle lane never has a Building or Fixing line running to the edge: `prep()` ends it at the
   last sign of work, and the Now column says nothing about a stage it isn't in;
 - an idle lane with a review waiting says "Waiting for review since …", not "In review";
-- an engineer reviewing someone else's pull request has their own job's stage labelled "Own pull
-  request: in review since …";
+- an engineer reviewing someone else's pull request has their own job said in plain words, for
+  example "Their own pull request has waited since 15:22";
 - the offline mood dims the Now column and its header says "Last word, 15:53".
 - the fixtures' one made-up repo ("example-site") is a private project everywhere.
 
@@ -218,8 +220,9 @@ to settle.
      A job that started and ended before the 24-hour window, or one in a private repo whose
      review the page can't attribute, shows no stage. Fixing appears only when `laneAuthor()`
      can tell whose pull request the change request was on, which means public repos only.
-   - Yildun's Claude requests are counted in its tally ("199 Claude") but have no lane density,
-     because the replay keeps no column for them.
+   - The guardians have no rows or tallies: they are one count in Polaris's Now line, and that
+     count is GitHub actions only. Yildun's Claude requests (199 on the busy day, in `byAgent`)
+     are not shown anywhere, and the replay keeps no column for them. Should they be?
 6. **CI history.** CI runs are not in the replay buffer. Only the 20 most recent (`CI_RECENT`)
    are kept, so on the busy day the band is hatched before 06:15 ("Older runs aren't
    kept"). Should the build add CI to the replay buffer? That would change its size budget
