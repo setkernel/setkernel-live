@@ -20,9 +20,9 @@ test("per-agent counts: only the known agents, reset each UTC day", () => {
   );
   let s = applyBatch(emptyState("2026-10-13"), b, T0 * 1000 + 70_000, "2026-10-13");
   assert.deepEqual(Object.keys(s.byAgent).sort(), ["Rigel", "Vega"]);
-  assert.deepEqual(s.byAgent.Vega, { claude: 1, chat: 0, helpers: 0, prs: 1, reviews: 0, started: 1, building: 1, changes: 0, merged: 0 });
-  assert.deepEqual(s.byAgent.Rigel, { claude: 0, chat: 0, helpers: 1, prs: 0, reviews: 2, started: 0, building: 0, changes: 1, merged: 0 });
-  assert.deepEqual(s.counts, { claude: 1, chat: 0, helpers: 1, prs: 1, reviews: 2, started: 1, building: 1, changes: 1, merged: 0, ci: 0, ciPass: 0 });
+  assert.deepEqual(s.byAgent.Vega, { claude: 1, chat: 0, helpers: 0, prs: 1, reviews: 0, started: 1, building: 1, changes: 0, merged: 0, requests: 0, merges: 0, ringed: 0 });
+  assert.deepEqual(s.byAgent.Rigel, { claude: 0, chat: 0, helpers: 1, prs: 0, reviews: 2, started: 0, building: 0, changes: 1, merged: 0, requests: 0, merges: 0, ringed: 0 });
+  assert.deepEqual(s.counts, { claude: 1, chat: 0, helpers: 1, prs: 1, reviews: 2, started: 1, building: 1, changes: 1, merged: 0, requests: 0, merges: 0, ringed: 0, ci: 0, ciPass: 0 });
   assert.deepEqual(s.seen, { Vega: T0 + 2, Rigel: T0 + 5 });
 
   s = applyBatch(s, batch(), T0 * 1000 + 86_400_000, "2026-10-14");
@@ -41,11 +41,68 @@ test("seen keeps the latest time; no ts, or a clock ahead of ours, counts as now
 test("a state saved before this change loads without NaN", () => {
   const old = { day: "d", agents: {}, counts: { claude: 3, chat: 0, prs: 0, reviews: 0, started: 0 }, feed: [], lastIngest: 0 };
   const s = applyBatch(old, batch(msg("Orion", "helper", T0), msg("Orion", "claude", T0)), T0 * 1000, "d");
-  assert.deepEqual(s.counts, { claude: 4, chat: 0, helpers: 1, prs: 0, reviews: 0, started: 0, building: 0, changes: 0, merged: 0, ci: 0, ciPass: 0 });
+  assert.deepEqual(s.counts, { claude: 4, chat: 0, helpers: 1, prs: 0, reviews: 0, started: 0, building: 0, changes: 0, merged: 0, requests: 0, merges: 0, ringed: 0, ci: 0, ciPass: 0 });
   assert.equal(s.byAgent.Orion.helpers, 1);
   const v = view(old, undefined, T0 * 1000);
   assert.deepEqual([v.byAgent, v.seen, v.line, v.ci, v.hours.length], [{}, {}, {}, [], 24]);
   assert.equal(s.line.Orion, undefined, "a Claude request with no job seen starts no lane");
+});
+
+test("requests are counted apart from work, go in the feed and the replay, and move no lane", () => {
+  const b = batch(
+    msg("Vega", "github", T0, { action: "picked_up", repo: "hq" }),
+    msg("Polaris", "request", T0 + 10, { action: "opened_issue" }),
+    msg("Kochab", "request", T0 + 20, { action: "commented", repo: "hq" }),
+    msg("Vega", "request", T0 + 30, { action: "commented" }),
+  );
+  const s = applyBatch(emptyState("d"), b, (T0 + 60) * 1000, "d");
+  assert.equal(s.counts.requests, 3);
+  assert.deepEqual([s.byAgent.Polaris.requests, s.byAgent.Kochab.requests, s.byAgent.Vega.requests], [1, 1, 1]);
+  // not work: no pull requests, reviews, starts, merges or Claude requests
+  for (const k of ["claude", "prs", "reviews", "merged", "merges"]) assert.equal(s.byAgent.Polaris[k], 0, k);
+  assert.equal(s.byAgent.Vega.started, 1);
+  assert.equal(s.counts.started, 1);
+  assert.deepEqual(s.feed.slice(0, 3), [
+    { agent: "Vega", action: "commented", ts: T0 + 30 }, { agent: "Kochab", action: "commented", repo: "hq", ts: T0 + 20 }, { agent: "Polaris", action: "opened_issue", ts: T0 + 10 },
+  ]);
+  assert.deepEqual(s.line.Vega, { job: "started", at: T0, built: false, repo: "hq", steps: { started: T0 } }, "a request moves no card");
+  const r = recordReplay(emptyReplay(), b, (T0 + 60) * 1000);
+  assert.deepEqual(r.work.map((w) => w.action), ["picked_up", "opened_issue", "commented", "commented"]);
+  assert.deepEqual(r.pulses, [[T0 / 60, 0, 0, 0, 1]], "only Vega's pick-up: requests are not pulses, and the hourly chart's GitHub row leaves them out");
+});
+
+test("Polaris's merges: counted for the director, and the author's merge of the same pull request is ringed", () => {
+  const b = batch(
+    // one delivery: Vega's merge, then Polaris's, same time and repo
+    msg("Vega", "github", T0, { action: "merged", repo: "hq" }), msg("Polaris", "github", T0, { action: "merged_by", repo: "hq" }),
+    // merged by someone else: not ringed
+    msg("Rigel", "github", T0 + 5, { action: "merged" }),
+    // Polaris merging a pull request by someone the page doesn't show: no pair, nothing ringed
+    msg("Polaris", "github", T0 + 9, { action: "merged_by" }),
+    // two in a private repo at the same second: each pairs once
+    msg("Lyra", "github", T0 + 20, { action: "merged" }), msg("Polaris", "github", T0 + 20, { action: "merged_by" }),
+    msg("Orion", "github", T0 + 20, { action: "merged" }), msg("Polaris", "github", T0 + 20, { action: "merged_by" }),
+  );
+  let s = applyBatch(emptyState("d"), b, (T0 + 60) * 1000, "d");
+  assert.equal(s.byAgent.Polaris.merges, 4);
+  assert.equal(s.counts.merges, 4);
+  assert.equal(s.counts.merged, 4, "Merged counts the authors' merges, not Polaris's as well");
+  assert.equal(s.byAgent.Polaris.merged, 0);
+  assert.deepEqual(["Vega", "Rigel", "Lyra", "Orion"].map((n) => s.byAgent[n].ringed), [1, 0, 1, 1]);
+  assert.equal(s.counts.ringed, 3);
+  assert.equal(s.feed.find((f) => f.agent === "Vega").ring, true);
+  assert.equal(s.feed.find((f) => f.agent === "Rigel").ring, undefined);
+  // the pair split across two batches still rings, whichever came first
+  s = applyBatch(s, batch(msg("Vega", "github", T0 + 40, { action: "merged", repo: "hq" })), (T0 + 61) * 1000, "d");
+  s = applyBatch(s, batch(msg("Polaris", "github", T0 + 40, { action: "merged_by", repo: "hq" })), (T0 + 62) * 1000, "d");
+  s = applyBatch(s, batch(msg("Polaris", "github", T0 + 45, { action: "merged_by" })), (T0 + 63) * 1000, "d");
+  s = applyBatch(s, batch(msg("Lyra", "github", T0 + 45, { action: "merged" })), (T0 + 64) * 1000, "d");
+  assert.deepEqual([s.byAgent.Vega.ringed, s.byAgent.Lyra.ringed, s.counts.ringed], [2, 2, 5]);
+  // a merged_by in another repo, or at another second, is not the same pull request
+  s = applyBatch(emptyState("d"), batch(msg("Vega", "github", T0, { action: "merged", repo: "hq" }), msg("Polaris", "github", T0, { action: "merged_by", repo: "lafka" }), msg("Polaris", "github", T0 + 1, { action: "merged_by", repo: "hq" })), (T0 + 60) * 1000, "d");
+  assert.equal(s.counts.ringed, 0);
+  // and it moves no lane: Polaris isn't on the line
+  assert.equal(s.line.Polaris, undefined);
 });
 
 test("replay: frequent kinds as one row per minute, GitHub actions one by one", () => {

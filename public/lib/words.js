@@ -12,14 +12,18 @@ export const ACTION_TEXT = {
   posted_round: "posted in a design discussion",
   decision_pr: "wrote up a decision",
   merged: "had a pull request merged",
+  merged_by: "merged a pull request",
+  // requests (setkernel-live#35): what was asked is never on the page, only that it was
+  opened_issue: "sent the team a request",
+  commented: "commented",
 };
 
 // Who a star is, when its name alone doesn't say: shown under the name.
 export const STAR_NOTE = { Polaris: "the director" };
 
 // Where a GitHub action happened, when the event names no repo: a private one. A design-discussion
-// post isn't in a repo, so it says nothing.
-export const whereWork = (e) => e?.repo || (e?.action === "posted_round" ? "" : "a private project");
+// post isn't in a repo, and a request is sent to the team, so they say nothing.
+export const whereWork = (e) => (e?.action === "opened_issue" ? "" : e?.repo || (e?.action === "posted_round" ? "" : "a private project"));
 
 const DOING = {
   issue: "working on an issue",
@@ -254,10 +258,11 @@ export function reviewTarget(e, recent, within = 86_400) {
 export const ANNOUNCE_EVERY_MS = 30_000;
 const MAX_SENTENCES = 3;
 
-// New GitHub events, oldest first -> one short summary, or "" when there is nothing to say.
-// Claude requests and chat posts are too frequent to read out; the counters cover them.
+// New GitHub events and requests, oldest first -> one short summary, or "" when there is nothing
+// to say. Claude requests and chat posts are too frequent to read out; the counters cover them.
+const spoken = (e) => e?.t === "msg" && (e.kind === "github" || e.kind === "request");
 export function summarise(events) {
-  const work = events.filter((e) => e?.t === "msg" && e.kind === "github");
+  const work = events.filter(spoken);
   if (!work.length) return "";
   const said = work.slice(-MAX_SENTENCES).map(sentence);
   const more = work.length - said.length;
@@ -279,7 +284,7 @@ export function createAnnouncer({ say, now = Date.now, setTimer = setTimeout, ev
   };
   return {
     add(events) {
-      pending.push(...events.filter((e) => e?.t === "msg" && e.kind === "github"));
+      pending.push(...events.filter(spoken));
       if (!pending.length || timer) return;
       const wait = last + every - now();
       if (wait <= 0) flush();

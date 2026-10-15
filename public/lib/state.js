@@ -14,12 +14,18 @@ import { settleLines, stepLines } from "./line.js";
 
 // The four AI engineers, then Polaris (the director) and the three Claudes grouped around it:
 // Kochab, Pherkad and Yildun, after Ursa Minor (setkernel-live#33). The pole stars are seen only
-// through their pull requests and reviews. They come after the engineers: a replay row's columns
+// through GitHub: their requests, pull requests, reviews and merges (and Yildun's Claude requests,
+// which only the live counts show: the replay keeps no column for them). They come after the
+// engineers: a replay row's columns
 // follow this order, so rows saved with four agents still read the same.
 export const ENGINEERS = ["Vega", "Rigel", "Lyra", "Orion"];
 export const POLE = ["Polaris", "Kochab", "Pherkad", "Yildun"];
 export const AGENTS = [...ENGINEERS, ...POLE];
 export const PULSE_KINDS = ["claude", "chat", "helper"]; // too frequent to keep one by one
+// A request (setkernel-live#35): an issue opened or a comment made, sent to the team. Kept one by one
+// with the GitHub actions, but never counted as work.
+export const REQUEST_ACTIONS = ["opened_issue", "commented"];
+export const isRequest = (e) => REQUEST_ACTIONS.includes(e?.action);
 // Columns per engineer in a minute row: the pulse kinds, then GitHub actions (counted there too, so
 // the hourly chart stays exact even when the list of actions is capped). The pole stars have only
 // GitHub actions, and they share one column after the engineers': only the hourly chart reads a
@@ -40,8 +46,10 @@ const REPLAY_MINUTES = 24 * 60; // one row per minute at most, so this is also t
 const REPLAY_WORK = 300; // GitHub actions kept for the replay; a busy day is under 200
 
 // The line's header counts too: building (jobs that got under way), changes (changes requested)
-// and merged (pull requests merged).
-const zeroCounts = () => ({ claude: 0, chat: 0, helpers: 0, prs: 0, reviews: 0, started: 0, building: 0, changes: 0, merged: 0 });
+// and merged (pull requests merged). Then the director's: requests (issues opened and comments, by
+// anyone), merges (pull requests Polaris merged) and ringed (an author's merged pull requests that
+// Polaris merged, paired by time and repo).
+const zeroCounts = () => ({ claude: 0, chat: 0, helpers: 0, prs: 0, reviews: 0, started: 0, building: 0, changes: 0, merged: 0, requests: 0, merges: 0, ringed: 0 });
 // CI runs have no agent, so they are only counted overall: runs, and how many passed.
 const zeroTotals = () => ({ ...zeroCounts(), ci: 0, ciPass: 0 });
 
@@ -81,15 +89,29 @@ export function applyBatch(state, batch, now, day) {
       if (e.kind === "claude") c.claude++;
       else if (e.kind === "chat") c.chat++;
       else if (e.kind === "helper") c.helpers++;
+      else if (e.kind === "request") c.requests++;
       else if (e.kind === "github") {
         if (e.action === "opened_pr") c.prs++;
         if (e.action === "approved" || e.action === "requested_changes") c.reviews++;
         if (e.action === "picked_up") c.started++;
         if (e.action === "requested_changes") c.changes++;
         if (e.action === "merged") c.merged++;
+        if (e.action === "merged_by") c.merges++;
       }
     }
-    if (e.kind === "github") s.feed.unshift(workItem(e, ts));
+    if (e.kind !== "github" && e.kind !== "request") continue;
+    const item = workItem(e, ts);
+    const pair = ringPair(s.feed, item);
+    if (pair) {
+      // the author's merge and Polaris's are the same pull request: ring the author's token
+      const merged = item.action === "merged" ? item : pair;
+      pair.paired = item.paired = true;
+      merged.ring = true;
+      s.counts.ringed++;
+      s.byAgent[merged.agent] = { ...zeroCounts(), ...s.byAgent[merged.agent] };
+      s.byAgent[merged.agent].ringed++;
+    }
+    s.feed.unshift(item);
   }
   // the lanes, with each event at the time it counted at
   const timed = batch.events.filter((e) => e.t === "msg" && e.kind !== "ci").map((e) => ({ ...e, ts: Math.min(e.ts ?? nowS, nowS) }));
@@ -112,12 +134,22 @@ export function applyBatch(state, batch, now, day) {
 
 const workItem = (e, ts) => ({ agent: e.agent, action: e.action, ...(e.repo ? { repo: e.repo } : {}), ts });
 
+// A merge and Polaris's merge of the same pull request come from one webhook delivery with the
+// same time and repo, one after the other. The page has no pull request numbers, so that is how
+// they are paired: the newest unpaired one of the other kind in the feed. A pull request by
+// someone the page doesn't show, merged by Polaris, has no pair and rings nothing.
+function ringPair(feed, item) {
+  const other = item.action === "merged" ? "merged_by" : item.action === "merged_by" ? "merged" : null;
+  if (!other) return null;
+  return feed.find((f) => f.action === other && !f.paired && f.ts === item.ts && f.repo === item.repo) ?? null;
+}
+
 // Add a clean batch's events to the replay buffer (returns a new buffer). Only fields that passed
 // the allowlist go in, and nothing older than 24 hours stays. A row in `pulses` is
 // [minute since the epoch, then the counts in COLUMNS order], so a full
 // day is at most 1440 short rows. Trailing zeros are left off (a missing count is 0), so the pole
 // stars' column at the end, with nothing that minute, costs nothing. `work` holds the latest GitHub actions
-// in the feed's shape.
+// and requests in the feed's shape.
 export function recordReplay(replay, batch, now) {
   const nowS = Math.trunc(now / 1000);
   const oldest = nowS - DAY_S;
@@ -130,7 +162,7 @@ export function recordReplay(replay, batch, now) {
     const ts = Math.min(e.ts ?? nowS, nowS); // a clock ahead of ours counts as now
     if (ts < oldest) continue;
     if (!AGENTS.includes(e.agent)) continue;
-    if (e.kind === "github") work.push(workItem(e, ts));
+    if (e.kind === "github" || e.kind === "request") work.push(workItem(e, ts));
     const c = columnOf(e.agent, e.kind);
     if (c < 0) continue;
     const minute = Math.floor(ts / 60);

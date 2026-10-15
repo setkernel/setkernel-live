@@ -195,6 +195,34 @@ describe("fan-out", () => {
   });
 });
 
+describe("requests and Polaris's merges", () => {
+  it("shows a request apart from work and rings the merge Polaris made, with nothing but star names", async () => {
+    const ts = Math.floor(Date.now() / 1000) - 30;
+    const v = await viewer();
+    await v.next(); // hello
+    await ingest(batch([
+      { t: "msg", kind: "request", agent: "Polaris", action: "opened_issue", ts, title: "secret issue title", body: "secret body", number: 4243 },
+      { t: "msg", kind: "request", agent: "Kochab", action: "commented", repo: "setkernel-live", ts: ts + 1 },
+      { t: "msg", kind: "github", agent: "Vega", action: "merged", repo: "setkernel-live", ts: ts + 2 },
+      { t: "msg", kind: "github", agent: "Polaris", action: "merged_by", repo: "setkernel-live", ts: ts + 2 },
+      { t: "msg", kind: "claude", agent: "Yildun", ts: ts + 3 },
+      { t: "msg", kind: "chat", agent: "Yildun", ts: ts + 3 }, // only its Claude requests
+      { t: "msg", kind: "github", agent: "Vega", action: "merged_by", ts: ts + 4 }, // only the director merges
+    ]));
+    const msg = await v.next();
+    expect(msg.events.map((e) => [e.agent, e.kind, e.action])).toEqual([
+      ["Polaris", "request", "opened_issue"], ["Kochab", "request", "commented"], ["Vega", "github", "merged"], ["Polaris", "github", "merged_by"], ["Yildun", "claude", undefined],
+    ]);
+    expect(msg.byAgent.Polaris).toMatchObject({ requests: 1, merges: 1, prs: 0, reviews: 0, claude: 0 });
+    expect(msg.byAgent.Vega).toMatchObject({ merged: 1, ringed: 1 });
+    expect(msg.counts).toMatchObject({ requests: 2, merged: 1, merges: 1, ringed: 1, claude: 1 });
+    expect(msg.feed.slice(0, 4).map((f) => [f.agent, f.action])).toEqual([["Polaris", "merged_by"], ["Vega", "merged"], ["Kochab", "commented"], ["Polaris", "opened_issue"]]);
+    expect(JSON.stringify(msg)).not.toMatch(/secret|4243/);
+    const replay = await (await exports.default.fetch(`${BASE}/api/replay`)).json();
+    expect(replay.work.map((w) => w.action)).toEqual(["opened_issue", "commented", "merged", "merged_by"]);
+  });
+});
+
 describe("eviction", () => {
   it("restores the saved picture and still reaches hibernated sockets", async () => {
     await ingest(batch([claude(), claude("Lyra")]));
@@ -355,7 +383,8 @@ describe("GitHub webhook and queue", () => {
   it("queues a signed run once, cut down, for sk-obs01 to pull", async () => {
     expect(await deliver("workflow_run", run(42), { delivery: "d-1" })).toEqual({ status: 202, text: "Queued" });
     expect(await deliver("workflow_run", run(42), { delivery: "d-1" })).toEqual({ status: 200, text: "Duplicate" });
-    expect((await deliver("issues", { action: "opened" })).status).toBe(202); // not an event it keeps
+    expect(await deliver("issues", { action: "opened" })).toEqual({ status: 202, text: "Ignored" }); // no issue in it: nothing to keep
+    expect(await deliver("star", { action: "created", repository: { name: "setkernel-live" } })).toEqual({ status: 202, text: "Ignored" }); // not an event it keeps
     const { status, body } = await pull();
     expect(status).toBe(200);
     const q = JSON.parse(body);
@@ -388,6 +417,54 @@ describe("GitHub webhook and queue", () => {
     expect(body).not.toMatch(/secret|someone|raghav|lyra-setkernel|claude\/|Claude|—/i);
     // the id and number as whole values: as substrings they can turn up inside a timestamp
     expect(q.events.flatMap(Object.values).filter((v) => [9001, 77, "9001", "77"].includes(v))).toEqual([]);
+  });
+
+  it("queues issues opened and comments as requests, and Polaris's merges, never a title, body, number or login", async () => {
+    const now = new Date().toISOString();
+    const issue = (action, login, body, extra = {}) => ({
+      action,
+      repository: { name: "hq", private: true },
+      issue: { id: 8801, number: 4243, title: "secret issue title", body, user: { login }, labels: [{ name: "secret-label" }], created_at: now },
+      sender: { login },
+      ...extra,
+    });
+    const comment = (id, login, body) => issue("created", "vega-setkernel", "secret issue body", { comment: { id, body, user: { login }, created_at: now } });
+    expect(await deliver("issues", issue("opened", "realRaghavGupta", "secret body"))).toEqual({ status: 202, text: "Queued" });
+    expect(await deliver("issues", issue("edited", "realRaghavGupta", "secret body"))).toEqual({ status: 202, text: "Ignored" });
+    expect(await deliver("issue_comment", comment(9901, "realRaghavGupta", "secret comment\n\n— Claude Lead"))).toEqual({ status: 202, text: "Queued" });
+    expect(await deliver("issue_comment", comment(9902, "lyra-setkernel", "secret comment"))).toEqual({ status: 202, text: "Queued" });
+    expect(await deliver("issue_comment", comment(9903, "someone", "secret comment"))).toEqual({ status: 202, text: "Ignored" });
+    // a pull request merged from the director's account: the author's merge, then Polaris's, both from one delivery
+    const merged = {
+      action: "closed",
+      repository: { name: "setkernel-live", private: false },
+      pull_request: { id: 9002, number: 78, title: "secret title", body: "secret body", user: { login: "orion-setkernel" }, head: { ref: "agent/secret" }, merged: true, merged_by: { login: "realRaghavGupta" }, merged_at: now },
+      sender: { login: "realRaghavGupta" },
+    };
+    expect(await deliver("pull_request", merged, { delivery: "m-1" })).toEqual({ status: 202, text: "Queued" });
+    expect(await deliver("pull_request", merged, { delivery: "m-1" })).toEqual({ status: 200, text: "Duplicate" });
+    const { body } = await pull();
+    const q = JSON.parse(body);
+    expect(q.events.map(({ kind, action, actor }) => [kind, action, actor])).toEqual([
+      ["request", "opened_issue", "Polaris"], ["request", "commented", "Kochab"], ["request", "commented", "Lyra"], ["pr", "merged", "Orion"], ["pr", "merged_by", "Polaris"],
+    ]);
+    expect(q.events[0]).toEqual({ cursor: 1, kind: "request", repo: "hq", private: true, action: "opened_issue", actor: "Polaris", ts: expect.any(Number) });
+    expect(body).not.toMatch(/secret|someone|raghav|lyra-setkernel|vega-setkernel|orion-setkernel|label|Claude|—/i);
+    expect(q.events.flatMap(Object.values).filter((v) => [8801, 9901, 9902, 9002, 4243, 78, "8801", "4243", "78"].includes(v))).toEqual([]);
+  });
+
+  it("pushes a delivery's events on a route an older Hub doesn't know, and still takes one from an older Worker", async () => {
+    // what the Worker sends now: a list, on push-all, which a Hub on older code answers 404 to (so
+    // fetchHub waits for the new one) instead of queueing an empty item
+    const calls = [];
+    const fakeHub = { idFromName: () => "id", get: () => ({ fetch: async (url, init) => { calls.push([new URL(url).pathname, JSON.parse(init.body)]); return new Response("Queued", { status: 202 }); } }) };
+    expect(await deliver("workflow_run", run(51), { delivery: "new-1", envOverride: { ...withSecret, HUB: fakeHub } })).toEqual({ status: 202, text: "Queued" });
+    expect(calls).toEqual([["/github/push-all", { delivery: "new-1", events: [{ key: "run:51", event: expect.objectContaining({ kind: "run", workflow: "deploy" }) }] }]]);
+    // a Worker still on older code sends one event on push: the new Hub queues it
+    const res = await hub().fetch("https://hub/github/push", { method: "POST", body: JSON.stringify({ delivery: "old-1", cleaned: { key: "run:52", event: { kind: "run", repo: "setkernel-live", private: false, workflow: "CI", conclusion: "success", ts: 1 } } }) });
+    expect([res.status, await res.text()]).toEqual([202, "Queued"]);
+    const q = JSON.parse((await pull()).body);
+    expect(q.events.map((e) => [e.cursor, e.kind, e.workflow])).toEqual([[1, "run", "CI"]]);
   });
 
   it("guards the queue: 503 while QUEUE_AUD is empty, 405, 403 and a bad cursor", async () => {

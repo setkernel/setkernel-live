@@ -107,6 +107,42 @@ for (const [theme, vars, grounds] of THEMES) {
   });
 }
 
+// The slip is manila in both themes; its mark in Recent work and the comet take each theme's colour
+for (const [theme, vars, grounds] of THEMES) {
+  test(`${theme}: a request slip's words are dark on manila, AAA, and its mark and the comet stand out on every ground`, () => {
+    for (const bg of ["slip", "slip-2"]) {
+      const ratio = contrast(vars, "slip-ink", bg);
+      assert.ok(ratio >= 7, `${theme}: --slip-ink on --${bg} is ${ratio.toFixed(2)}:1 (AAA)`);
+    }
+    // not text, but they carry meaning: at least 3:1 (WCAG 1.4.11) on the sky, the paper and the panels
+    for (const fg of ["slip-mark", "comet"]) {
+      for (const bg of grounds) {
+        const ratio = contrast(vars, fg, bg);
+        assert.ok(ratio >= 3, `${theme}: --${fg} on --${bg} is ${ratio.toFixed(2)}:1`);
+      }
+    }
+  });
+}
+test("in Day the comet is ink, and the legend's comet follows the theme", () => {
+  assert.equal(day.comet, day.ink);
+  const html = read("index.html");
+  const item = html.match(/<li><svg [^>]*>(.*?)<\/svg>Request: comet → the team<\/li>/)?.[1] ?? "";
+  for (const k of ["k-comet-glow", "k-comet", "k-comet-head"]) assert.match(item, new RegExp(`class="${k}"`), k);
+  assert.doesNotMatch(item, /(fill|stroke)="#/, "no fixed colours in the comet's legend mark");
+  assert.match(css, /\[data-theme="day"\] \.legend \.k-comet-glow \{ display: none; \}/, "Day's comet has no glow");
+});
+
+test("requests and Polaris's merges are named in words wherever their colour or shape carries meaning", () => {
+  const html = read("index.html"), app = read("app.js");
+  assert.match(html, /<svg [^>]*aria-hidden="true">.*<\/svg>Request: comet → the team<\/li>/, "the sky's legend names the comet");
+  assert.match(html, /<i class="lg s"><\/i>slip: a request/);
+  assert.match(html, /<i class="lg r"><\/i>ringed token: merged by Polaris/);
+  assert.match(app, /text: f\.action === "commented" \? "Comment" : "Request"/, "each slip says what it is");
+  assert.match(app, /title: ring \? `\$\{name\} · merged by Polaris`/, "a ringed token says so");
+  assert.match(app, /ringed: \$\{ringed\} merged by Polaris/, "and so does the pile's legend");
+  assert.match(app, /make\("p", \{ class: "stamp", id: "stamp", role: "img", hidden: "" \}/, "the stamp is hidden until Polaris merges, with no placeholder");
+});
+
 test("the star colours are the design's, Rigel pink so it stays apart from Vega", () => {
   const stars = ["vega", "rigel", "lyra", "orion", "polaris", "pole"];
   assert.deepEqual(stars.map((k) => night[k]), ["#8ab4ff", "#f472b6", "#f5d06f", "#f59e5b", "#ffffff", "#7dd3fc"]);

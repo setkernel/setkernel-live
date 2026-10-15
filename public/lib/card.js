@@ -45,9 +45,9 @@ export function starCard(name, v, nowS, targets = {}) {
       director: true,
       eyebrow: polaris ? "The director" : "The director's group · Ursa Minor",
       title: name,
-      note: `${polaris ? STAR_NOTE.Polaris : SESSION_NOTE[name]} · seen only through GitHub, with no live state`,
+      note: `${polaris ? STAR_NOTE.Polaris : SESSION_NOTE[name]} · seen only through GitHub${name === "Yildun" ? " and its Claude requests" : ""}, with no live state`,
       column: "the director strip",
-      numbers: polaris ? [[c.reviews ?? 0, "reviews"], [c.prs ?? 0, "PRs opened"]] : [[c.prs ?? 0, "PRs opened"], [c.merged ?? 0, "merged"]],
+      numbers: directorNumbers(name, c),
       latest,
     };
   }
@@ -68,6 +68,15 @@ export function starCard(name, v, nowS, targets = {}) {
     numbers: [[c.prs ?? 0, "PRs opened"], [c.reviews ?? 0, "reviews"], [c.claude ?? 0, "Claude requests"]],
     latest,
   };
+}
+
+// Today's numbers for Polaris and its sessions, as [[count, label]]: the director's requests,
+// merges and reviews (setkernel-live#35), a session's pull requests, and Yildun's Claude requests.
+export function directorNumbers(name, c = {}) {
+  if (name === "Polaris") return [[c.requests ?? 0, "requests"], [c.merges ?? 0, "merges"], [c.reviews ?? 0, "reviews"], [c.prs ?? 0, "PRs opened"]];
+  const out = [[c.prs ?? 0, "PRs opened"], [c.merged ?? 0, "merged"]];
+  if (name === "Yildun") out.push([c.claude ?? 0, "Claude requests"]);
+  return out;
 }
 
 // The Merged pile: one token per merged pull request, in its author's colour, at most `cap`. Past
@@ -93,4 +102,20 @@ export function tokenPile(counts, cap) {
     left--;
   }
   return share.flatMap((s) => Array(s.n).fill(s.name));
+}
+
+// The pile with Polaris's merges ringed: [{ name, ring }]. counts: [[name, merged, ringed]]. Each
+// author's tokens come from tokenPile; when the pile is cut down, the ringed share is kept in
+// proportion (at least one when any of that author's were ringed), ringed tokens first.
+export function ringPile(counts, cap) {
+  const names = tokenPile(counts.map(([name, n]) => [name, n]), cap);
+  const out = [];
+  for (const [name, n, ringed = 0] of counts) {
+    const k = names.filter((x) => x === name).length;
+    if (!k) continue;
+    const r = Math.min(Math.max(0, ringed), n);
+    const rk = k === n ? r : r > 0 ? Math.min(k, Math.max(1, Math.round((r * k) / n))) : 0;
+    for (let i = 0; i < k; i++) out.push({ name, ring: i < rk });
+  }
+  return out;
 }

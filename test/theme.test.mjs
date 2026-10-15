@@ -101,7 +101,7 @@ function fakeCanvas() {
 }
 const COLORS = {
   Vega: "#2f5fb8", Rigel: "#be185d", Lyra: "#85620a", Orion: "#a64a12", Polaris: "#111111", Kochab: "#0b6f96", Pherkad: "#0b6f96", Yildun: "#0b6f96",
-  claude: "#a3541c", github: "#3553c9", chat: "#156b3d", pole: "#0b6f96", ink: "#111111", wash: "#efede6",
+  claude: "#a3541c", github: "#3553c9", chat: "#156b3d", pole: "#0b6f96", ink: "#111111", wash: "#efede6", comet: "#111111",
 };
 // Draws one frame with a review arc and a pulse half way, and returns what was drawn.
 function frame(day) {
@@ -150,4 +150,45 @@ test("switching theme redraws the sky in the new one", () => {
   log.length = 0;
   sky.setDay(false);
   assert.ok(!set(log, "fillStyle").includes("#efede6"));
+});
+
+// Draws one frame with a request's comet and a work pulse both in flight.
+function cometFrame(day, colors) {
+  const raf = [];
+  globalThis.requestAnimationFrame = (f) => raf.push(f);
+  globalThis.cancelAnimationFrame = () => {};
+  const { canvas, log } = fakeCanvas();
+  const sky = createSky(canvas, { day, colors });
+  sky.resize(skyLayout(1440, 724), 1, { claude: { x: 300, y: 700 }, github: { x: 700, y: 700 }, chat: { x: 1100, y: 700 } });
+  sky.start();
+  sky.request("Polaris");
+  sky.event("Orion", "github");
+  log.length = 0;
+  raf.shift()(performance.now() + 1100);
+  return { sky, log };
+}
+const heads = (log) => log.filter((e) => e[0] === "arc").map((e) => e[3]);
+
+test("a request's comet glows at night, and in Day is printed in ink, a size up from a pulse", () => {
+  const night = cometFrame(false, { ...COLORS, comet: "#d6ecff", github: "#7d9bff" }).log;
+  assert.ok(set(night, "lineWidth").includes(7), "Night's comet has a halo round its tail");
+  assert.ok(night.some((e) => e[0] === "createRadialGradient" && e[6] === 13), "and a glowing head, bigger than a pulse's");
+  assert.ok(night.some((e) => e[0] === "createRadialGradient" && e[6] === 8), "the work pulse still glows");
+  const day = cometFrame(true, COLORS).log;
+  assert.ok(!set(day, "lineWidth").includes(7), "Day's comet has no halo");
+  assert.ok(!day.some((e) => e[0] === "createRadialGradient"), "and no glow at its head");
+  assert.ok(set(day, "fillStyle").includes("rgb(17,17,17)"), "its head is ink");
+  assert.ok(set(day, "fillStyle").includes("rgb(53,83,201)"), "the pulse is its place's colour");
+  assert.ok(heads(day).includes(4.5) && heads(day).includes(3), "the comet's head is bigger than the pulse's");
+  assert.ok(set(day, "lineWidth").includes(2.4) && set(day, "lineWidth").includes(1.8), "and its tail is wider");
+});
+
+test("a comet in flight changes colour with the theme", () => {
+  const colors = { ...COLORS, comet: "#d6ecff" };
+  const { sky, log } = cometFrame(false, colors);
+  log.length = 0;
+  Object.assign(colors, COLORS); // what app.js does on a theme change: read the colours again
+  sky.setDay(true);
+  assert.ok(set(log, "fillStyle").includes("rgb(17,17,17)"), "the comet is redrawn in Day's ink");
+  assert.ok(!set(log, "fillStyle").includes("rgb(214,236,255)"), "not in Night's colour");
 });

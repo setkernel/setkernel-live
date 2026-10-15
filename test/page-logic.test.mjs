@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { COLUMNS, POLE, cleanBatch, cleanEvent, emptyReplay, emptyState, recordReplay, applyBatch } from "../src/logic.js";
 import { ENGINEERS } from "../src/logic.js";
 import { STAR_NOTE, ciSummary, ciWhere, ciWord, clock, createAnnouncer, deed, doing, fitHeadline, freshness, headline, headlineForms, plain, reviewTarget, sentence, stateWords, summarise, tally, todaySince, whereWork, zoneName } from "../public/lib/words.js";
-import { SESSION_NOTE, cardText, cardWords, starCard, tokenPile } from "../public/lib/card.js";
+import { SESSION_NOTE, cardText, cardWords, ringPile, starCard, tokenPile } from "../public/lib/card.js";
 import { stepLines } from "../public/lib/line.js";
 import { createDemo, seeded } from "../public/lib/demo.js";
 import { eventsBefore, plan } from "../public/lib/replay.js";
@@ -83,6 +83,20 @@ test("labels, tallies and feed sentences", () => {
   assert.equal(sentence({ agent: "Kochab", action: "merged", repo: "hq" }), "Kochab had a pull request merged in hq.");
   assert.equal(whereWork({ action: "merged" }), "a private project");
   assert.deepEqual(STAR_NOTE, { Polaris: "the director" });
+});
+
+test("requests and Polaris's merges in words: who sent it, never what it said", () => {
+  assert.equal(sentence({ agent: "Polaris", action: "opened_issue" }), "Polaris sent the team a request.");
+  assert.equal(sentence({ agent: "Polaris", action: "opened_issue", repo: "setkernel-live" }), "Polaris sent the team a request.", "a request goes to the team, not to a repo");
+  assert.equal(sentence({ agent: "Polaris", action: "commented" }), "Polaris commented in a private project.");
+  assert.equal(sentence({ agent: "Kochab", action: "commented", repo: "setkernel-live" }), "Kochab commented in setkernel-live.");
+  assert.equal(sentence({ agent: "Polaris", action: "merged_by" }), "Polaris merged a pull request in a private project.");
+  assert.equal(sentence({ agent: "Vega", action: "merged" }), "Vega had a pull request merged in a private project.");
+  // read out like any other news
+  assert.equal(summarise([{ t: "msg", kind: "request", agent: "Polaris", action: "opened_issue" }, { t: "msg", kind: "claude", agent: "Vega" }]), "Polaris sent the team a request.");
+  // the Latest line under the headline
+  const h = headline({ agents: AG, feed: [{ agent: "Polaris", action: "commented", ts: T0 }], lastIngest: T0 * 1000, now: T0 * 1000, timeZone: "UTC", names: ENGINEERS });
+  assert.equal(plain(h.latest), "Latest, 16:00 UTC: Polaris commented in a private project.");
 });
 
 test("clock: 24-hour HH:MM in the visitor's zone, seconds or milliseconds", () => {
@@ -164,18 +178,27 @@ test("demo: every event and agent state passes the Worker's allowlist unchanged"
   assert.ok(events.length > 1000, `${events.length} events`);
   for (const e of events) assert.deepEqual(cleanEvent(e), e, JSON.stringify(e));
   assert.deepEqual(cleanBatch({ events: [], agents }).agents, agents);
-  const kinds = new Set(events.map((e) => e.kind === "github" ? e.action : e.kind));
-  for (const k of ["claude", "chat", "helper", "ci", "picked_up", "opened_pr", "approved", "requested_changes", "pushed", "posted_round", "decision_pr", "merged"]) {
+  const kinds = new Set(events.map((e) => e.kind === "github" || e.kind === "request" ? e.action : e.kind));
+  for (const k of ["claude", "chat", "helper", "ci", "picked_up", "opened_pr", "approved", "requested_changes", "pushed", "posted_round", "decision_pr", "merged", "merged_by", "opened_issue", "commented"]) {
     assert.ok(kinds.has(k), `demo shows ${k}`);
   }
   // the pole stars are seen only through GitHub, as on the live page, and have no state: Polaris
-  // reviews, its three Claudes open pull requests and have them merged
+  // reviews, merges and sends requests, its three Claudes open pull requests and have them merged,
+  // Kochab comments now and then, and Yildun's Claude requests come from its own machine
   const polaris = events.filter((e) => e.agent === "Polaris");
-  assert.ok(polaris.length >= 4 && polaris.every((e) => e.kind === "github" && (e.action === "approved" || e.action === "requested_changes")), `${polaris.length} Polaris events`);
+  assert.ok(polaris.length >= 4 && polaris.every((e) => (e.kind === "github" && ["approved", "requested_changes", "merged_by"].includes(e.action)) || e.kind === "request"), `${polaris.length} Polaris events`);
+  for (const action of ["approved", "merged_by", "opened_issue", "commented"]) assert.ok(polaris.some((e) => e.action === action), `Polaris ${action}`);
+  const allowed = { Kochab: ["github", "request"], Pherkad: ["github"], Yildun: ["github", "claude"] };
   for (const name of ["Kochab", "Pherkad", "Yildun"]) {
     const mine = events.filter((e) => e.agent === name);
-    assert.ok(mine.length >= 2 && mine.every((e) => e.kind === "github"), `${mine.length} ${name} events`);
+    assert.ok(mine.length >= 2 && mine.every((e) => allowed[name].includes(e.kind)), `${mine.length} ${name} events`);
     assert.ok(mine.some((e) => e.action === "opened_pr"), `${name} opens a pull request`);
+  }
+  assert.ok(events.some((e) => e.agent === "Yildun" && e.kind === "claude"), "Yildun's Claude requests");
+  assert.ok(events.filter((e) => e.kind === "request").every((e) => e.agent === "Polaris" || e.agent === "Kochab"));
+  // every one of Polaris's merges is a merge of someone's pull request at the same moment
+  for (const m of polaris.filter((e) => e.action === "merged_by")) {
+    assert.ok(events.some((e) => e.action === "merged" && e.ts === m.ts && e.repo === m.repo), JSON.stringify(m));
   }
   for (const name of ["Polaris", "Kochab", "Pherkad", "Yildun"]) assert.equal(agents[name], undefined, `${name} has no state`);
   assert.doesNotMatch(JSON.stringify(events) + JSON.stringify(agents), /raghav/i, "no Raghav in the demo");
@@ -213,14 +236,15 @@ test("replay plan: an hour in a minute, thinned evenly, GitHub actions all kept"
   const r = recordReplay(emptyReplay(), { events, agents }, (T0 + 86_400) * 1000);
   const rand = seeded(1);
   const day = plan(r, { from: T0, to: T0 + 86_400, durationMs: 120_000, maxPulses: 1800, rand });
-  const github = day.filter((e) => e.kind === "github");
+  const github = day.filter((e) => e.kind === "github" || e.kind === "request");
   assert.equal(github.length, r.work.length);
+  assert.ok(day.some((e) => e.kind === "request" && e.action === "opened_issue"), "requests stay requests in the show");
   assert.ok(day.length - github.length <= 1800 * 1.1, `${day.length - github.length} pulses`);
   assert.ok(day.every((e, i) => e.at >= 0 && e.at <= 120_000 && (i === 0 || e.at >= day[i - 1].at)));
   const hour = plan(r, { from: T0 + 82_800, to: T0 + 86_400, durationMs: 60_000, maxPulses: 100_000, rand });
   const pulseCols = (p) => p.slice(1).filter((_, i) => COLUMNS[i][1] !== "github"); // every column but GitHub's
   const want = r.pulses.filter((p) => p[0] * 60 >= T0 + 82_800).reduce((n, p) => n + pulseCols(p).reduce((x, y) => x + y, 0), 0);
-  assert.equal(hour.filter((e) => e.kind !== "github").length, want, "nothing thinned under the cap");
+  assert.equal(hour.filter((e) => e.kind !== "github" && e.kind !== "request").length, want, "nothing thinned under the cap");
   assert.deepEqual(plan(undefined, { from: 0, to: 1, durationMs: 1, maxPulses: 1 }), []);
 });
 
@@ -261,7 +285,7 @@ test("star card: state, column, five steps with times, today's numbers and the l
   ];
   const v = {
     agents: { Vega: { state: "REVIEW", work: "review", repo: "setkernel-live" } },
-    byAgent: { Vega: { prs: 2, reviews: 6, claude: 340 }, Kochab: { prs: 4, merged: 1 }, Polaris: { reviews: 3 } },
+    byAgent: { Vega: { prs: 2, reviews: 6, claude: 340 }, Kochab: { prs: 4, merged: 1 }, Polaris: { reviews: 3, requests: 5, merges: 7 }, Yildun: { prs: 1, claude: 40 } },
     line: stepLines({}, events, ENGINEERS).lines,
     feed: [
       { agent: "Kochab", action: "opened_pr", ts: T0 + 950 },
@@ -283,7 +307,10 @@ test("star card: state, column, five steps with times, today's numbers and the l
   assert.match(k.note, /^the lead chat · /);
   assert.deepEqual(k.numbers, [[4, "PRs opened"], [1, "merged"]]);
   assert.equal(k.steps, undefined, "no state, so no steps");
-  assert.deepEqual(starCard("Polaris", v, T0).numbers, [[3, "reviews"], [0, "PRs opened"]]);
+  assert.deepEqual(starCard("Polaris", v, T0).numbers, [[5, "requests"], [7, "merges"], [3, "reviews"], [0, "PRs opened"]]);
+  const y = starCard("Yildun", v, T0);
+  assert.deepEqual(y.numbers, [[1, "PRs opened"], [0, "merged"], [40, "Claude requests"]]);
+  assert.match(y.note, /^its own machine · seen only through GitHub and its Claude requests, /);
   assert.equal(starCard("Mallory", v, T0), null);
   assert.deepEqual(SESSION_NOTE, { Kochab: "the lead chat", Pherkad: "cloud sessions", Yildun: "its own machine" });
 });
@@ -312,13 +339,24 @@ test("the Merged pile: a token per merge up to the cap, then every author in pro
   assert.equal(skewed.filter((n) => n === "Rigel").length, 3);
 });
 
+test("the Merged pile: tokens Polaris merged are ringed, in proportion when the pile is cut down", () => {
+  assert.deepEqual(ringPile([["Vega", 2, 1], ["Lyra", 1, 0]], 36), [{ name: "Vega", ring: true }, { name: "Vega", ring: false }, { name: "Lyra", ring: false }]);
+  assert.deepEqual(ringPile([["Vega", 2]], 36).map((t) => t.ring), [false, false], "no ringed count, nothing ringed");
+  assert.deepEqual(ringPile([["Vega", 1, 5]], 36), [{ name: "Vega", ring: true }], "never more rings than tokens");
+  const pile = ringPile([["Rigel", 40, 30], ["Orion", 20, 1], ["Lyra", 10, 0]], 10);
+  assert.deepEqual(pile.map((t) => t.name), tokenPile([["Rigel", 40], ["Orion", 20], ["Lyra", 10]], 10), "the same tokens as without rings");
+  const rings = (n) => pile.filter((t) => t.name === n && t.ring).length;
+  assert.deepEqual([rings("Rigel"), rings("Orion"), rings("Lyra")], [5, 1, 0], "Rigel: 6 tokens, three quarters of 6 rounded; Orion: at least one");
+});
+
 test("replay: the events before the show, so the line can catch up first", () => {
   const { events, agents } = createDemo(17, T0).advance(T0 + 7200);
   const r = recordReplay(emptyReplay(), { events, agents }, (T0 + 7200) * 1000);
   const pre = eventsBefore(r, T0 + 3600);
   assert.ok(pre.length > 0 && pre.every((e) => e.ts < T0 + 3600 && cleanEvent(e)), "clean events, all before the start");
   assert.ok(pre.every((e, i) => i === 0 || e.ts >= pre[i - 1].ts), "in time order");
-  assert.equal(pre.filter((e) => e.kind === "github").length, r.work.filter((w) => w.ts < T0 + 3600).length);
+  assert.equal(pre.filter((e) => e.kind === "github" || e.kind === "request").length, r.work.filter((w) => w.ts < T0 + 3600).length);
+  assert.ok(pre.filter((e) => e.kind === "request").every((e) => ["opened_issue", "commented"].includes(e.action)));
   assert.deepEqual(eventsBefore(undefined, 0), []);
   // a show starting mid-minute: that minute's row is the show's, not the catch-up's too
   const mid = { pulses: [[(T0 + 3600) / 60, 2]], work: [] };

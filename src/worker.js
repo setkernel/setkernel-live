@@ -4,7 +4,7 @@
 //   GET  /api/state       the current picture as JSON, plus the deployed commit (VERSION) of the Hub's code
 //   GET  /api/replay      the last hour (?h=1) or 24 hours (?h=24) of allowlisted events, for the replay
 //   POST /ingest          batches from sk-obs01 (Access service token at the edge, checked again here)
-//   POST /github/webhook  GitHub Actions, pull request and review events from the org webhook (public; HMAC-signed)
+//   POST /github/webhook  GitHub Actions, pull request, review, issue and comment events from the org webhook (public; HMAC-signed)
 //   GET  /github/queue    those events, cut down, for sk-obs01 to pull (its own Access token, checked again)
 // One Durable Object ("live") holds the picture, a capped 24-hour replay buffer and the GitHub queue,
 // and fans batches out to every open WebSocket.
@@ -76,9 +76,11 @@ async function githubWebhook(request, env, hub) {
     return new Response("Bad JSON", { status: 400 });
   }
   const cleaned = cleanWebhook(event, payload);
-  if (!cleaned) return new Response("Ignored", { status: 202 });
-  const push = JSON.stringify({ delivery, cleaned });
-  return fetchHub(() => hub().fetch("https://hub/github/push", { method: "POST", body: push }));
+  if (!cleaned.length) return new Response("Ignored", { status: 202 });
+  // a list of events (setkernel-live#35) goes to its own route: a Hub still on older code answers
+  // 404 there, so fetchHub waits for the new one rather than the old one queueing an empty item
+  const push = JSON.stringify({ delivery, events: cleaned });
+  return fetchHub(() => hub().fetch("https://hub/github/push-all", { method: "POST", body: push }));
 }
 
 export class Hub extends DurableObject {
@@ -153,10 +155,11 @@ export class Hub extends DurableObject {
       }
       return new Response("ok");
     }
-    if (pathname === "/github/push" && request.method === "POST") {
-      // only the Worker calls this, with an event it has already verified and cleaned
-      const { delivery, cleaned } = await request.json();
-      const { queue, added } = pushEvent(this.queue, delivery, cleaned);
+    if ((pathname === "/github/push-all" || pathname === "/github/push") && request.method === "POST") {
+      // only the Worker calls this, with events it has already verified and cleaned: a list on
+      // push-all, or one on push (from a Worker still on older code, for a few minutes after a deploy)
+      const { delivery, events, cleaned } = await request.json();
+      const { queue, added } = pushEvent(this.queue, delivery, pathname === "/github/push-all" ? events : [cleaned]);
       if (!added) return new Response("Duplicate");
       this.queue = queue;
       await this.ctx.storage.put("github-queue", queue); // every time, so dedupe survives a restart

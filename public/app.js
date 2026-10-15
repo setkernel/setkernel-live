@@ -3,11 +3,11 @@
 // ways: the sky, where each engineer is a star, and the line under it, a board of where each
 // engineer's job is. Replay drives both. Everything shown is built with textContent and
 // attributes, never innerHTML, so nothing in a batch can inject markup.
-import { AGENTS, ENGINEERS, POLE, PULSE_KINDS, applyBatch, emptyReplay, emptyState, recordReplay, replaySince, view } from "/lib/state.js";
-import { OFFLINE_AFTER_MS, ciSummary, ciWhere, ciWord, clock, createAnnouncer, deed, fitHeadline, freshness, headline, isActive, reviewTarget, stateWords, todaySince, whereWork, zoneName } from "/lib/words.js";
+import { AGENTS, ENGINEERS, POLE, PULSE_KINDS, applyBatch, emptyReplay, emptyState, isRequest, recordReplay, replaySince, view } from "/lib/state.js";
+import { OFFLINE_AFTER_MS, ciSummary, ciWhere, ciWord, clock, createAnnouncer, deed, fitHeadline, freshness, headline, isActive, reviewTarget, sentence, stateWords, todaySince, whereWork, zoneName } from "/lib/words.js";
 import { NARROW_BELOW, PLACES, PLACE_NAMES, PLACE_X, skyLayout } from "/lib/layout.js";
 import { STAGES, STAGE_NAME, column, replayAgents, reviewers, seedLanes, stepLines } from "/lib/line.js";
-import { SESSION_NOTE, cardText, cardWords, starCard, tokenPile } from "/lib/card.js";
+import { SESSION_NOTE, cardText, cardWords, directorNumbers, ringPile, starCard } from "/lib/card.js";
 import { createSky } from "/lib/sky.js";
 import { createDemo } from "/lib/demo.js";
 import { REPLAYS, eventsBefore, plan } from "/lib/replay.js";
@@ -42,7 +42,7 @@ const starVar = (n) => (POLE.includes(n) && n !== "Polaris" ? "pole" : n.toLower
 // The page styles colours by name (var(--vega)), so they follow the theme by themselves; the
 // canvas and the board's review links need the values, read again when the theme changes.
 const hue = (n) => `var(--${AGENTS.includes(n) ? starVar(n) : "vega"})`;
-const readColors = () => Object.fromEntries([...AGENTS.map((n) => [n, color(starVar(n))]), ...PLACES.map((k) => [k, color(k)]), ...["pole", "ink", "wash"].map((k) => [k, color(k)])]);
+const readColors = () => Object.fromEntries([...AGENTS.map((n) => [n, color(starVar(n))]), ...PLACES.map((k) => [k, color(k)]), ...["pole", "ink", "wash", "comet"].map((k) => [k, color(k)])]);
 const COLORS = readColors();
 const fmt = new Intl.NumberFormat("en");
 const rem = () => parseFloat(getComputedStyle(root).fontSize) || 16;
@@ -184,7 +184,8 @@ function tallyParts(items) {
 }
 function poleTally(name) {
   const c = current.byAgent?.[name] ?? {};
-  return name === "Polaris" ? [[c.reviews, "review", "reviews"], [c.prs, "PR", "PRs"]] : [[c.prs, "PR", "PRs"]];
+  if (name === "Polaris") return [[c.merges, "merge", "merges"], [c.reviews, "review", "reviews"], [c.requests, "request", "requests"]];
+  return name === "Yildun" ? [[c.prs, "PR", "PRs"], [c.claude, "Claude request", "Claude requests"]] : [[c.prs, "PR", "PRs"]];
 }
 
 function showStars(pic, targets) {
@@ -236,9 +237,17 @@ STAGES.forEach((stage, i) => {
     make("span", { class: "tput" }, make("i", { "aria-hidden": "true", text: "· " }), countEls[stage], " today"),
     make("p", { class: "def", text: STEP_DEF[stage] }));
   const body = make("div", { class: "colbody" });
+  if (stage === "started") {
+    // requests land here as slips (setkernel-live#35); hidden until there is one
+    body.append(make("div", { class: "tray", id: "tray", hidden: "" },
+      make("p", { class: "trayhead", text: "↓ Requests to the team" }),
+      make("div", { class: "slips", id: "slips" })));
+  }
   if (stage === "merged") {
     body.append(make("div", { class: "pile" },
-      make("span", { class: "pilecount", id: "pile-count", text: "0" }),
+      make("div", { class: "pilehead" },
+        make("span", { class: "pilecount", id: "pile-count", text: "0" }),
+        make("p", { class: "stamp", id: "stamp", role: "img", hidden: "" }, "Merged", make("span", { text: "by Polaris" }), make("time", { id: "stamp-at" }))),
       make("p", { class: "pilelabel", text: "pull requests merged today" }),
       make("ol", { class: "tokens", id: "tokens", role: "img", "aria-label": "No pull requests merged yet today" }),
       make("p", { class: "toklegend", id: "tok-legend" })));
@@ -292,7 +301,8 @@ function showLine(pic) {
   }
   const c = current.counts || {};
   for (const stage of STAGES) countEls[stage].textContent = fmt.format(c[COUNT_KEY[stage]] ?? 0);
-  showPile();
+  showPile(pic);
+  showSlips(pic);
   const links = $("links");
   let anyMove = false;
   if (!reduced) {
@@ -350,26 +360,46 @@ let linksTimer = 0;
 new ResizeObserver(() => { clearTimeout(linksTimer); linksTimer = setTimeout(() => drawLinks(), 60); }).observe($("board"));
 
 // Merged keeps a big count and a token per merge in its author's colour, up to 36 (10 on a wall).
+// A token is ringed when Polaris merged it, and the stamp shows Polaris's latest merge.
 const tokenCap = () => (root.classList.contains("wall") && innerWidth >= 1200 ? 10 : 36);
-function showPile() {
+function showPile(pic = picture()) {
   const c = current.counts || {};
-  const by = AGENTS.map((n) => [n, current.byAgent?.[n]?.merged ?? 0]).filter(([, n]) => n > 0);
+  const by = AGENTS.map((n) => [n, current.byAgent?.[n]?.merged ?? 0, current.byAgent?.[n]?.ringed ?? 0]).filter(([, n]) => n > 0);
   $("pile-count").textContent = fmt.format(c.merged ?? 0);
   const cap = tokenCap();
-  const tokens = tokenPile(by, cap);
-  $("tokens").replaceChildren(...tokens.map((n) => {
-    const t = make("li", { class: "tok", "aria-hidden": "true", text: n[0], title: n });
-    t.style.setProperty("--star", hue(n));
+  const tokens = ringPile(by, cap);
+  $("tokens").replaceChildren(...tokens.map(({ name, ring }) => {
+    const t = make("li", { class: ring ? "tok ring" : "tok", "aria-hidden": "true", text: name[0], title: ring ? `${name} · merged by Polaris` : name });
+    t.style.setProperty("--star", hue(name));
     return t;
   }));
-  const said = by.sort((a, b) => b[1] - a[1]).map(([n, k]) => `${n} ${k}`).join(" · ");
+  const ringed = by.reduce((a, [, n, r]) => a + Math.min(n, r), 0);
+  const said = by.sort((a, b) => b[1] - a[1]).map(([n, k]) => `${n} ${k}`).join(" · ") + (ringed ? ` · ringed: ${ringed} merged by Polaris` : "");
   const total = c.merged ?? 0;
   $("tok-legend").textContent = said + (total > cap ? ` · the pile shows ${cap}, in proportion` : "");
   $("tokens").setAttribute("aria-label", total ? `${plural(total, "pull request")} merged today: ${said}` : "No pull requests merged yet today");
+  // the stamp: Polaris's latest merge in the recent work, or none at all
+  const last = (pic.feed || []).find((f) => f.action === "merged_by");
+  const stamp = $("stamp");
+  stamp.hidden = !last;
+  if (last) {
+    $("stamp-at").textContent = clock(last.ts);
+    $("stamp-at").setAttribute("datetime", new Date(last.ts * 1000).toISOString());
+    stamp.setAttribute("aria-label", `Latest merge stamped by Polaris at ${clock(last.ts)}`);
+  }
 }
 
-// The director strip: Polaris's reviews and pull requests today, then its three Claude sessions.
-// Polaris's requests and merges come with setkernel-live#35; until those events exist, nothing.
+// Requests land in Started as slips: the latest three in the recent work, newest on top.
+function showSlips(pic) {
+  const reqs = (pic.feed || []).filter(isRequest).slice(0, 3);
+  $("tray").hidden = !reqs.length;
+  $("slips").replaceChildren(...reqs.map((f, i) => make("div", { class: i ? "slip old" : "slip" },
+    make("p", { class: "k" }, make("span", { text: f.action === "commented" ? "Comment" : "Request" }), make("time", { datetime: new Date(f.ts * 1000).toISOString(), text: clock(f.ts) })),
+    make("p", { text: sentence(f) }))));
+}
+
+// The director strip: Polaris's requests, merges, reviews and pull requests today, then its three
+// Claude sessions.
 const sessionEls = {};
 for (const name of POLE.slice(1)) {
   const b = make("button", { type: "button", class: "schip", "data-star": name, id: `chip-${name}` }, glyph(name), name, " ", make("small", {}, make("span", { class: "sn", text: `${SESSION_NOTE[name]} · ` }), make("span", { class: "sc" })));
@@ -378,8 +408,8 @@ for (const name of POLE.slice(1)) {
 }
 function showDirector() {
   const c = current.byAgent?.Polaris ?? {};
-  $("pstats").replaceChildren(...[[c.reviews ?? 0, "reviews"], [c.prs ?? 0, "PRs opened"]].map(([n, label]) => make("div", {}, make("dt", { text: label }), make("dd", { text: fmt.format(n) }))));
-  $("director-compact").replaceChildren(make("b", { text: fmt.format(c.reviews ?? 0) }), " reviews · 3 sessions");
+  $("pstats").replaceChildren(...directorNumbers("Polaris", c).map(([n, label]) => make("div", {}, make("dt", { text: label }), make("dd", { text: fmt.format(n) }))));
+  $("director-compact").replaceChildren(make("b", { text: fmt.format(c.requests ?? 0) }), " requests · ", make("b", { text: fmt.format(c.merges ?? 0) }), " merges · 3 sessions");
   for (const name of POLE.slice(1)) {
     const n = current.byAgent?.[name]?.prs ?? 0;
     sessionEls[name].querySelector(".sc").textContent = plural(n, "PR");
@@ -472,6 +502,8 @@ function showCi(zone) {
   $("ci-last").replaceChildren(...(last ? ["Last: ", last.repo ? repoLink(last.repo) : ciWhere(last), ` ${ciWord(last)}${at(last)}.`] : []));
 }
 
+// A request's mark in the stream: a slip, not a star, so it reads apart from work without colour
+const slipGlyph = () => svg("svg", { class: "glyph slipmark", viewBox: "0 0 24 24", "aria-hidden": "true" }, svg("path", { d: "M4 3h16v18H4zM7.5 8.5h9M7.5 12h9M7.5 15.5h5" }));
 function feedItem(f) {
   const who = make("b", { text: f.agent });
   who.style.setProperty("--star", hue(f.agent));
@@ -480,7 +512,8 @@ function feedItem(f) {
   // the repo, when public, is a link; the rest of the words stay plain text
   if (f.repo && where && words.endsWith(` in ${f.repo}`)) p.append(words.slice(0, -f.repo.length), repoLink(f.repo));
   else p.append(words);
-  return make("li", {}, make("time", { datetime: new Date(f.ts * 1000).toISOString(), text: clock(f.ts) }), glyph(f.agent), p);
+  const req = isRequest(f);
+  return make("li", req ? { class: "req" } : {}, make("time", { datetime: new Date(f.ts * 1000).toISOString(), text: clock(f.ts) }), req ? slipGlyph() : glyph(f.agent), p);
 }
 function showFeed(pic) {
   const feed = (pic.feed || []).slice(0, 14);
@@ -689,7 +722,14 @@ function render(connected = true) {
 const announcer = createAnnouncer({ say: (t) => { $("announce").textContent = t; } });
 function light(e, recent) {
   if (document.hidden) return;
+  if (e.kind === "request") {
+    // a comet into the team, not a pulse of work
+    sky.request(e.agent);
+    restart(starEls[e.agent], "ping", 2300);
+    return;
+  }
   sky.event(e.agent, e.kind === "github" ? "github" : e.kind === "helper" ? "claude" : e.kind);
+  if (e.action === "merged_by" && !reduced) restart($("stamp"), "thump", 900);
   const target = e.kind === "github" ? reviewTarget(e, recent) : null;
   if (target) sky.review(e.agent, target);
   if (e.kind === "github" && POLE.includes(e.agent)) restart(starEls[e.agent], "ping", 2300);
@@ -782,7 +822,7 @@ async function startReplay(h) {
   for (const e of pre) if (PULSE_KINDS.includes(e.kind)) last[e.agent] = e.ts;
   // jobs begun before the day's data start where the live line has them
   const lines = stepLines(seedLanes(current.line, to - 86_400), pre, ENGINEERS).lines;
-  const feed = pre.filter((e) => e.kind === "github").reverse().slice(0, 30).map(({ agent, action, repo, ts }) => ({ agent, action, ...(repo ? { repo } : {}), ts }));
+  const feed = pre.filter((e) => e.kind === "github" || e.kind === "request").reverse().slice(0, 30).map(({ agent, action, repo, ts }) => ({ agent, action, ...(repo ? { repo } : {}), ts }));
   rp = { hours: h, lines, last, feed, nowS: from, agents: replayAgents(last, lines, ENGINEERS, from) };
   sky.clear();
   arcsSeen.clear();
@@ -803,7 +843,7 @@ async function startReplay(h) {
       light(ev, rp.feed);
       rp.lines = stepLines(rp.lines, [ev], ENGINEERS).lines;
       if (PULSE_KINDS.includes(e.kind)) rp.last[e.agent] = ev.ts;
-      if (e.kind === "github") {
+      if (e.kind === "github" || e.kind === "request") {
         rp.feed = [{ agent: ev.agent, action: ev.action, ...(ev.repo ? { repo: ev.repo } : {}), ts: ev.ts }, ...rp.feed].slice(0, 30);
         changed = true;
       }
@@ -811,7 +851,7 @@ async function startReplay(h) {
     rp.nowS = Math.trunc(from + Math.min(1, ms / cfg.durationMs) * (to - from));
     $("replay-at").textContent = clock(rp.nowS);
     $("replay-progress").style.width = `${Math.min(100, (ms / cfg.durationMs) * 100)}%`;
-    // the picture moves with the show: at once for GitHub actions, otherwise twice a second
+    // the picture moves with the show: at once for GitHub actions and requests, otherwise twice a second
     if (changed || ms - lastShown > 500) {
       lastShown = ms;
       rp.agents = replayAgents(rp.last, rp.lines, ENGINEERS, rp.nowS);

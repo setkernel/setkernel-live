@@ -10,14 +10,19 @@ page drawn as a printed star chart, ink on paper (setkernel-live#37).
   the star to its place on the horizon (Claude, GitHub, Team chat), and a review draws an arc from
   reviewer to author. Polaris, the director, is the pole star at the top, with its three Claude
   sessions joined to it as Ursa Minor: Kochab (the lead chat), Pherkad (cloud sessions) and Yildun
-  (a machine of its own). These four are seen only through their pull requests and reviews, and
-  have no state. A headline names every engineer; a slim Today strip sits under the horizon.
+  (a machine of its own). These four are seen only through GitHub (their requests, pull requests,
+  reviews and merges; Yildun's Claude requests too), and have no state. A request (an issue
+  opened or a comment) is a comet arcing from its sender into the team, not a pulse of work.
+  A headline names every engineer; a slim Today strip sits under the horizon.
   Selecting a star opens its card: state, where it is on the line, its job as five steps with
   times, today's numbers and its latest three actions.
 - **The line**, right under the sky: a board of where each engineer's job is, Started, Building,
   In review, Fixing, Merged. The columns come from the same events as the sky
   (`public/lib/line.js`), so a star and its card always agree. A star's card finds its board card,
-  and a board card pulses its star.
+  and a board card pulses its star. Requests land in Started as manila slips ("Polaris sent the
+  team a request"); in Merged, a token Polaris merged is ringed and its latest merge is stamped
+  "Merged by Polaris". A director strip above the board shows Polaris's requests, merges and
+  reviews today.
 - **Below the line**: Recent work, today's numbers, the per-engineer table, CI health and the last
   24 hours.
 
@@ -101,11 +106,12 @@ Rolling back to a version from before the pole stars (setkernel-live#33): that c
 the shorter replay rows saved since, so some counts in the minutes around the rollback become
 `null`. The page and the hourly chart read them as 0, and they age out within 24 hours.
 
-## GitHub Actions results, pull requests and reviews
+## GitHub Actions results, pull requests, reviews and requests
 
 ```
 GitHub (org webhook) ── workflow_run, deployment_status, ──▶  /github/webhook  ──▶  queue in the
-                        pull_request, pull_request_review
+                        pull_request, pull_request_review,
+                        issues, issue_comment
                                                                                   Durable Object
 sk-obs01 ◀── pulls ── /github/queue?since=<cursor> (Access: live-queue service token only) ◀──┘
 ```
@@ -116,8 +122,8 @@ The office still accepts no connections: GitHub calls the Worker, and sk-obs01 p
   checks `X-Hub-Signature-256` against `GITHUB_WEBHOOK_SECRET`, ignores repeated
   `X-GitHub-Delivery` ids, and accepts only completed `workflow_run`, finished
   (`success`, `failure`, `error`) `deployment_status`, `pull_request` (`opened`, and `closed`
-  when merged) and `pull_request_review` (`submitted`, approved or changes requested) events.
-  Every other event is ignored (202 "Ignored").
+  when merged), `pull_request_review` (`submitted`, approved or changes requested), `issues`
+  (`opened`) and `issue_comment` (`created`) events. Every other event is ignored (202 "Ignored").
 - Each run or deployment is one queued event; a re-run replaces it. Only the repo name, whether
   the repo is private (anything unclear counts as private), the workflow name, the conclusion and
   the time are kept. Never the payload, commit messages, branch names, URLs, actors or environment
@@ -126,6 +132,11 @@ The office still accepts no connections: GitHub calls the Worker, and sk-obs01 p
   `merged`, `approved`, `requested_changes`), the time and an `actor`. The actor is a name, never
   the login. For an open or a merge the actor is the pull request's author; for a review, the
   reviewer.
+  - A pull request merged from the director's account (`merged_by` is `realRaghavGupta`) also
+    queues `merged_by` with the actor Polaris, right after the author's `merged`, from the same
+    delivery: "Polaris merged a pull request". A merge has no body, so it carries no marker: one a
+    Claude makes from that account shows as Polaris too. When the director merges its own pull
+    request (no marker), only `merged_by` is queued, so it isn't counted twice.
   - `vega-setkernel`, `rigel-setkernel`, `lyra-setkernel` and `orion-setkernel` become Vega,
     Rigel, Lyra and Orion.
   - The director's account (`realRaghavGupta`) is shared by its Claude sessions, so a hidden marker
@@ -140,13 +151,24 @@ The office still accepts no connections: GitHub calls the Worker, and sk-obs01 p
 
   Never a title, number, body, branch name, URL or login. Each open, merge and review is one
   queued event. sk-obs01 (setkernel/hq#163) accepts exactly these eight actor names.
+- A request (setkernel-live#35) keeps `kind: "request"`, the repo name, `private`, the action
+  (`opened_issue` or `commented`), the time and an `actor`, mapped exactly as for pull requests:
+  the agents by login; from the director's account, the body's signature line picks Kochab,
+  Pherkad or Yildun, else Polaris (a comment's own author and body, never the issue's); anyone
+  else is dropped. Never a title, body, number, label or login. A comment on a pull request is a
+  request too. Each issue and each comment is one queued event.
 - `GET /github/queue?since=<cursor>` returns `{ events, cursor, more, gap }`: up to 200 events
   after the cursor, oldest first, each with its own `cursor`. Send the returned `cursor` next
   time. `more` means pull again now; `gap` means events after your cursor were dropped by the cap.
   It sits behind its own Access app (setkernel-cloudflare#54) and the Worker checks the token
   again against `QUEUE_AUD`. Until `QUEUE_AUD` is set it answers 503.
 - This queue doesn't reach the public page by itself. What the page may show of it is decided on
-  sk-obs01 and in `src/logic.js` (setkernel/hq#123, setkernel-live#14).
+  sk-obs01 and in `src/logic.js` (setkernel/hq#123, setkernel-live#14). For requests, `/ingest`
+  accepts `{ t: "msg", kind: "request", agent, action: "opened_issue" | "commented", repo?, ts }`
+  for any of the eight stars, and `merged_by` as a GitHub action for Polaris only (setkernel/hq#164
+  sends them). A request is counted apart from work: it is in no star's PR, review or Claude tally,
+  moves no card on the line and is not in the hourly chart. Yildun alone may also send `claude`
+  messages, from raghav-dev's own telemetry.
 
 ### Deploys
 
@@ -169,7 +191,9 @@ deliveries (github.com/organizations/setkernel/settings/hooks) and redeliver any
    SSL verification on, and "Let me select individual events" with only **Workflow runs** and
    **Deployment statuses** ticked. GitHub's ping should get `200 pong`.
    Once the pull request receiver (setkernel-live#33) is deployed, also tick **Pull requests**
-   and **Pull request reviews**. Before that deploy the receiver answers 202 "Ignored" to them.
+   and **Pull request reviews**. Once the request receiver (setkernel-live#35) is deployed, also
+   tick **Issues** and **Issue comments**. Before each deploy the receiver answers 202 "Ignored"
+   to them.
 4. After setkernel-cloudflare#54 is applied, put its audience tag in `QUEUE_AUD` in
    `wrangler.jsonc` (a PR) and deploy again.
 

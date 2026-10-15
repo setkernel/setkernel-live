@@ -1,6 +1,6 @@
 // Turning the replay buffer (/api/replay, or the demo's) into a timed show: an hour in a minute,
 // a day in two. No DOM here.
-import { AGENTS, COLUMNS, PULSE_KINDS } from "./state.js";
+import { AGENTS, COLUMNS, PULSE_KINDS, isRequest } from "./state.js";
 
 export const REPLAYS = {
   1: { hours: 1, durationMs: 60_000, maxPulses: 900 },
@@ -10,8 +10,8 @@ export const REPLAYS = {
 // plan({ pulses, work }, { from, to, durationMs, maxPulses, rand }) -> [{ at, ts, agent, kind,
 // action?, repo? }] in time order. `from` and `to` are seconds; `at` is ms into the show. Each
 // minute row is spread over its minute. Claude, chat and helper pulses are thinned evenly when
-// there are more than maxPulses, so a busy day doesn't flood the sky; GitHub actions are always
-// kept, because the stream and the review lines need every one.
+// there are more than maxPulses, so a busy day doesn't flood the sky; GitHub actions and requests
+// are always kept, because the stream, the slips and the review lines need every one.
 export function plan(data, { from, to, durationMs, maxPulses, rand = Math.random }) {
   const span = Math.max(1, to - from);
   const out = [];
@@ -36,7 +36,7 @@ export function plan(data, { from, to, durationMs, maxPulses, rand = Math.random
   }
   for (const w of data?.work ?? []) {
     if (w.ts < from || w.ts > to || !AGENTS.includes(w.agent)) continue;
-    out.push({ ts: w.ts, agent: w.agent, kind: "github", action: w.action, ...(w.repo ? { repo: w.repo } : {}) });
+    out.push({ ts: w.ts, agent: w.agent, kind: isRequest(w) ? "request" : "github", action: w.action, ...(w.repo ? { repo: w.repo } : {}) });
   }
   out.sort((x, y) => x.ts - y.ts);
   for (const e of out) e.at = Math.round(((e.ts - from) / span) * durationMs);
@@ -45,7 +45,8 @@ export function plan(data, { from, to, durationMs, maxPulses, rand = Math.random
 
 // The replay's events before `from`, oldest first, so the line can catch up silently before the
 // show starts: each minute row that ends before it (a row that runs past `from` belongs to the
-// show, see plan) as one event per engineer and kind that had any, and every GitHub action. Only
+// show, see plan) as one event per engineer and kind that had any, and every GitHub action and
+// request. Only
 // the order and the kinds matter to the lanes, not the counts.
 export function eventsBefore(data, from) {
   const out = [];
@@ -56,7 +57,7 @@ export function eventsBefore(data, from) {
     });
   }
   for (const w of data?.work ?? []) {
-    if (w.ts < from && AGENTS.includes(w.agent)) out.push({ t: "msg", kind: "github", agent: w.agent, action: w.action, ...(w.repo ? { repo: w.repo } : {}), ts: w.ts });
+    if (w.ts < from && AGENTS.includes(w.agent)) out.push({ t: "msg", kind: isRequest(w) ? "request" : "github", agent: w.agent, action: w.action, ...(w.repo ? { repo: w.repo } : {}), ts: w.ts });
   }
   return out.sort((x, y) => x.ts - y.ts);
 }
