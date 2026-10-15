@@ -2,7 +2,7 @@
 // text, a security fix held for 24 hours, and the team's numbers. Run: npm test
 import test from "node:test";
 import assert from "node:assert/strict";
-import { criteria, fetchEvidence, images, isPublicRepo, isSecurity, linkedIssue, parsePull, publishEvidence, teamNumbers, who } from "../src/evidence.js";
+import { criteria, fetchEvidence, images, isPublicRepo, isSecurity, linkedIssues, parsePull, publishEvidence, teamNumbers, who } from "../src/evidence.js";
 import { hasNever } from "../src/logic.js";
 import { readFileSync } from "node:fs";
 
@@ -19,7 +19,7 @@ function raw(over = {}) {
       created_at: "2026-10-15T07:26:00Z", merged_at: "2026-10-15T14:11:12Z", commits: 6, changed_files: 45, additions: 1934, deletions: 2757,
       labels: [{ name: "owner-review" }], head: { ref: "agent/48-secret-branch", sha: "abc" }, base: { repo: { full_name: "setkernel/setkernel-live" } }, merge_commit_sha: "def",
     },
-    issue: { number: 48, repository_url: API, user: { login: "realperson", type: "User" }, created_at: "2026-10-15T06:00:00Z", body: `${SECRET}\n- [x] one\n- [ ] two\n* [X] three`, labels: [] },
+    issues: [{ number: 48, repository_url: API, user: { login: "realperson", type: "User" }, created_at: "2026-10-15T06:00:00Z", body: `${SECRET}\n- [x] one\n- [ ] two\n* [X] three`, labels: [] }],
     reviews: [
       { user: { login: "rigel-setkernel", type: "User" }, state: "CHANGES_REQUESTED", submitted_at: "2026-10-15T08:00:00Z", body: SECRET },
       { user: { login: "rigel-setkernel", type: "User" }, state: "APPROVED", submitted_at: "2026-10-15T08:19:30Z", body: SECRET },
@@ -75,7 +75,7 @@ test("a private repo, another owner or a mismatched pull request is refused", ()
 });
 
 test("an issue from another repo is never shown, even if one is passed in", () => {
-  const e = publishEvidence(raw({ issue: { ...raw().issue, repository_url: "https://api.github.com/repos/setkernel/hq" } }), NOW).evidence;
+  const e = publishEvidence(raw({ issues: [{ ...raw().issues[0], repository_url: "https://api.github.com/repos/setkernel/hq" }] }), NOW).evidence;
   assert.equal(e.idea, null);
   assert.equal(e.charter, null);
 });
@@ -92,7 +92,7 @@ test("a security fix waits 24 hours after it merges, labelled on the pull reques
   open.pull.merged_at = null;
   assert.equal(publishEvidence(open, NOW + 30 * 86_400_000).ok, false, "an unmerged security fix never shows");
   const viaIssue = raw();
-  viaIssue.issue.labels = [{ name: "sec: high" }];
+  viaIssue.issues[0].labels = [{ name: "sec: high" }];
   assert.equal(publishEvidence(viaIssue, merged + 3600_000).ok, false);
 });
 
@@ -102,7 +102,7 @@ test("a security label is held wherever the word sits in it: prefixed, scoped, o
     assert.equal(isSecurity([{ name }]), true, name);
     assert.equal(isSecurity([name]), true, name);
     const r = raw();
-    r.issue.labels = [{ name }];
+    r.issues[0].labels = [{ name }];
     assert.equal(publishEvidence(r, Date.parse(r.pull.merged_at) + 3600_000).ok, false, `${name} on the issue`);
   }
   for (const name of ["insecure-defaults", "secret-santa", "second", "documentation", "owner-review", ""]) assert.equal(isSecurity([{ name }]), false, name);
@@ -111,7 +111,7 @@ test("a security label is held wherever the word sits in it: prefixed, scoped, o
 
 test("a linked issue that can't be read holds the pull request back instead of skipping the security check", async () => {
   const r = raw();
-  r.issue.labels = [{ name: "area:security" }];
+  r.issues[0].labels = [{ name: "area:security" }];
   const get = async (p) => {
     if (p === "repos/setkernel/setkernel-live") return repo();
     if (p.endsWith("/pulls/49")) return r.pull;
@@ -122,20 +122,51 @@ test("a linked issue that can't be read holds the pull request back instead of s
   await assert.rejects(fetchEvidence(get, "setkernel-live", 49), /rate limit/);
   // and publishEvidence refuses on its own when the linked issue is missing or isn't the one linked
   const at = Date.parse(r.pull.merged_at) + 30 * 86_400_000;
-  for (const issue of [null, undefined, { ...r.issue, number: 47, labels: [] }]) {
-    const got = publishEvidence(raw({ issue }), at);
-    assert.equal(got.ok, false, String(issue?.number));
+  for (const issues of [null, undefined, [], [{ ...r.issues[0], number: 47, labels: [] }]]) {
+    const got = publishEvidence(raw({ issues }), at);
+    assert.equal(got.ok, false, JSON.stringify(issues));
     assert.match(got.reason, /linked issue/);
   }
   // a linked pull request ("Refs #47" where #47 is a PR) still has its labels checked, but isn't shown as the idea
-  const pr = raw({ issue: { ...r.issue, pull_request: {}, labels: [{ name: "security" }] } });
+  const pr = raw({ issues: [{ ...r.issues[0], pull_request: {}, labels: [{ name: "security" }] }] });
   assert.equal(publishEvidence(pr, Date.parse(pr.pull.merged_at) + 3600_000).ok, false);
-  pr.issue.labels = [];
+  pr.issues[0].labels = [];
   assert.equal(publishEvidence(pr, at).evidence.idea, null);
   // no link: no issue needed
-  const none = raw({ issue: null });
+  const none = raw({ issues: [] });
   none.pull.body = "No link here";
   assert.equal(publishEvidence(none, at).ok, true);
+});
+
+test("every issue a pull request links is read and checked, in each form GitHub links it", async () => {
+  for (const body of ["Closes #12\nCloses #13", "Closes #12, closes #13", "Closes #12, #13", "Fixes #12 and #13", "Closes: #12\nFixes https://github.com/setkernel/setkernel-live/issues/13",
+    "Resolves #12\nCloses SetKernel/Setkernel-Live#13", "Closes https://github.com/setkernel/hq/issues/9, #12\nrefs https://github.com/setkernel/setkernel-live/pull/13"]) {
+    assert.deepEqual(linkedIssues(body, "setkernel-live"), [12, 13], body);
+    const r = raw();
+    r.pull.body = body;
+    const issue = (number, labels) => ({ ...r.issues[0], number, labels });
+    const asked = [];
+    const get = async (p) => {
+      asked.push(p);
+      if (p === "repos/setkernel/setkernel-live") return repo();
+      if (p.endsWith("/pulls/49")) return r.pull;
+      if (p.endsWith("/issues/12")) return issue(12, []);
+      if (p.endsWith("/issues/13")) return issue(13, [{ name: "security" }]);
+      if (p.includes("check-runs")) return { check_runs: [] };
+      return [];
+    };
+    const got = await fetchEvidence(get, "setkernel-live", 49);
+    assert.deepEqual(got.issues.map((i) => i.number), [12, 13], body);
+    assert.ok(!asked.some((p) => p.includes("hq")), body);
+    const merged = Date.parse(r.pull.merged_at);
+    assert.equal(publishEvidence(got, merged + 3600_000).ok, false, `${body}: only #13 is labelled security`);
+    const later = publishEvidence(got, merged + 24 * 3600_000);
+    assert.equal(later.ok, true, body);
+    assert.equal(later.evidence.idea.href, "https://github.com/setkernel/setkernel-live/issues/12", "the first linked issue is the idea");
+    // and one linked issue missing is refused, whichever it is
+    for (const keep of [12, 13]) assert.match(publishEvidence({ ...got, issues: got.issues.filter((i) => i.number === keep) }, merged + 30 * 86_400_000).reason, /linked issue/, `${body} without the other`);
+  }
+  assert.deepEqual(linkedIssues("Closes #12\nCloses #12\nsee #14\nCloses other/x#15", "setkernel-live"), [12], "once each; a mention or another owner isn't a link");
 });
 
 test("names: star names for the team, 'a person' for anyone else, 'automation' for bots", () => {
@@ -148,9 +179,9 @@ test("names: star names for the team, 'a person' for anyone else, 'automation' f
 });
 
 test("the text helpers count, and follow only an issue in the same repo", () => {
-  assert.equal(linkedIssue("Closes setkernel/hq#213\nRefs setkernel/setkernel-live#52", "setkernel-live"), 52);
-  assert.equal(linkedIssue("Closes setkernel/hq#213", "setkernel-live"), null);
-  assert.equal(linkedIssue("fixes #7", "x"), 7);
+  assert.deepEqual(linkedIssues("Closes setkernel/hq#213\nRefs setkernel/setkernel-live#52", "setkernel-live"), [52]);
+  assert.deepEqual(linkedIssues("Closes setkernel/hq#213", "setkernel-live"), []);
+  assert.deepEqual(linkedIssues("fixes #7", "x"), [7]);
   assert.deepEqual(criteria("- [ ] a\n- [x] b\ntext [x]"), { total: 2, ticked: 1 });
   assert.equal(images("![a](b) <IMG src=c> [not](d)"), 2);
   assert.equal(isPublicRepo(repo()), true);
@@ -178,7 +209,7 @@ test("fetchEvidence asks nothing more about a private repo, and never follows an
   };
   const got = await fetchEvidence(get, "setkernel-live", 49);
   assert.ok(!seen.some((p) => p.includes("hq")), "no request about a private repo");
-  assert.equal(got.issue, null);
+  assert.deepEqual(got.issues, []);
   await assert.rejects(fetchEvidence(get, "../x", 1));
   for (const name of [".", ".."]) await assert.rejects(fetchEvidence(get, name, 1), name);
 });

@@ -30,12 +30,20 @@ export function isPublicRepo(repo) {
     && repo.owner?.login === OWNER && typeof repo.name === "string" && REPO.test(repo.name);
 }
 
-// The issue a pull request closes, if it is in the same repo: "Closes #12" or "Closes setkernel/x#12"
+// Every issue a pull request links in this repo, in order, once each: "Closes #12", "Closes #12, #13",
+// "Fixes #12 and #13", "Closes setkernel/x#12" or "Closes https://github.com/setkernel/x/issues/12",
 // where x is this repo. An issue in any other repo is never followed (it may be private).
-export function linkedIssue(body, repo) {
-  const re = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs)\s+(?:setkernel\/([A-Za-z0-9._-]+))?#(\d+)\b/gi;
-  for (const m of String(body || "").matchAll(re)) if (!m[1] || m[1] === repo) return Number(m[2]);
-  return null;
+const REF = String.raw`(?:https:\/\/github\.com\/setkernel\/([A-Za-z0-9._-]+)\/(?:issues|pull)\/|setkernel\/([A-Za-z0-9._-]+)#|#)(\d+)\b`;
+const LINKS = new RegExp(String.raw`\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs)(?:\s*:)?\s+${REF}(?:\s*(?:,|\band\b)\s*${REF})*`, "gi");
+export function linkedIssues(body, repo) {
+  const out = new Set();
+  for (const list of String(body || "").matchAll(LINKS)) {
+    for (const m of list[0].matchAll(new RegExp(REF, "gi"))) {
+      const name = m[1] ?? m[2];
+      if (!name || name.toLowerCase() === String(repo).toLowerCase()) out.add(Number(m[3]));
+    }
+  }
+  return [...out];
 }
 
 // Acceptance criteria in a body: task-list lines, and how many are ticked.
@@ -89,16 +97,15 @@ function automated(comments) {
 
 // raw: what fetchEvidence gathers. now: ms. Returns { ok: true, evidence } or { ok: false, reason }.
 export function publishEvidence(raw, now) {
-  const { repo, pull, issue } = raw || {};
+  const { repo, pull } = raw || {};
   if (!isPublicRepo(repo)) return { ok: false, reason: "That isn't one of setkernel's public repos." };
   if (!pull || pull.base?.repo?.full_name !== repo.full_name || !Number.isInteger(pull.number)) return { ok: false, reason: "That pull request isn't in this repo." };
-  // The issue it links must be here: without it, its security label can't be checked.
-  const n = linkedIssue(pull.body, repo.name);
-  if (n && issue?.number !== n) return { ok: false, reason: "The linked issue couldn't be checked." };
-  const linked = n ? issue : null;
-  const own = linked && !linked.pull_request && linked.repository_url === repo.url ? linked : null;
+  // Every issue it links must be here: without one, its security label can't be checked.
+  const linked = linkedIssues(pull.body, repo.name).map((n) => (raw.issues || []).find((i) => i?.number === n));
+  if (linked.some((i) => !i)) return { ok: false, reason: "The linked issue couldn't be checked." };
+  const own = linked.find((i) => !i.pull_request && i.repository_url === repo.url) || null;
   const merged = pull.merged_at ? ms(pull.merged_at) : null;
-  if (isSecurity(pull.labels) || isSecurity(linked?.labels)) {
+  if (isSecurity(pull.labels) || linked.some((i) => isSecurity(i.labels))) {
     if (!merged || now - merged < SECURITY_HOLD_MS) return { ok: false, reason: "A security fix is shown 24 hours after it ships." };
   }
   const commitTimes = (raw.commits || []).map((c) => ms(c?.commit?.committer?.date)).filter(Number.isFinite).sort((a, b) => a - b);
@@ -131,8 +138,8 @@ export function publishEvidence(raw, now) {
 }
 
 // Everything publishEvidence reads, from the REST API. get(path) -> parsed JSON (it throws on a
-// failed request, and so does this: a linked issue that can't be read fails the call, since its
-// labels decide the security hold). The repo is checked first, so nothing else is asked about a
+// failed request, and so does this: a linked issue that can't be read fails the call, since every
+// linked issue's labels decide the security hold). The repo is checked first, so nothing else is asked about a
 // private one.
 export async function fetchEvidence(get, repoName, number) {
   if (!REPO.test(String(repoName)) || !Number.isInteger(number) || number < 1) throw new Error("Give a setkernel repo and a pull request number.");
@@ -140,9 +147,8 @@ export async function fetchEvidence(get, repoName, number) {
   const repo = await get(path);
   if (!isPublicRepo(repo)) return { repo };
   const pull = await get(`${path}/pulls/${number}`);
-  const n = linkedIssue(pull.body, repo.name);
-  const [issue, reviews, comments, commits, files, checksHead, production] = await Promise.all([
-    n ? get(`${path}/issues/${n}`) : null,
+  const [issues, reviews, comments, commits, files, checksHead, production] = await Promise.all([
+    Promise.all(linkedIssues(pull.body, repo.name).map((n) => get(`${path}/issues/${n}`))),
     get(`${path}/pulls/${number}/reviews?per_page=100`),
     get(`${path}/issues/${number}/comments?per_page=100`),
     get(`${path}/pulls/${number}/commits?per_page=100`),
@@ -150,7 +156,7 @@ export async function fetchEvidence(get, repoName, number) {
     get(`${path}/commits/${pull.head.sha}/check-runs?per_page=100`).then((r) => r.check_runs),
     pull.merged_at && pull.merge_commit_sha ? get(`${path}/commits/${pull.merge_commit_sha}/check-runs?per_page=100`).then((r) => r.check_runs) : [],
   ]);
-  return { repo, pull, issue, reviews, comments, commits, files, checks: checksHead, production };
+  return { repo, pull, issues, reviews, comments, commits, files, checks: checksHead, production };
 }
 
 // "https://github.com/setkernel/x/pull/12" or "x#12" -> { repo, number }, or null.
