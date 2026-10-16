@@ -1,0 +1,445 @@
+{
+ "asOf": "2026-10-15T21:39:19.484Z",
+ "numbers": {
+  "days": 30,
+  "merged": 44,
+  "perWeek": 10.3,
+  "leadHours": 2.6,
+  "runs": 93,
+  "passRate": 97,
+  "reverts": 0,
+  "revertRate": 0,
+  "recoveries": 1,
+  "recoverMinutes": 26,
+  "repos": 6
+ },
+ "demo": [
+  {
+   "repo": "setkernel-live",
+   "href": "https://github.com/setkernel/setkernel-live/pull/49",
+   "idea": {
+    "at": "2026-10-15T06:21:15.000Z",
+    "by": "a person",
+    "href": "https://github.com/setkernel/setkernel-live/issues/48",
+    "words": 670
+   },
+   "charter": {
+    "total": 11,
+    "ticked": 0
+   },
+   "build": {
+    "by": "Lyra",
+    "count": 6,
+    "files": 45,
+    "added": 1934,
+    "removed": 2757,
+    "first": "2026-10-15T07:24:15.000Z",
+    "last": "2026-10-15T12:24:09.000Z",
+    "opened": "2026-10-15T07:26:00.000Z"
+   },
+   "proof": {
+    "checks": [
+     {
+      "name": "validate",
+      "ok": true,
+      "seconds": 30,
+      "at": "2026-10-15T12:25:35.000Z"
+     }
+    ],
+    "screenshots": 26,
+    "tests": 5
+   },
+   "review": {
+    "automated": [
+     {
+      "at": "2026-10-15T07:30:50.000Z",
+      "blockers": 1,
+      "open": 0
+     },
+     {
+      "at": "2026-10-15T08:05:52.000Z",
+      "blockers": 0,
+      "open": 0
+     }
+    ],
+    "peers": [
+     {
+      "by": "Rigel",
+      "verdict": "approved",
+      "at": "2026-10-15T08:19:30.000Z"
+     }
+    ]
+   },
+   "merge": {
+    "at": "2026-10-15T14:11:12.000Z",
+    "by": "a person",
+    "hours": 6.8
+   },
+   "production": {
+    "checks": [
+     {
+      "name": "deploy",
+      "ok": true,
+      "seconds": 344,
+      "at": "2026-10-15T14:17:02.000Z"
+     },
+     {
+      "name": "validate",
+      "ok": true,
+      "seconds": 31,
+      "at": "2026-10-15T14:11:49.000Z"
+     }
+    ],
+    "minutes": 6
+   }
+  },
+  {
+   "repo": "setkernel-live",
+   "href": "https://github.com/setkernel/setkernel-live/pull/47",
+   "idea": {
+    "at": "2026-10-15T04:36:23.000Z",
+    "by": "a person",
+    "href": "https://github.com/setkernel/setkernel-live/issues/45",
+    "words": 669
+   },
+   "charter": {
+    "total": 7,
+    "ticked": 7
+   },
+   "build": {
+    "by": "Vega",
+    "count": 5,
+    "files": 17,
+    "added": 1945,
+    "removed": 0,
+    "first": "2026-10-15T04:59:53.000Z",
+    "last": "2026-10-15T06:38:42.000Z",
+    "opened": "2026-10-15T05:00:51.000Z"
+   },
+   "proof": {
+    "checks": [
+     {
+      "name": "validate",
+      "ok": true,
+      "seconds": 27,
+      "at": "2026-10-15T06:39:30.000Z"
+     }
+    ],
+    "screenshots": 13,
+    "tests": 0
+   },
+   "review": {
+    "automated": [
+     {
+      "at": "2026-10-15T05:02:14.000Z",
+      "blockers": 0,
+      "open": 0
+     },
+     {
+      "at": "2026-10-15T06:01:32.000Z",
+      "blockers": 0,
+      "open": 0
+     },
+     {
+      "at": "2026-10-15T06:13:42.000Z",
+      "blockers": 0,
+      "open": 0
+     },
+     {
+      "at": "2026-10-15T06:22:10.000Z",
+      "blockers": 0,
+      "open": 0
+     },
+     {
+      "at": "2026-10-15T06:40:47.000Z",
+      "blockers": 0,
+      "open": 0
+     }
+    ],
+    "peers": [
+     {
+      "by": "Rigel",
+      "verdict": "changes",
+      "at": "2026-10-15T06:17:07.000Z"
+     },
+     {
+      "by": "Rigel",
+      "verdict": "changes",
+      "at": "2026-10-15T06:26:03.000Z"
+     },
+     {
+      "by": "Rigel",
+      "verdict": "changes",
+      "at": "2026-10-15T06:32:29.000Z"
+     },
+     {
+      "by": "Rigel",
+      "verdict": "changes",
+      "at": "2026-10-15T06:43:06.000Z"
+     }
+    ]
+   },
+   "merge": {
+    "at": "2026-10-15T07:04:57.000Z",
+    "by": "a person",
+    "hours": 2.1
+   },
+   "production": {
+    "checks": [
+     {
+      "name": "validate",
+      "ok": true,
+      "seconds": 28,
+      "at": "2026-10-15T07:05:30.000Z"
+     }
+    ],
+    "minutes": 1
+   }
+  },
+  {
+   "repo": "agent-plugins",
+   "href": "https://github.com/setkernel/agent-plugins/pull/19",
+   "idea": {
+    "at": "2026-10-12T13:01:47.000Z",
+    "by": "Lyra",
+    "href": "https://github.com/setkernel/agent-plugins/issues/7",
+    "words": 108
+   },
+   "charter": {
+    "total": 5,
+    "ticked": 0
+   },
+   "build": {
+    "by": "a person",
+    "count": 2,
+    "files": 3,
+    "added": 87,
+    "removed": 2,
+    "first": "2026-10-14T22:41:15.000Z",
+    "last": "2026-10-15T05:45:45.000Z",
+    "opened": "2026-10-14T22:52:37.000Z"
+   },
+   "proof": {
+    "checks": [
+     {
+      "name": "check",
+      "ok": true,
+      "seconds": 6,
+      "at": "2026-10-15T05:45:58.000Z"
+     }
+    ],
+    "screenshots": 0,
+    "tests": 1
+   },
+   "review": {
+    "automated": [],
+    "peers": []
+   },
+   "merge": {
+    "at": "2026-10-15T06:24:10.000Z",
+    "by": "a person",
+    "hours": 7.5
+   },
+   "production": {
+    "checks": [
+     {
+      "name": "check",
+      "ok": true,
+      "seconds": 6,
+      "at": "2026-10-15T06:24:20.000Z"
+     }
+    ],
+    "minutes": 0
+   }
+  },
+  {
+   "repo": "autopilot",
+   "href": "https://github.com/setkernel/autopilot/pull/5",
+   "idea": null,
+   "charter": null,
+   "build": {
+    "by": "a person",
+    "count": 1,
+    "files": 1,
+    "added": 0,
+    "removed": 55,
+    "first": "2026-10-13T13:50:55.000Z",
+    "last": "2026-10-13T13:50:55.000Z",
+    "opened": "2026-10-13T13:51:00.000Z"
+   },
+   "proof": {
+    "checks": [
+     {
+      "name": "PowerShell parse check",
+      "ok": true,
+      "seconds": 14,
+      "at": "2026-10-13T13:51:21.000Z"
+     }
+    ],
+    "screenshots": 0,
+    "tests": 0
+   },
+   "review": {
+    "automated": [],
+    "peers": []
+   },
+   "merge": {
+    "at": "2026-10-13T14:29:12.000Z",
+    "by": "a person",
+    "hours": 0.6
+   },
+   "production": null
+  },
+  {
+   "repo": "dotted-map-next",
+   "href": "https://github.com/setkernel/dotted-map-next/pull/23",
+   "idea": null,
+   "charter": null,
+   "build": {
+    "by": "a person",
+    "count": 1,
+    "files": 1,
+    "added": 0,
+    "removed": 56,
+    "first": "2026-10-13T13:51:13.000Z",
+    "last": "2026-10-13T13:51:13.000Z",
+    "opened": "2026-10-13T13:51:17.000Z"
+   },
+   "proof": {
+    "checks": [
+     {
+      "name": "CodeQL",
+      "ok": true,
+      "seconds": 3,
+      "at": "2026-10-13T13:51:51.000Z"
+     },
+     {
+      "name": "a check",
+      "ok": true,
+      "seconds": 16,
+      "at": "2026-10-13T13:51:40.000Z"
+     },
+     {
+      "name": "Analyze (javascript-typescript)",
+      "ok": true,
+      "seconds": 54,
+      "at": "2026-10-13T13:52:19.000Z"
+     },
+     {
+      "name": "Analyze (actions)",
+      "ok": true,
+      "seconds": 35,
+      "at": "2026-10-13T13:51:59.000Z"
+     }
+    ],
+    "screenshots": 0,
+    "tests": 0
+   },
+   "review": {
+    "automated": [],
+    "peers": []
+   },
+   "merge": {
+    "at": "2026-10-13T14:29:05.000Z",
+    "by": "a person",
+    "hours": 0.6
+   },
+   "production": {
+    "checks": [
+     {
+      "name": "Analyze (javascript-typescript)",
+      "ok": true,
+      "seconds": 79,
+      "at": "2026-10-13T15:26:14.000Z"
+     },
+     {
+      "name": "Analyze (actions)",
+      "ok": true,
+      "seconds": 41,
+      "at": "2026-10-13T15:25:35.000Z"
+     },
+     {
+      "name": "Analyze (javascript-typescript)",
+      "ok": true,
+      "seconds": 80,
+      "at": "2026-10-13T14:30:33.000Z"
+     },
+     {
+      "name": "Analyze (actions)",
+      "ok": true,
+      "seconds": 45,
+      "at": "2026-10-13T14:29:58.000Z"
+     }
+    ],
+    "minutes": 57
+   }
+  },
+  {
+   "repo": "setkernel.github.io",
+   "href": "https://github.com/setkernel/setkernel.github.io/pull/2",
+   "idea": {
+    "at": "2026-10-13T01:41:23.000Z",
+    "by": "a person",
+    "href": "https://github.com/setkernel/setkernel.github.io/issues/1",
+    "words": 272
+   },
+   "charter": {
+    "total": 6,
+    "ticked": 0
+   },
+   "build": {
+    "by": "Rigel",
+    "count": 1,
+    "files": 4,
+    "added": 77,
+    "removed": 0,
+    "first": "2026-10-13T02:03:42.000Z",
+    "last": "2026-10-13T02:03:42.000Z",
+    "opened": "2026-10-13T02:04:03.000Z"
+   },
+   "proof": {
+    "checks": [],
+    "screenshots": 0,
+    "tests": 0
+   },
+   "review": {
+    "automated": [],
+    "peers": [
+     {
+      "by": "Orion",
+      "verdict": "approved",
+      "at": "2026-10-13T02:06:21.000Z"
+     }
+    ]
+   },
+   "merge": {
+    "at": "2026-10-13T14:09:33.000Z",
+    "by": "a person",
+    "hours": 12.1
+   },
+   "production": {
+    "checks": [
+     {
+      "name": "deploy",
+      "ok": true,
+      "seconds": 9,
+      "at": "2026-10-13T14:10:17.000Z"
+     },
+     {
+      "name": "report-build-status",
+      "ok": true,
+      "seconds": 3,
+      "at": "2026-10-13T14:10:09.000Z"
+     },
+     {
+      "name": "build",
+      "ok": true,
+      "seconds": 19,
+      "at": "2026-10-13T14:10:03.000Z"
+     }
+    ],
+    "minutes": 1
+   }
+  }
+ ]
+}
