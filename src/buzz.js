@@ -43,14 +43,23 @@ export async function postMessage({ relay, channel, key, text, now = Date.now(),
   if (!url.startsWith("https://")) throw new Error("BUZZ_RELAY_URL must be https");
   const event = await signEvent(key, { kind: 9, content: text, tags: [["h", channel]], created_at: Math.floor(now / 1000) });
   const body = JSON.stringify(event);
-  const r = await fetchFn(url, {
-    method: "POST",
-    headers: { Authorization: await nip98(key, url, "POST", body, now), "Content-Type": "application/json" },
-    body,
-    redirect: "manual", // a redirect (a login page, a proxy) is not the relay accepting the message
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  const reply = await r.text();
+  // not AbortSignal.timeout: its timer can't be cleared and keeps the Durable Object busy after the post
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(new Error("timed out")), timeoutMs);
+  let r;
+  let reply;
+  try {
+    r = await fetchFn(url, {
+      method: "POST",
+      headers: { Authorization: await nip98(key, url, "POST", body, now), "Content-Type": "application/json" },
+      body,
+      redirect: "manual", // a redirect (a login page, a proxy) is not the relay accepting the message
+      signal: abort.signal,
+    });
+    reply = await r.text();
+  } finally {
+    clearTimeout(timer);
+  }
   if (!r.ok) throw new Error(`relay answered HTTP ${r.status}: ${reply.slice(0, 200)}`);
   let parsed = null;
   try {

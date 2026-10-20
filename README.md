@@ -220,9 +220,10 @@ ever printed.
    (`buzz users set-profile --name "live.setkernel.com watcher"`) and join #infra
    (`buzz channels join --channel "$BUZZ_CHANNEL"`).
 4. Put the key in Infisical as `BUZZ_PRIVATE_KEY` (project `setkernel-live`, environment prod,
-   path `/`) without showing it: pipe the value straight to your clipboard
-   (`sed -n 's/^BUZZ_PRIVATE_KEY=//p' <file> | tr -d '\n' | pbcopy`, over SSH if need be), paste
-   it into the Infisical web UI, then copy something else.
+   path `/`) by piping it, never through a clipboard or the web UI. From setkernel-cloudflare:
+   `ssh <obs host> "sed -n 's/^BUZZ_PRIVATE_KEY=//p' <file>" | scripts/infisical-put.py setkernel-live BUZZ_PRIVATE_KEY prod`
+   (it prints only the key name, the project and the HTTP status; see "Credentials for a repo" in
+   setkernel/hq `docs/repo-standard.md`).
 5. `shred -u <file>`, so Infisical holds the only copy.
 6. Run the Deploy workflow. To check the whole path, stop sk-obs01's publisher for 6 minutes: an
    alert should arrive in #infra, and a recovery message within a minute of restarting it.
