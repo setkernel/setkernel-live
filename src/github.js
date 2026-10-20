@@ -5,12 +5,30 @@
 // Stored per run, and nothing else: repo name, private flag, workflow name, conclusion and time
 // (plus whether it was a workflow run or a deployment). Never commit messages, branch names,
 // URLs, actors or deployment environment names. The raw payload is never stored.
+//
+// Pull requests and reviews (setkernel-live#33): repo name, private flag, the action, the time and
+// an actor, which is a star name from actorFor below, never the login itself. Never a title,
+// number, body, branch name, URL or login. A pull request by anyone else is ignored.
+//
+// Requests (setkernel-live#35): an issue opened or a comment made, kept as the kind "request" with
+// the repo name, private flag, the action, the time and an actor named as for pull requests. Never
+// a title, body, number or login. A merge from the director's account is also kept as Polaris
+// merging it ("merged_by"), next to the author's "merged".
 
 export const MAX_WEBHOOK_BODY = 512 * 1024; // a workflow_run payload is tens of KB
 export const QUEUE_CAP = 500; // events kept for sk-obs01; the oldest go first
 export const DELIVERY_CAP = 2000; // X-GitHub-Delivery ids remembered for dedupe
 export const PULL_LIMIT = 200; // events per pull
-export const EVENTS = ["workflow_run", "deployment_status"];
+export const EVENTS = ["workflow_run", "deployment_status", "pull_request", "pull_request_review", "issues", "issue_comment"];
+
+// GitHub logins -> the names the walls show (logins are case-insensitive). Everyone else is dropped.
+const ACTORS = { "vega-setkernel": "Vega", "rigel-setkernel": "Rigel", "lyra-setkernel": "Lyra", "orion-setkernel": "Orion" };
+// The director's own account. Its Claude sessions share it, so a hidden marker says which one it
+// was; with none, it is the director, Polaris. The markers are read here and never kept.
+const POLE_LOGIN = "realraghavgupta";
+const BRANCH_STARS = [["claude/", "Pherkad"], ["raghav-dev/", "Yildun"], ["lead/", "Kochab"]];
+const SIGNATURE_STARS = { "— Claude Cloud": "Pherkad", "— raghav-dev": "Yildun", "— Claude Lead": "Kochab" };
+const REVIEW_ACTIONS = { approved: "approved", changes_requested: "requested_changes" }; // comments and dismissals are dropped
 
 const REPO = /^[A-Za-z0-9._-]{1,100}$/;
 const DELIVERY = /^[A-Za-z0-9-]{1,64}$/;
@@ -71,14 +89,47 @@ function toSeconds(v, now) {
   return Math.trunc((Number.isFinite(ms) ? ms : now) / 1000);
 }
 
-// A verified delivery -> { key, event } to queue, or null to ignore it. `key` collapses every
-// delivery about the same run (re-runs, redelivered or repeated statuses) to one queued event;
-// it stays inside the Hub and is never handed out.
+// Who did it, as the walls name them, or null to drop the event. For the director's account:
+// `head`, the pull request's head branch, then the closing line of `body` (the pull request's, or
+// the review's) pick out which Claude it was, else it is Polaris. Neither is ever kept.
+export function actorFor(login, head, body) {
+  if (typeof login !== "string") return null;
+  const l = login.toLowerCase();
+  if (Object.hasOwn(ACTORS, l)) return ACTORS[l];
+  if (l !== POLE_LOGIN) return null;
+  if (typeof head === "string") for (const [prefix, star] of BRANCH_STARS) if (head.startsWith(prefix)) return star;
+  return signatureStar(body) ?? "Polaris";
+}
+
+// Footer lines that may follow the signature (setkernel/agent-plugins#17): the Claude Code
+// attribution, a co-author trailer and an agent's automated-by line. Blank lines are skipped too.
+const FOOTERS = [/^🤖 Generated with \[Claude Code\]\([^()\s]*\)$/u, /^Co-Authored-By: \S.*$/i, /^_Automated: .*_$/];
+
+// The star a body's signature names, as a whole line ("— Claude Lead"), or null. The signature
+// must be the last line once trailing footer lines are skipped.
+function signatureStar(body) {
+  if (typeof body !== "string") return null;
+  const lines = body.split("\n").map((line) => line.trim());
+  while (lines.length && (lines.at(-1) === "" || FOOTERS.some((f) => f.test(lines.at(-1))))) lines.pop();
+  const last = lines.at(-1);
+  return last !== undefined && Object.hasOwn(SIGNATURE_STARS, last) ? SIGNATURE_STARS[last] : null;
+}
+
+// A verified delivery -> the [{ key, event }] to queue, empty to ignore it. Most deliveries give
+// one; a merge from the director's account gives two (the author's, then Polaris's). `key`
+// collapses every delivery about the same run (re-runs, redelivered or repeated statuses) to one
+// queued event; it stays inside the Hub and is never handed out.
 export function cleanWebhook(eventName, payload, now = Date.now()) {
-  if (!payload || typeof payload !== "object") return null;
+  if (!payload || typeof payload !== "object") return [];
   const repo = payload.repository;
-  if (!repo || typeof repo.name !== "string" || !REPO.test(repo.name)) return null;
+  if (!repo || typeof repo.name !== "string" || !REPO.test(repo.name)) return [];
   const base = { repo: repo.name, private: repo.private !== false }; // fails closed: unknown counts as private
+  if (eventName === "pull_request") return cleanPullRequest(payload, base, now);
+  const one = cleanOne(eventName, payload, base, now);
+  return one ? [one] : [];
+}
+
+function cleanOne(eventName, payload, base, now) {
   if (eventName === "workflow_run") {
     const run = payload.workflow_run;
     if (payload.action !== "completed" || !run || !Number.isSafeInteger(run.id)) return null;
@@ -96,23 +147,78 @@ export function cleanWebhook(eventName, payload, now = Date.now()) {
     const workflow = cleanName(payload.workflow?.name, "deployment");
     return { key: `deploy:${deployment.id}`, event: { kind: "deploy", ...base, workflow, conclusion: status.state, ts: toSeconds(status.updated_at ?? status.created_at, now) } };
   }
+  if (eventName === "issues" || eventName === "issue_comment") {
+    // an issue opened, or a comment made (on an issue or a pull request): what the request was
+    // about never leaves here, only who sent it
+    const issue = payload.issue;
+    if (!issue || typeof issue !== "object" || !Number.isSafeInteger(issue.id)) return null;
+    let key, action, actor, at;
+    if (eventName === "issues") {
+      if (payload.action !== "opened") return null;
+      [key, action, actor, at] = [`issue:${issue.id}`, "opened_issue", actorFor(issue.user?.login, undefined, issue.body), issue.created_at];
+    } else {
+      const comment = payload.comment;
+      if (payload.action !== "created" || !comment || !Number.isSafeInteger(comment.id)) return null;
+      [key, action, actor, at] = [`comment:${comment.id}`, "commented", actorFor(comment.user?.login, undefined, comment.body), comment.created_at];
+    }
+    if (!actor) return null;
+    return { key, event: { kind: "request", ...base, action, actor, ts: toSeconds(at, now) } };
+  }
+  const pr = payload.pull_request;
+  if (!pr || typeof pr !== "object" || !Number.isSafeInteger(pr.id)) return null;
+  if (eventName === "pull_request_review") {
+    const review = payload.review;
+    if (payload.action !== "submitted" || !review || !Number.isSafeInteger(review.id)) return null;
+    const state = typeof review.state === "string" ? review.state.toLowerCase() : "";
+    const action = Object.hasOwn(REVIEW_ACTIONS, state) ? REVIEW_ACTIONS[state] : null;
+    if (!action) return null;
+    // a review has no branch of its own: the head is the author's, so only the review's body counts
+    const actor = actorFor(review.user?.login, undefined, review.body);
+    if (!actor) return null;
+    return { key: `review:${review.id}`, event: { kind: "pr", ...base, action, actor, ts: toSeconds(review.submitted_at, now) } };
+  }
   return null;
+}
+
+// opened, or merged: the author's pull request, whoever pressed the button, and when that was the
+// director's account, Polaris merging it too. A merge has no body, so it carries no marker: one
+// a Claude makes from that account shows as Polaris as well. The director merging its own pull
+// request is one event, Polaris's merge, not two. A closed one that wasn't merged, and every
+// other action, is dropped.
+function cleanPullRequest(payload, base, now) {
+  const pr = payload.pull_request;
+  if (!pr || typeof pr !== "object" || !Number.isSafeInteger(pr.id)) return [];
+  let action, at;
+  if (payload.action === "opened") [action, at] = ["opened_pr", pr.created_at];
+  else if (payload.action === "closed" && pr.merged === true) [action, at] = ["merged", pr.merged_at];
+  else return [];
+  const actor = actorFor(pr.user?.login, pr.head?.ref, pr.body);
+  const ts = toSeconds(at, now);
+  const out = [];
+  const byPole = action === "merged" && typeof pr.merged_by?.login === "string" && pr.merged_by.login.toLowerCase() === POLE_LOGIN;
+  if (actor && !(byPole && actor === "Polaris")) out.push({ key: `pr:${pr.id}:${action}`, event: { kind: "pr", ...base, action, actor, ts } });
+  if (byPole) out.push({ key: `pr:${pr.id}:merged_by`, event: { kind: "pr", ...base, action: "merged_by", actor: "Polaris", ts } });
+  return out;
 }
 
 export function emptyQueue() {
   return { seq: 0, dropped: 0, items: [], deliveries: [] };
 }
 
-// Add a cleaned event for a delivery (returns { queue, added }). A delivery id seen before is a
-// duplicate and changes nothing. An event for a run already queued replaces it and moves to the
-// end with a new cursor, so a re-run reaches sk-obs01 again but the queue holds one per run.
+// Add a delivery's cleaned events, a list in order (returns { queue, added }). A delivery id seen before
+// is a duplicate and changes nothing. An event for a run already queued replaces it and moves to
+// the end with a new cursor, so a re-run reaches sk-obs01 again but the queue holds one per run.
 export function pushEvent(queue, delivery, cleaned, { cap = QUEUE_CAP, deliveryCap = DELIVERY_CAP } = {}) {
   const q = queue ?? emptyQueue();
   if (q.deliveries.includes(delivery)) return { queue: q, added: false };
   const deliveries = [...q.deliveries, delivery].slice(-deliveryCap);
-  const seq = q.seq + 1;
-  let items = q.items.filter((it) => it.key !== cleaned.key);
-  items.push({ seq, key: cleaned.key, event: cleaned.event });
+  let seq = q.seq;
+  let items = q.items;
+  for (const c of cleaned) {
+    seq++;
+    items = items.filter((it) => it.key !== c.key);
+    items.push({ seq, key: c.key, event: c.event });
+  }
   let dropped = q.dropped;
   if (items.length > cap) {
     dropped = items[items.length - cap - 1].seq;

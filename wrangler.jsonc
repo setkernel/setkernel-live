@@ -23,7 +23,10 @@
     "BUZZ_CHANNEL": "fc80475f-c5f0-42b7-870f-44785c189566", // #infra
     // Mute switch for planned maintenance: "true" posts no alerts (an outage that ends while muted
     // is never reported). Change it in a PR and deploy; set it back to "false" afterwards.
-    "ALERTS_MUTED": "false"
+    "ALERTS_MUTED": "false",
+    // The deployed commit, shown as `version` in /api/state. The deploy sets it with
+    // `wrangler deploy --var VERSION:<sha>`; "dev" anywhere else. scripts/smoke.mjs waits for it.
+    "VERSION": "dev"
   },
   // GITHUB_WEBHOOK_SECRET is a Worker secret, set by .github/workflows/deploy.yml from Infisical.
   // Once a minute: has live.setkernel.com stopped getting updates? (Hub.watch)

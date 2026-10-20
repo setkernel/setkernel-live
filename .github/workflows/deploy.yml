@@ -1,7 +1,13 @@
 name: Deploy
 
 on:
-  workflow_dispatch: {} # no push trigger: Raghav starts it by hand, like the other Worker repos
+  # Deploy on merge (setkernel-live#30, hq#152): every push to main deploys, then a smoke check
+  # waits for the Durable Object to run the new commit and checks each route; a failed check rolls
+  # back to the previous version and opens an issue for the agents. Docs-only pushes don't deploy.
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
+  workflow_dispatch: {}
 
 concurrency:
   group: deploy-production
@@ -13,10 +19,11 @@ permissions:
 jobs:
   deploy:
     runs-on: setkernel-linux
-    timeout-minutes: 15
+    timeout-minutes: 25 # the smoke check may wait up to 10 minutes for the Durable Object
     permissions:
       contents: read
       id-token: write # OIDC login to Infisical
+      issues: write   # open an issue when the smoke check fails
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -64,4 +71,33 @@ jobs:
           secrets: |
             GITHUB_WEBHOOK_SECRET
             BUZZ_PRIVATE_KEY
-          command: deploy
+          # VERSION = this commit, so /api/state shows which code the Durable Object runs.
+          command: deploy --var VERSION:${{ github.sha }}
+
+      # Runs without the deploy credentials: they are removed from its environment.
+      - name: Smoke check
+        id: smoke
+        run: |
+          set -o pipefail
+          env -u CLOUDFLARE_API_TOKEN -u GITHUB_WEBHOOK_SECRET -u BUZZ_PRIVATE_KEY \
+            node scripts/smoke.mjs --expect "${{ github.sha }}" 2>&1 | tee smoke.log
+
+      - name: Roll back to the previous version
+        if: failure() && steps.smoke.outcome == 'failure'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ env.CLOUDFLARE_API_TOKEN }}
+        run: npx --no-install wrangler rollback --message "smoke check failed for ${{ github.sha }}"
+
+      # smoke.log holds status codes, key names and the version only (scripts/smoke.mjs), never a body.
+      - name: Open an issue for the agents
+        if: failure() && steps.smoke.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "The deploy of ${{ github.sha }} failed its smoke check and was rolled back to the previous version."
+            echo; echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo; echo '```'; tail -n 60 smoke.log; echo '```'
+            echo; echo "README \"Reading a failed smoke\" says what each line means."
+          } > body.md
+          gh issue create --repo "${{ github.repository }}" --title "Deploy smoke check failed for ${GITHUB_SHA::7}" --label agent-ready --body-file body.md

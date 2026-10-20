@@ -24,7 +24,46 @@ test("repo names must look like repo names", () => {
   for (const bad of ["<script>", "a/b", "x".repeat(101), "", 7]) assert.equal(e(bad).repo, undefined, String(bad));
 });
 
-test("a batch keeps the four agents only and caps the event count", () => {
+test("Polaris and its three Claudes: their GitHub actions and requests, never a state; Yildun's Claude requests too", () => {
+  for (const agent of ["Polaris", "Kochab", "Pherkad", "Yildun"]) {
+    for (const action of ["opened_pr", "merged", "approved", "requested_changes"]) {
+      assert.deepEqual(cleanEvent({ t: "msg", kind: "github", agent, action, repo: "hq", ts: 9, title: "secret", number: 12, branch: "claude/x", login: "realRaghavGupta" }),
+        { t: "msg", kind: "github", agent, action, repo: "hq", ts: 9 });
+    }
+    // their requests, as for anyone
+    for (const action of ["opened_issue", "commented"]) {
+      assert.deepEqual(cleanEvent({ t: "msg", kind: "request", agent, action, repo: "hq", ts: 9, title: "secret", body: "secret", number: 12 }), { t: "msg", kind: "request", agent, action, repo: "hq", ts: 9 });
+    }
+    // no state, chat posts or helpers: only GitHub sees them; Claude requests for Yildun alone,
+    // from its own machine (setkernel-live#35)
+    assert.equal(cleanEvent({ t: "agent", agent, state: "WORKING", work: "issue", repo: "hq" }), null, `${agent} state`);
+    for (const kind of ["chat", "helper"]) assert.equal(cleanEvent({ t: "msg", kind, agent, ts: 1 }), null, `${agent} ${kind}`);
+    assert.deepEqual(cleanEvent({ t: "msg", kind: "claude", agent, ts: 1, repo: "hq", prompt: "secret" }), agent === "Yildun" ? { t: "msg", kind: "claude", agent, ts: 1 } : null, `${agent} claude`);
+  }
+  // Polaris merged a pull request: the director's alone
+  assert.deepEqual(cleanEvent({ t: "msg", kind: "github", agent: "Polaris", action: "merged_by", ts: 5 }), { t: "msg", kind: "github", agent: "Polaris", action: "merged_by", ts: 5 });
+  for (const agent of ["Vega", "Kochab", "Yildun"]) assert.equal(cleanEvent({ t: "msg", kind: "github", agent, action: "merged_by", ts: 5 }), null, agent);
+  assert.deepEqual(cleanEvent({ t: "msg", kind: "github", agent: "Vega", action: "merged" }), { t: "msg", kind: "github", agent: "Vega", action: "merged" });
+  // the names the page never shows, as an agent
+  for (const name of ["Claude", "claude", "Raghav", "raghav-dev", "realRaghavGupta", "polaris"]) assert.equal(cleanEvent({ t: "msg", kind: "github", agent: name, action: "opened_pr" }), null, name);
+  assert.deepEqual(cleanBatch({ events: [], agents: { Polaris: { state: "IDLE" }, Pherkad: { state: "WORKING" }, Claude: { state: "IDLE" }, Vega: { state: "IDLE" } } }).agents, { Vega: { state: "IDLE" } });
+});
+
+test("requests: an issue opened or a comment, by anyone the page shows; never what it said", () => {
+  for (const agent of ["Vega", "Polaris", "Kochab"]) {
+    assert.deepEqual(cleanEvent({ t: "msg", kind: "request", agent, action: "commented", ts: 3 }), { t: "msg", kind: "request", agent, action: "commented", ts: 3 });
+  }
+  // an action of the wrong kind, or none, is dropped
+  for (const action of ["opened_pr", "merged", "picked_up", "closed_issue", "", undefined]) assert.equal(cleanEvent({ t: "msg", kind: "request", agent: "Polaris", action }), null, String(action));
+  for (const action of ["opened_issue", "commented"]) assert.equal(cleanEvent({ t: "msg", kind: "github", agent: "Polaris", action }), null, `github ${action}`);
+  assert.equal(cleanEvent({ t: "msg", kind: "request", agent: "Raghav", action: "opened_issue" }), null);
+  // a title, a body, a number, labels or a login are left behind
+  const e = cleanEvent({ t: "msg", kind: "request", agent: "Polaris", action: "opened_issue", repo: "hq", ts: 1, title: "secret title", body: "secret body", number: 4243, labels: ["x"], user: { login: "secret" }, message: "secret" });
+  assert.deepEqual(Object.keys(e).sort(), ["action", "agent", "kind", "repo", "t", "ts"]);
+  assert.doesNotMatch(JSON.stringify(e), /secret|4243/);
+});
+
+test("a batch keeps the four engineers' states only and caps the event count", () => {
   const b = cleanBatch({ events: Array.from({ length: 600 }, () => ({ t: "msg", kind: "claude", agent: "Orion" })), agents: { Vega: { state: "WORKING", work: "issue" }, Mallory: { state: "IDLE" } } });
   assert.equal(b.events.length, 500);
   assert.deepEqual(b.agents, { Vega: { state: "WORKING", work: "issue" } });
@@ -41,15 +80,56 @@ test("counts and feed, reset each day", () => {
     { t: "msg", kind: "chat", agent: "Rigel", ts: 104 },
   ], agents: {} });
   let s = applyBatch(emptyState("2026-10-13"), batch, 1_000_000, "2026-10-13");
-  assert.deepEqual(s.counts, { claude: 1, chat: 1, helpers: 0, prs: 1, reviews: 1, started: 1 });
+  assert.deepEqual(s.counts, { claude: 1, chat: 1, helpers: 0, prs: 1, reviews: 1, started: 1, building: 1, changes: 0, merged: 0, requests: 0, merges: 0, ringed: 0, ci: 0, ciPass: 0 });
   assert.deepEqual(s.feed[0], { agent: "Rigel", action: "approved", ts: 103 });
   assert.equal(s.feed.length, 3);
   assert.equal(s.lastIngest, 1_000_000);
   s = applyBatch(s, cleanBatch({ events: [], agents: {} }), 2_000_000, "2026-10-14");
-  assert.deepEqual(s.counts, { claude: 0, chat: 0, helpers: 0, prs: 0, reviews: 0, started: 0 });
+  assert.deepEqual(s.counts, { claude: 0, chat: 0, helpers: 0, prs: 0, reviews: 0, started: 0, building: 0, changes: 0, merged: 0, requests: 0, merges: 0, ringed: 0, ci: 0, ciPass: 0 });
   assert.equal(s.feed.length, 3); // the feed carries over midnight
   const many = cleanBatch({ events: Array.from({ length: 50 }, (_, i) => ({ t: "msg", kind: "github", agent: "Lyra", action: "pushed", ts: i })), agents: {} });
   assert.equal(applyBatch(s, many, 3, "2026-10-14").feed.length, 30);
+});
+
+test("CI results: the accepted shape, extra fields dropped, no repo unless sent", () => {
+  assert.deepEqual(cleanEvent({ t: "msg", kind: "ci", result: "pass", repo: "setkernel-live", ts: 7 }), { t: "msg", kind: "ci", result: "pass", repo: "setkernel-live", ts: 7 });
+  assert.deepEqual(cleanEvent({ t: "msg", kind: "ci", result: "fail" }), { t: "msg", kind: "ci", result: "fail" });
+  // never branch, commit message, run URL, actor or anything else, and no agent either
+  assert.deepEqual(cleanEvent({ t: "msg", kind: "ci", result: "fail", agent: "Vega", branch: "main", message: "fix: x", url: "https://github.com/x", actor: "someone", workflow: "deploy", environment: "prod" }),
+    { t: "msg", kind: "ci", result: "fail" });
+  assert.equal(cleanEvent({ t: "msg", kind: "ci", result: "pass", repo: "a/b" }).repo, undefined);
+  for (const bad of [
+    { t: "msg", kind: "ci" },
+    { t: "msg", kind: "ci", result: "cancelled" },
+    { t: "msg", kind: "ci", result: "PASS" },
+    { t: "agent", kind: "ci", result: "pass" },
+    { t: "msg", kind: "claude" }, // other kinds still need an agent
+  ]) assert.equal(cleanEvent(bad), null, JSON.stringify(bad));
+});
+
+test("CI counts, pass count and recent results", () => {
+  const ci = (result, repo, ts) => ({ t: "msg", kind: "ci", result, ...(repo ? { repo } : {}), ts });
+  const batch = cleanBatch({ events: [ci("pass", "setkernel-live", 1), ci("fail", undefined, 2), ci("pass", undefined, 3)], agents: {} });
+  let s = applyBatch(emptyState("2026-10-13"), batch, 1_000_000, "2026-10-13");
+  assert.equal(s.counts.ci, 3);
+  assert.equal(s.counts.ciPass, 2);
+  assert.deepEqual(s.ci, [{ result: "pass", ts: 3 }, { result: "fail", ts: 2 }, { result: "pass", repo: "setkernel-live", ts: 1 }]);
+  assert.equal(s.feed.length, 0); // CI runs aren't agent work
+  assert.deepEqual([s.byAgent, s.seen], [{}, {}]); // and have no agent to count or see
+  s = applyBatch(s, cleanBatch({ events: Array.from({ length: 30 }, (_, i) => ci("pass", undefined, 10 + i)), agents: {} }), 2_000_000, "2026-10-13");
+  assert.equal(s.ci.length, 20, "the latest 20, for CI health");
+  assert.equal(s.counts.ci, 33);
+  s = applyBatch(s, cleanBatch({ events: [], agents: {} }), 3_000_000, "2026-10-14");
+  assert.equal(s.counts.ci, 0);
+  assert.equal(s.counts.ciPass, 0);
+  assert.equal(s.ci.length, 20); // recent results carry over midnight, like the feed
+});
+
+test("a state saved before CI existed still counts CI", () => {
+  const old = { day: "2026-10-13", agents: {}, counts: { claude: 4, chat: 0, prs: 0, reviews: 0, started: 0 }, feed: [], lastIngest: 1 };
+  const s = applyBatch(old, cleanBatch({ events: [{ t: "msg", kind: "ci", result: "pass", ts: 1 }], agents: {} }), 2, "2026-10-13");
+  assert.deepEqual(s.counts, { claude: 4, chat: 0, helpers: 0, prs: 0, reviews: 0, started: 0, building: 0, changes: 0, merged: 0, requests: 0, merges: 0, ringed: 0, ci: 1, ciPass: 1 });
+  assert.deepEqual(s.ci, [{ result: "pass", ts: 1 }]);
 });
 
 test("helper events: agent only, nothing else", () => {
@@ -85,7 +165,7 @@ test("the never list covers each kind and the allowlist uses none of it", () => 
     "head_commit", "run_url", "html_url", "url", "log_url", "details_url", "actor", "pusher", "triggering_actor", "sender", "login"]) {
     assert.ok(NEVER.has(f), f);
   }
-  const allowed = ["t", "kind", "agent", "action", "repo", "ts", "state", "work", "events", "agents", "day", "counts", "feed", "lastIngest"];
+  const allowed = ["t", "kind", "agent", "action", "repo", "ts", "state", "work", "events", "agents", "day", "counts", "feed", "lastIngest", "result", "ci", "ciPass"];
   assert.deepEqual(allowed.filter((k) => NEVER.has(k)), []);
 });
 
