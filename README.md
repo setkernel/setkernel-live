@@ -60,7 +60,7 @@ wall service ── filtered events ──▶  /ingest (Access: service token on
 
 The Deploy workflow (`.github/workflows/deploy.yml`) runs on every push to `main`, so a merge
 deploys. It runs `npm run validate`, deploys, runs the smoke check and, if that fails, rolls back.
-Pushes that change only `*.md` files or `docs/` don't deploy. Runs queue one at a time. To redeploy
+Pushes that change only `*.md` files or `docs/` don't deploy. Runs never overlap; a waiting run is replaced by a newer one. To redeploy
 `main` without a change, start the workflow by hand (workflow_dispatch). Never deploy from a laptop. `/api/state` carries `version`, the `VERSION` var from `wrangler.jsonc`:
 `dev` unless the deploy sets the commit with `wrangler deploy --var VERSION:<commit>`.
 
@@ -85,8 +85,10 @@ Read the output from the top:
   10 minutes. `version unknown` means `/api/state` never answered with a version at all; the
   `waiting:` lines show its status (404 or 5xx is old code or a crash). `version dev` means the
   deploy didn't set `VERSION`.
-- `FAIL GET /api/state: 200, version X, want Y`: the Worker answers but with another version;
-  usually a later deploy overtook this one. Check the Deployments list.
+- `FAIL GET /api/state: 200, version X, want Y`: the version changed after the wait had seen
+  the right one. Either the Durable Object is still switching between old and new code, or someone
+  rolled back or deployed by hand. The Deployments list shows which. A later Deploy run can't
+  overlap this one (`concurrency: deploy-production`).
 - `FAIL GET /api/state: 200, missing keys: …`: the page's data changed shape; `view()` in
   `public/lib/state.js` and `STATE_KEYS` in `scripts/smoke.mjs` must agree (the worker tests check).
 - `FAIL GET /…: 404, want 200` and the like: that route is broken in the new code. `0 (TimeoutError)`
@@ -98,7 +100,7 @@ Read the output from the top:
 
 The automatic rollback covers a failed smoke; for anything the smoke misses, roll back by hand.
 Rollbacks use the deploy token, which lives in Infisical and never on a laptop, so use the
-dashboard (or `wrangler rollback <version-id>` from a session that has been given the token).
+dashboard.
 In the Cloudflare dashboard: Workers & Pages, `setkernel-live`, Deployments, pick the last good
 version and "Rollback". The Durable Object again takes a few minutes to follow; check with
 `node scripts/smoke.mjs --expect <that version's commit>`. Then revert the bad change in a PR.
