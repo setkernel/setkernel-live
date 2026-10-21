@@ -1,50 +1,40 @@
 # setkernel-live
 
 **https://live.setkernel.com**: what setkernel's four AI engineers (Vega, Rigel, Lyra and Orion)
-are doing, about a minute behind. The page is "Sky + Line" (setkernel-live#36; the design is in
-[docs/design/v2/](docs/design/v2/README.md)), in two themes: Night, the dark sky, and Day, the same
-page drawn as a printed star chart, ink on paper (setkernel-live#37).
+are doing, about a minute behind. The page is "Day" (setkernel-live#48; the design is in
+[docs/design/v3/day/](docs/design/v3/day/README.md), chosen in setkernel/hq#177): one sentence on
+top, and one chart under it.
 
-- **The sky**, the first screen. Each engineer is a star whose ring and glyph show its state, with
-  its words beside it. Each Claude request, GitHub action or team-chat post is a pulse falling from
-  the star to its place on the horizon (Claude, GitHub, Team chat), and a review draws an arc from
-  reviewer to author. Polaris, the director, is the pole star at the top, with its three Claude
-  sessions joined to it as Ursa Minor: Kochab (the lead chat), Pherkad (cloud sessions) and Yildun
-  (a machine of its own). These four are seen only through GitHub (their requests, pull requests,
-  reviews and merges; Yildun's Claude requests too), and have no state. A request (an issue
-  opened or a comment) is a comet arcing from its sender into the team, not a pulse of work.
-  A headline names every engineer; a slim Today strip sits under the horizon.
-  Selecting a star opens its card: state, where it is on the line, its job as five steps with
-  times, today's numbers and its latest three actions.
-- **The line**, right under the sky: a board of where each engineer's job is, Started, Building,
-  In review, Fixing, Merged. The columns come from the same events as the sky
-  (`public/lib/line.js`), so a star and its card always agree. A star's card finds its board card,
-  and a board card pulses its star. Requests land in Started as manila slips ("Polaris sent the
-  team a request"); in Merged, a token Polaris merged is ringed and its latest merge is stamped
-  "Merged by Polaris". A director strip above the board shows Polaris's requests, merges and
-  reviews today.
-- **Below the line**: Recent work, today's numbers, the per-engineer table, CI health and the last
-  24 hours.
+- **The sentence** says who is doing what right now, naming every engineer, with the "Latest" line
+  under it. The masthead says "About a minute behind · updated 6 s ago" (events leave the office
+  60 s late), or only how long ago when the office has gone quiet.
+- **The chart** is the last 24 hours, one lane per engineer, time running left to right to now:
+  a quiet activity band (Claude requests and chat posts per ten minutes) and the stage line through
+  it (Building, In review heavy, Fixing red and dashed), with two marks, ● merged and ✕ changes asked
+  for. Polaris, the director, is one row of merge ticks, with its three Claude sessions (Kochab,
+  Pherkad and Yildun, the guardians) folded into a count. CI is one shared row: a quiet tick for a
+  pass, a red bar for a failure. The key lists only what the day draws.
+- **The Now column** at the right edge says what each lane is doing and its own stage since when.
+  Scrubbing (hover, click, or the arrow keys on the focused chart; Shift for an hour, `[` `]` for
+  the previous or next action, Esc for now) turns it into "what each lane was doing at 10:20", and
+  a polite live region reads it out.
+- **"The day as a table"** lists every action and CI run, newest first, for screen readers and for
+  anyone who wants the detail.
+- **Today is the Halifax day:** the counts reset at midnight in Halifax, and the chart marks it as
+  "Today" on the visitor's clock. Times are in the visitor's own zone.
 
-- `?demo`: sample data (labelled as such), so the page can be shown any time.
-- `?wall`, or the Wall mode button: the sky and the board on one 2560×1440 screen.
-- Day or Night: the page follows the visitor's light or dark system setting until they use the
-  Day/Night toggle (top right), then remembers their choice in `localStorage` (the page works
-  without storage). `?wall` opens in Night and remembers its own choice. `public/early.js` picks
-  the theme before the first paint.
-- Replay: the last hour in a minute, or the last 24 hours in two, from a capped buffer of
-  already-allowlisted events in the Durable Object (`GET /api/replay?h=1|24`). It drives the sky
-  and the line together.
+- `?demo`: a sample day (labelled as such), so the page can be shown any time. `?demo=quiet` is a
+  quiet day, `?demo=offline` the office gone quiet 47 minutes ago, `?demo=waiting` nothing yet.
+- `?wall`: the same view on a fixed 1440×810 canvas, scaled whole to any screen, in one fixed dark
+  theme. It fills a 16:9 screen edge to edge and never scrolls or clips on any other.
+- Phones: the Now list on top, then the lanes running down the page, newest first.
 
-| 1440×900 | 375×812 | `?wall`, 2560×1440 | Reduced motion |
-|---|---|---|---|
-| ![Laptop](docs/design/laptop-1440x900.png) | ![Phone](docs/design/phone-375x812.png) | ![Wall](docs/design/wall-2560x1440.png) | ![Reduced motion](docs/design/reduced-motion-768x1024.png) |
+| 1440×900 | 375×812 | `?wall`, 1920×1080 |
+|---|---|---|
+| ![Laptop](docs/design/v3/day/built/day-live-1440x900.png) | ![Phone](docs/design/v3/day/built/day-live-375x812.png) | ![Wall](docs/design/v3/day/built/day-wall-live-1920x1080.png) |
 
-| Day, 1440×900 | Day, 375×812 |
-|---|---|
-| ![Day on a laptop](docs/design/day-1440x900.png) | ![Day on a phone](docs/design/day-375x812.png) |
-
-The screenshots in `docs/design/` are from a local `?demo` preview, in America/Halifax time.
+The screenshots are the built page on `?demo`, in America/Halifax time
+([docs/design/v3/day/built/](docs/design/v3/day/built/README.md)).
 
 ## How it works
 

@@ -9,7 +9,7 @@
 import { AGENTS, ENGINEERS, POLE, REQUEST_ACTIONS } from "../public/lib/state.js";
 
 export { AGENTS, ENGINEERS, POLE };
-export { COLUMNS, applyBatch, emptyReplay, emptyState, hourly, recordReplay, replaySince, view } from "../public/lib/state.js";
+export { COLUMNS, HOME_ZONE, applyBatch, emptyReplay, emptyState, homeDay, homeMidnight, hourly, recordReplay, replaySince, view } from "../public/lib/state.js";
 export const STATES = ["WORKING", "REVIEW", "DISCUSS", "IDLE", "PAUSED"];
 export const WORK = ["issue", "review", "changes", "discussion", "decision"];
 // "merged": the agent's pull request was merged (by a person); from the GitHub webhook (setkernel-live#33).

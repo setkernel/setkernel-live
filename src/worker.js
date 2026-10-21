@@ -9,13 +9,14 @@
 // One Durable Object ("live") holds the picture, a capped 24-hour replay buffer and the GitHub queue,
 // and fans batches out to every open WebSocket.
 import { DurableObject } from "cloudflare:workers";
-import { applyBatch, cleanBatch, emptyReplay, emptyState, recordReplay, replaySince, view } from "./logic.js";
+import { applyBatch, cleanBatch, emptyReplay, emptyState, homeDay, recordReplay, replaySince, view } from "./logic.js";
 import { jwksFetcher, verifyAccessJwt } from "./access.js";
 import { EVENTS, cleanDelivery, cleanWebhook, emptyQueue, fetchHub, parseCursor, pushEvent, readCapped, readQueue, verifySignature } from "./github.js";
 
 const getKeys = jwksFetcher();
 const MAX_BODY = 256 * 1024;
-const today = () => new Date().toISOString().slice(0, 10);
+// Today's counts are the Halifax day's (hq#177): they reset at midnight in Halifax, not UTC.
+const today = () => homeDay(Date.now());
 
 export default {
   async fetch(request, env) {

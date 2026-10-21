@@ -4,6 +4,9 @@ Option B from setkernel/hq#177 ([decision document](https://github.com/setkernel
 built so it can be compared with Roster and the v2 control (setkernel-live#45). This is a prototype
 on fixture data. It is not deployed, and nothing under `public/` or `src/` changes.
 
+Raghav chose Day on 2026-10-15 (setkernel/hq#177). The page built from this prototype is
+`public/` (setkernel-live#48); its screenshots, taken the same way, are in [`built/`](built/).
+
 **To open it,** double-click `index.html`, or drag it into a browser. It is one self-contained file
 with the fonts embedded, and it needs no server and no network. The dark strip at the top is the
 prototype's switcher and is not part of the design. It has these controls:
@@ -259,116 +262,3 @@ npm i --prefix "$TMPDIR/pw" playwright && npx --prefix "$TMPDIR/pw" playwright i
 PLAYWRIGHT_DIR="$TMPDIR/pw" node docs/design/v3/day/shoot.mjs   # retake every PNG, in Halifax time
 ```
 `shoot.mjs` fails if the page throws or makes any request that isn't to `file:` or `data:`.
-
-## Review rounds
-**Refinement for Raghav's second review (setkernel-live#47)**: the wall, fewer symbols, a calmer
-Polaris row, and Orion's Now line. Two rounds of reading my own PNGs against those four points.
-
-**Round A** (live 1440, wall 1920):
-- Wall: rebuilt as a 1440×810 canvas scaled to the window; at 1920×1080 it filled the screen with
-  nothing cut. The "Now" heading sat on the edge of its ground, so the ground starts higher.
-- Symbols: with ◆ opened, ● merged and ✕ asked for changes, the lanes still read as beads. ◆ was
-  the commonest glyph, and it sat exactly where the In review line begins. ✕ sat on the
-  reviewer's lane, away from the red Fixing line it caused. A CSS order bug drew every red mark
-  in ink.
-- Polaris: one tick per merge read calmly. Requests as a count, and the guardians as one line in
-  the Now column, both fitted.
-- Orion: "Their own pull request has waited since 15:22" reads as a sentence under "Reviewing a
-  pull request".
-
-**Changes after round A:** ◆ is gone (the line says it). ✕ moved to the author's lane at the start
-of Fixing, with the reviewer in the hover. Red marks are red. The key is down to five entries.
-
-**Round B** (live and quiet 1440, wall 1280×1024, phone):
-- The quiet day showed two rules per lane: the activity band's edge ran flat across the empty
-  hours under the stage track. The edge is now drawn only where there is activity.
-- The 1280×1024 window letterboxes as intended, with bars above and below.
-- The phone's list folds the guardians into Polaris's entry, and its chart has one Polaris
-  column of ticks.
-- What I would still change: on the phone, Polaris's ticks sit close to the hour labels.
-
-**"example-site"** is gone from every dataset: `build.mjs` turns the demo's one made-up repo into a
-private project, and `grep -c example-site index.html` prints 0 (it stays in `public/lib/demo.js`,
-which this prototype doesn't change).
-
-**Refinement for Raghav's four points (setkernel-live#47)**, two rounds of reading my own PNGs
-against them: one type scale and spacing grid, calmer lanes, a stronger Now, no data glitches.
-
-**Refinement round 1** (live, quiet and wall shots):
-- Uniform: the headline, names and tallies sat on three unrelated sizes and the gutters were
-  picked per element. All now come from the scales above.
-- Calm: the Claude bars plus chat ticks plus ten rules read as a barcode. They are one light
-  band per lane now, and the track is the line through it.
-- Now: the column was 14 px text on the page ground. It is on its own ground, with 20 px
-  activity text.
-- Faults seen: Polaris's tally cut ("3 revie…"), so the gutter went from 208 to 232; "21:00"
-  sat on "Yesterday"; CI's name overlapped its tally; Rigel's "Merged at 20:50" didn't say
-  yesterday; the wall's key overflowed the screen.
-
-**Refinement round 2** (after those fixes; wall, scrub, offline, phone):
-- The wall now fits at 1.8× the type and 1.5× the rows.
-- The phone's Now list ran tallies into the stage line; it shows the stage only.
-- Offline showed "Working on an issue" in full ink under "Last word, 15:53"; the column is
-  dimmed now.
-- A scrubbed line that doesn't fit drops one type step (20 to 16) instead of being cut.
-- Polaris's three-deep stacks and the wall's fallback-font state glyph were left from this
-  round; the second review's calmer Polaris row and the drawn state shapes (see "Marks") replace
-  both.
-
-**The first prototype's rounds:**
-**Round 1** (first shots):
-- Tallies and the pole-star lines in the moment column were cut off ("948 Clau…", "had a pull
-  request merged in a private proj…").
-- The key ran to three rows and fell below the fold at 900 px.
-- The moment column said "◎ Reviewing · In review" for Orion. That mixed his state (reviewing
-  someone else's pull request) with his own job's stage, and it read as a contradiction.
-- Waiting drew an empty grid that looked broken rather than designed.
-- The wall overflowed: the CI band was cut, and there was no key.
-- On the phone, the pole stars' columns read "P K P Y" (two Ps), and "Yesterday" ran into the
-  marks.
-
-**Changes after round 1:**
-- The gutters are wider (216 and 320 px).
-- The pole stars' moment lines use the action words without the place, which stays in the hover
-  label and the table.
-- The keyboard hint moved up beside the chart title, the vertical spacing is tighter, and the
-  chat bars are lighter.
-- The moment column now has two lines: first the state in `doing()`'s words ("◎ Reviewing a pull
-  request in setkernel-live"), then, on the track's own baseline, the stage and since when ("In
-  review since 15:22"). The stage label reads as the end of the track.
-- Waiting hatches the whole day with "Nothing has arrived yet", the same visual language as
-  offline, and hides the key.
-- The wall's rows were re-proportioned so the whole view fits.
-- The phone shows the pole stars' full names set vertically, and "Today" plus the time at
-  midnight.
-
-**Round 2:**
-- The key still wrapped, with CI's two items orphaned on a third row.
-- Scrubbed lines were cut ("Approved a teammate's pull request in a priva…").
-- The scrub focus frame was a heavy 2 px blue box.
-- The keyboard hint showed on the phone, which has no keyboard.
-- On the wall, Polaris's tally touched Kochab's line, and the 06:00 and 18:00 labels were lost
-  to a symmetric collision rule.
-- Yildun's tally was cut.
-
-**Changes after round 2:**
-- CI passed and failed are one key item.
-- Scrubbed lines use the action words.
-- The focus frame is 1 px.
-- The phone hides the keyboard hint, and its pole-star lines say `tally()`'s "nothing yet today"
-  instead of a dash.
-- The wall's Polaris row is taller.
-- Axis labels avoid the midnight label differently on each side, and the sub-line tallies take
-  the room left after the name.
-
-**Round 3** checked the result:
-- The Polaris row on the quiet day needed 6 px more, so that its tally clears Kochab.
-- "21:00" sat against "Yesterday".
-
-Both are fixed in the shots above.
-
-**What I would still change:**
-- On the busy day the marks crowd where a pull request opens and merges within minutes. At
-  1440 px a mark is 11 px across and a ten-minute column is 5 px.
-- The offline hatch for 47 minutes is too narrow to carry its label; the headline says it
-  instead.
