@@ -58,8 +58,10 @@ wall service ── filtered events ──▶  /ingest (Access: service token on
 
 ## Deploy
 
-The Deploy workflow (`.github/workflows/deploy.yml`) runs `npm run validate` and deploys. Never
-deploy from a laptop. `/api/state` carries `version`, the `VERSION` var from `wrangler.jsonc`:
+The Deploy workflow (`.github/workflows/deploy.yml`) runs on every push to `main`, so a merge
+deploys. It runs `npm run validate`, deploys, runs the smoke check and, if that fails, rolls back.
+Pushes that change only `*.md` files or `docs/` don't deploy. Runs queue one at a time. To redeploy
+`main` without a change, start the workflow by hand (workflow_dispatch). Never deploy from a laptop. `/api/state` carries `version`, the `VERSION` var from `wrangler.jsonc`:
 `dev` unless the deploy sets the commit with `wrangler deploy --var VERSION:<commit>`.
 
 `node scripts/smoke.mjs --expect <commit>` first polls `/api/state` until its `version` is that
@@ -70,6 +72,11 @@ each route once: `/` 200, `/api/state` 200 with every key the page uses, `/api/r
 status codes, key names and the version, never a response body, and exits 1 on failure (2 on bad
 arguments).
 
+If the smoke fails, the workflow runs `wrangler rollback` to the previous version (message
+"smoke check failed for <commit>") and opens an issue titled "Deploy smoke check failed for
+<short commit>", labelled `agent-ready`, with the run link and the last 60 lines of the smoke
+output. The issue exists because the rollback happened: fix the change and merge it again.
+
 ### Reading a failed smoke
 
 Read the output from the top:
@@ -78,6 +85,8 @@ Read the output from the top:
   10 minutes. `version unknown` means `/api/state` never answered with a version at all; the
   `waiting:` lines show its status (404 or 5xx is old code or a crash). `version dev` means the
   deploy didn't set `VERSION`.
+- `FAIL GET /api/state: 200, version X, want Y`: the Worker answers but with another version;
+  usually a later deploy overtook this one. Check the Deployments list.
 - `FAIL GET /api/state: 200, missing keys: …`: the page's data changed shape; `view()` in
   `public/lib/state.js` and `STATE_KEYS` in `scripts/smoke.mjs` must agree (the worker tests check).
 - `FAIL GET /…: 404, want 200` and the like: that route is broken in the new code. `0 (TimeoutError)`
@@ -87,6 +96,9 @@ Read the output from the top:
 
 ### Rolling back by hand
 
+The automatic rollback covers a failed smoke; for anything the smoke misses, roll back by hand.
+Rollbacks use the deploy token, which lives in Infisical and never on a laptop, so use the
+dashboard (or `wrangler rollback <version-id>` from a session that has been given the token).
 In the Cloudflare dashboard: Workers & Pages, `setkernel-live`, Deployments, pick the last good
 version and "Rollback". The Durable Object again takes a few minutes to follow; check with
 `node scripts/smoke.mjs --expect <that version's commit>`. Then revert the bad change in a PR.
