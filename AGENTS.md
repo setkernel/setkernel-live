@@ -40,6 +40,9 @@ a laptop.
   the team's numbers, as an allowlist (pure, tested). Only the v4 prototype uses it so far.
 - `docs/design/v4/showcase/`: the v4 prototype (one `index.html`, its `build.mjs`, `shoot.mjs`,
   `evidence.json` and screenshots). Nothing in `public/` comes from it until Raghav picks a direction.
+- `docs/design/v3/not-reporting/`: the prototype for setkernel-live#54 (an engineer whose VM stopped
+  reporting). `build.mjs` bundles `public/app.js` with `src/`'s overrides into one `index.html`;
+  `public/` is unchanged until Raghav picks an option.
 - `public/`: the page, v3 "Day" (`index.html`, `app.js`, `style.css`, `early.js` for `?wall`
   before the first paint), its security headers (`_headers`), `favicon.svg`, `og.png` (the share
   preview, taken by `docs/design/v3/day/built/shoot.mjs`) and `fonts/`. The design is
