@@ -131,9 +131,9 @@ export class Hub extends DurableObject {
       } catch {
         return new Response("Bad JSON", { status: 400 });
       }
-      const batch = cleanBatch(body);
-      if (!batch) return new Response("Not a batch", { status: 400 });
       const now = Date.now();
+      const batch = cleanBatch(body, Math.floor(now / 1000));
+      if (!batch) return new Response("Not a batch", { status: 400 });
       this.state = applyBatch(this.state, batch, now, today());
       if (batch.events.length) this.replay = recordReplay(this.replay, batch, now);
       if (now - this.lastSaved > 60_000) {
