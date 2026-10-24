@@ -4,7 +4,7 @@
 // public/lib/chart.js draws what this returns.
 import { CI_RECENT, ENGINEERS, POLE, REPLAY_WORK, columnOf, homeMidnight, isRequest } from "./state.js";
 import { STAGE_NAME, STARTED_FOR_S, column, seedLanes, stepLines } from "./line.js";
-import { ACTION_TEXT, ciWhere, ciWord, clock, deed, doing, isActive, sentence } from "./words.js";
+import { ACTION_TEXT, OFFLINE_AFTER_MS, age, ciWhere, ciWord, clock, dayOf as dayFrom, deed, doing, isActive, isSilent, sentence } from "./words.js";
 
 export const SPAN = 86_400; // the chart is the last 24 hours
 export const BIN = 600; // in ten-minute columns
@@ -150,18 +150,28 @@ export function poleTally(c) {
   return parts.length ? parts.join(" · ") : "nothing yet today";
 }
 
-// "Fri 16 Oct", for a stage older than yesterday
-const dayDate = (ts, timeZone) => new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone }).format(new Date(ts * 1000));
+// The lanes of the engineers whose VM stopped reporting (setkernel-live#54): [{ name, lastRun, from,
+// to }], lastRun null when the time isn't known. The hatch runs from the last run (or the window's
+// start) to now; when the office has gone quiet, to its last word, where the office's own hatch
+// takes over. Only while the VM is down: the replay keeps no states, so a past outage isn't drawn.
+export function silentLanes(D) {
+  if (!D.s.lastIngest) return [];
+  const to = (D.nowS - D.lastS) * 1000 > OFFLINE_AFTER_MS ? D.lastS : D.nowS;
+  return ENGINEERS.filter((n) => isSilent(D.s.agents?.[n]))
+    .map((name) => { const lastRun = D.s.agents[name].lastRun ?? null; return { name, lastRun, from: Math.max(D.t0, lastRun ?? D.t0), to }; })
+    .filter((l) => l.to > l.from);
+}
 
 // What the Now column says for a row: now (or at the last word), or at a scrubbed column `i`.
-// Returns a list of lines; an engineer's also carries `idle` and `state` (drawn as a shape).
+// Returns a list of lines; an engineer's also carries `idle` and `state` (drawn as a shape), and
+// `silent` when the VM has stopped reporting (drawn in the signal colour).
 const THEIR_OWN = { started: "Their own issue started at", building: "Their own issue started at", review: "Their own pull request has waited since", fixing: "Changes asked on their own pull request at" };
 export function moment(D, row, i, tz) {
   const s = D.s;
   if (!s.lastIngest) return [];
   const when = (ts) => clock(ts, tz);
   // a stage can be days old (a lane keeps its job until the next one): say which day, unless today
-  const dayOf = (ts) => (ts >= D.mid ? "" : ts >= homeMidnight(D.mid - 1) ? "yesterday " : `${dayDate(ts, tz)} `);
+  const dayOf = (ts) => dayFrom(ts, D.nowS, tz);
   const whenDay = (ts) => `${dayOf(ts)}${when(ts)}`;
   if (row.kind === "ci") {
     if (i == null) {
@@ -190,8 +200,17 @@ export function moment(D, row, i, tz) {
       per.length ? `Guardians: ${plural(guard.length, "action", "actions")} · ${per.map(([n, k]) => `${n} ${k}`).join(" · ")}` : "Guardians: nothing in 24 hours",
     ];
   }
+  const info = s.agents?.[row.id];
+  const lastRun = isSilent(info) ? info.lastRun ?? null : null;
+  if (i == null && isSilent(info)) {
+    // as of the last word, as the column's heading: "Since 14:05 · 2 h 35 min"
+    const out = ["Not reporting", lastRun ? `Since ${whenDay(lastRun)} · ${age((D.lastS ?? D.nowS) - lastRun)}` : ""];
+    out.idle = false;
+    out.state = "SILENT";
+    out.silent = true;
+    return out;
+  }
   if (i == null) {
-    const info = s.agents?.[row.id];
     const lane = s.line?.[row.id];
     const live = isActive(info);
     const col = lane?.job ? column(lane, info, D.lastS ?? D.nowS) : null;
@@ -213,6 +232,8 @@ export function moment(D, row, i, tz) {
   const b = D.bins[row.id];
   const here = inBin(D, mine, i);
   const pulse = [b.claude[i] && plural(b.claude[i], "Claude request", "Claude requests"), b.chat[i] && plural(b.chat[i], "chat post", "chat posts")].filter(Boolean).join(", ");
+  // the ten minutes after the last run of a VM that is still down
+  if (lastRun && binTime(D, i) >= lastRun) return Object.assign(["Not reporting", st ? STAGE_NAME[st] : ""], { silent: true });
   return [here.length ? `${capital(ACTION_TEXT[here.at(-1).action])}${here.length > 1 ? `, and ${here.length - 1} more` : ""}` : pulse ? capital(pulse) : "No activity", st ? STAGE_NAME[st] : ""];
 }
 
@@ -241,6 +262,7 @@ export function keyItems(D) {
   if (marks.has("merged")) out.push({ kind: "merged", words: "Merged" });
   if (marks.has("requested_changes")) out.push({ kind: "requested_changes", words: "Changes asked for" });
   if (D.ci.some((c) => c.result === "fail")) out.push({ kind: "ci-fail", words: "CI failed" });
+  if (silentLanes(D).length) out.push({ kind: "silent", words: "Not reporting" });
   return out;
 }
 

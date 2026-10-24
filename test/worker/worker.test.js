@@ -129,6 +129,16 @@ describe("ingest auth", () => {
     expect(s.agents).toEqual({ Vega: { state: "WORKING", work: "issue", repo: "setkernel-live" } });
     expect(s.lastIngest).toBeGreaterThan(0);
   });
+
+  it("carries a VM that stopped reporting to /api/state: SILENT and its last run, checked on the Worker's clock (setkernel-live#54)", async () => {
+    const lastRun = Math.floor(Date.now() / 60_000) * 60 - 20 * 60; // 20 minutes ago, on a whole minute
+    expect(await ingest(batch([], {
+      Orion: { state: "SILENT", lastRun, host: "orion-dev" },
+      Vega: { state: "SILENT", lastRun: lastRun + 3600 }, // in the future: the time goes, the state stays
+      Lyra: { state: "IDLE", lastRun },
+    }))).toBe(200);
+    expect((await state()).agents).toEqual({ Orion: { state: "SILENT", lastRun }, Vega: { state: "SILENT" }, Lyra: { state: "IDLE" } });
+  });
 });
 
 describe("size cap", () => {

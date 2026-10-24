@@ -1,7 +1,7 @@
 // What the Worker accepts from sk-obs01, and the public state it builds. Run: npm test
 import test from "node:test";
 import assert from "node:assert/strict";
-import { NEVER, applyBatch, cleanBatch, cleanEvent, emptyState, guard, hasNever } from "../src/logic.js";
+import { NEVER, applyBatch, cleanBatch, cleanEvent, emptyReplay, emptyState, guard, hasNever, view } from "../src/logic.js";
 
 test("only allowlisted events and fields survive", () => {
   assert.deepEqual(cleanEvent({ t: "msg", kind: "claude", agent: "Vega", ts: 5, host: "vega-dev", text: "x" }), { t: "msg", kind: "claude", agent: "Vega", ts: 5 });
@@ -69,6 +69,34 @@ test("a batch keeps the four engineers' states only and caps the event count", (
   assert.deepEqual(b.agents, { Vega: { state: "WORKING", work: "issue" } });
   assert.equal(cleanBatch({}), null);
   assert.equal(cleanBatch(null), null);
+});
+
+test("SILENT (setkernel-live#54): the state, and a last-run time only when it is a whole minute in the last 7 days", () => {
+  const now = Date.UTC(2026, 9, 14, 19, 40) / 1000; // 16:40 ADT
+  const ran = now - 155 * 60; // 14:05
+  const agents = (v) => cleanBatch({ events: [], agents: { Orion: v } }, now).agents;
+  assert.deepEqual(agents({ state: "SILENT", lastRun: ran }), { Orion: { state: "SILENT", lastRun: ran } });
+  assert.deepEqual(agents({ state: "SILENT" }), { Orion: { state: "SILENT" } }, "no time: the state alone");
+  // a time it can't trust is dropped, and the state kept, so the page says "Not reporting" with no time
+  for (const bad of [ran + 0.5, ran + 30, `${ran}`, now + 60, now - 7 * 86_400 - 60, null, NaN, Infinity, { at: ran }, [ran]]) {
+    assert.deepEqual(agents({ state: "SILENT", lastRun: bad }), { Orion: { state: "SILENT" } }, String(bad));
+  }
+  assert.deepEqual(agents({ state: "SILENT", lastRun: now }), { Orion: { state: "SILENT", lastRun: now } }, "now is not the future");
+  assert.deepEqual(agents({ state: "SILENT", lastRun: now - 7 * 86_400 }), { Orion: { state: "SILENT", lastRun: now - 7 * 86_400 } }, "7 days is kept");
+  // extra fields dropped; lastRun on any other state dropped; a never field still drops the agent
+  assert.deepEqual(agents({ state: "SILENT", lastRun: ran, host: "orion-dev", value: 1_760_000_000.5, task: "x" }), { Orion: { state: "SILENT", lastRun: ran } });
+  for (const state of ["WORKING", "REVIEW", "DISCUSS", "IDLE", "PAUSED"]) assert.deepEqual(agents({ state, lastRun: ran }), { Orion: { state } }, state);
+  assert.deepEqual(agents({ state: "SILENT", lastRun: ran, environment: "prod", host: { login: "x" } }), { Orion: { state: "SILENT", lastRun: ran } }, "never fields left behind");
+  assert.equal(guard({ state: "SILENT", lastRun: ran, environment: "prod" }), null, "clean output carrying one is dropped whole");
+  assert.deepEqual(agents({ state: "OFFLINE", lastRun: ran }), {}, "not OFFLINE: that is the whole office");
+  // the same rule for an agent event, and Polaris and its Claudes still have no state
+  assert.deepEqual(cleanEvent({ t: "agent", agent: "Orion", state: "SILENT", lastRun: ran, ts: now }, now), { t: "agent", agent: "Orion", state: "SILENT", lastRun: ran, ts: now });
+  assert.deepEqual(cleanEvent({ t: "agent", agent: "Orion", state: "SILENT", lastRun: now + 600 }, now), { t: "agent", agent: "Orion", state: "SILENT" });
+  assert.equal(cleanEvent({ t: "agent", agent: "Polaris", state: "SILENT", lastRun: ran }, now), null);
+  assert.deepEqual(cleanBatch({ events: [], agents: { Kochab: { state: "SILENT", lastRun: ran } } }, now).agents, {});
+  // the state reaches the page's view as it is
+  const s = applyBatch(emptyState("2026-10-14"), cleanBatch({ events: [], agents: { Orion: { state: "SILENT", lastRun: ran } } }, now), now * 1000, "2026-10-14");
+  assert.deepEqual(view(s, emptyReplay(), now * 1000).agents, { Orion: { state: "SILENT", lastRun: ran } });
 });
 
 test("counts and feed, reset each day", () => {

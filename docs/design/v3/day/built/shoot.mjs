@@ -60,6 +60,12 @@ export const SHOTS = [
   ["day-wall-live-1440x810.png", 1440, 810, "?demo&wall"],
   ["day-wall-quiet-1920x1080.png", 1920, 1080, "?demo=quiet&wall"],
   ["day-wall-live-1280x1024.png", 1280, 1024, "?demo&wall"],
+  // ?demo=down (setkernel-live#54): Orion's VM stopped at 14:05, option C; scrubbed to 15:20
+  ["day-down-1440x900.png", 1440, 900, "?demo=down"],
+  ["day-down-scrub-1440x900.png", 1440, 900, "?demo=down", "scrub-down"],
+  ["day-down-375x812.png", 375, 812, "?demo=down"],
+  ["day-down-375-full.png", 375, 812, "?demo=down", "full"],
+  ["day-wall-down-1920x1080.png", 1920, 1080, "?demo=down&wall"],
   // the share preview (public/og.png): the wide page at 1440 x 756, scaled to 1200 x 630
   ["og.png", 1440, 756, "?demo", "og"],
 ];
@@ -78,10 +84,11 @@ for (const [name, width, height, query, extra] of SHOTS) {
   await p.goto(`${origin}/${query}`);
   await p.waitForFunction(() => document.querySelector("#plot svg") && document.fonts.status === "loaded");
   await p.waitForTimeout(300);
-  if (extra === "scrub") {
-    // keyboard: focus the chart, back to 10:20 (from the 16:30 column, 37 steps of ten minutes)
+  if (extra?.startsWith("scrub")) {
+    // keyboard: focus the chart, back from the 16:30 column in steps of ten minutes: 37 to 10:20,
+    // or 7 to 15:20, after Orion's stop in ?demo=down
     await p.focus("#plot svg");
-    for (let i = 0; i < 37; i++) await p.keyboard.press("ArrowLeft");
+    for (let i = 0; i < (extra === "scrub" ? 37 : 7); i++) await p.keyboard.press("ArrowLeft");
   }
   const fit = await p.evaluate(() => {
     const d = document.getElementById("day"), r = d.getBoundingClientRect();

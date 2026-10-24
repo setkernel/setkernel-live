@@ -41,8 +41,8 @@ a laptop.
 - `docs/design/v4/showcase/`: the v4 prototype (one `index.html`, its `build.mjs`, `shoot.mjs`,
   `evidence.json` and screenshots). Nothing in `public/` comes from it until Raghav picks a direction.
 - `docs/design/v3/not-reporting/`: the prototype for setkernel-live#54 (an engineer whose VM stopped
-  reporting). `build.mjs` bundles `public/app.js` with `src/`'s overrides into one `index.html`;
-  `public/` is unchanged until Raghav picks an option.
+  reporting). `build.mjs` bundles `public/app.js` with `src/`'s overrides into one `index.html`.
+  Raghav picked option C; `public/` builds it (`SILENT`, `?demo=down`), and the prototype stays as it was.
 - `public/`: the page, v3 "Day" (`index.html`, `app.js`, `style.css`, `early.js` for `?wall`
   before the first paint), its security headers (`_headers`), `favicon.svg`, `og.png` (the share
   preview, taken by `docs/design/v3/day/built/shoot.mjs`) and `fonts/`. The design is
@@ -76,7 +76,7 @@ a laptop.
   stays under 128 KiB even at its worst (`test/state.test.mjs`); keep that test passing if you add a column.
 - "Today" is the Halifax day: the Worker passes `homeDay()` as `applyBatch`'s day key, so the counts
   reset at midnight in Halifax (AST or ADT), and the page shows that midnight on the visitor's clock.
-- `?demo` data (and `?demo=quiet|offline|waiting`) must pass `cleanEvent` unchanged
+- `?demo` data (and `?demo=quiet|offline|down|waiting`) must pass `cleanEvent` unchanged
   (`test/page-logic.test.mjs`). If the allowlist changes, the demo changes with it. The demo names
   only a real public repo.
 - Text colours are checked for contrast in `test/page.test.mjs`, on the page (`:root`) and on the

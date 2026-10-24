@@ -223,6 +223,24 @@ export function busyDay(nowS, seed = 17) {
   return { batches, sim };
 }
 
+// ?demo=down (setkernel-live#54): the busy day with Orion's VM stopped 2 h 35 min before `nowS`
+// (at 16:40, his last run ended at 14:05). Nothing more comes from his VM: no Claude requests, chat
+// posts or GitHub actions of his own. A merge of his pull request still arrives from GitHub. He
+// reads Idle for the first 15 minutes, as sk-obs01 sends it (setkernel/hq#396), then SILENT with
+// lastRun, his last run's end on a whole minute. `sim` keeps going for the live demo, and he stays
+// stopped.
+export const DOWN = { name: "Orion", ago: 155 * 60, after: 15 * 60 };
+export function downDay(nowS, seed = 17) {
+  const from = Math.floor((nowS - DOWN.ago) / 60) * 60;
+  const stop = (b) => {
+    if (b.at <= from) return b;
+    const events = b.events.filter((e) => !(e.agent === DOWN.name && (e.ts ?? b.at) >= from && e.action !== "merged"));
+    return { ...b, events, agents: { ...b.agents, [DOWN.name]: b.at - from >= DOWN.after ? { state: "SILENT", lastRun: from } : { state: "IDLE" } } };
+  };
+  const { batches, sim } = busyDay(nowS, seed);
+  return { batches: batches.map(stop), sim: { advance: (toS) => stop({ at: toS, ...sim.advance(toS) }) }, from };
+}
+
 // The quiet day, written by hand (docs/design/v3/day): nothing is added to fill the lanes. One job
 // today: Polaris asks, Orion builds it, CI fails, Orion pushes fixes, Lyra approves, Polaris
 // merges after lunch. Rigel's job from yesterday evening was approved by Orion and merged before

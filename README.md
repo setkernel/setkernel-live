@@ -22,9 +22,13 @@ top, and one chart under it.
   anyone who wants the detail.
 - **Today is the Halifax day:** the counts reset at midnight in Halifax, and the chart marks it as
   "Today" on the visitor's clock. Times are in the visitor's own zone.
+- **An engineer whose VM stopped reporting** (sk-obs01 sends `SILENT`, setkernel-live#54) leads the
+  sentence ("Orion stopped reporting at 14:05."), reads "Not reporting" in red in the Now column,
+  and their lane is hatched red from the last run. When the VM comes back, the hatch goes.
 
 - `?demo`: a sample day (labelled as such), so the page can be shown any time. `?demo=quiet` is a
-  quiet day, `?demo=offline` the office gone quiet 47 minutes ago, `?demo=waiting` nothing yet.
+  quiet day, `?demo=offline` the office gone quiet 47 minutes ago, `?demo=down` the busy day with
+  Orion's VM stopped 2 h 35 min ago, `?demo=waiting` nothing yet.
 - `?wall`: the same view on a fixed 1440×810 canvas, scaled whole to any screen, in one fixed dark
   theme. It fills a 16:9 screen edge to edge and never scrolls or clips on any other.
 - Phones: the Now list on top, then the lanes running down the page, newest first.
