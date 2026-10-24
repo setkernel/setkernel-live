@@ -205,4 +205,48 @@ deliveries (github.com/organizations/setkernel/settings/hooks) and redeliver any
 4. After setkernel-cloudflare#54 is applied, put its audience tag in `QUEUE_AUD` in
    `wrangler.jsonc` (a PR) and deploy again.
 
+## When updates stop
+
+A Cron Trigger asks the Durable Object once a minute when the last batch arrived. After more than
+5 minutes without one, the Worker posts to Buzz #infra; when batches come back, it posts once more
+with how long they were gone. One alert per outage. A post Buzz doesn't take is tried again every
+minute (so, rarely, a post that timed out after Buzz stored it appears twice). Buzz runs in the
+office, so during a full office outage the alert can't get through; the recovery message is then
+the first report, and says how long it lasted.
+
+- **Mute** for planned maintenance: set `ALERTS_MUTED` to `"true"` in `wrangler.jsonc` and deploy;
+  set it back to `"false"` afterwards. While muted no alert is posted, and an outage that ends
+  inside the mute is never reported. One still going when the mute ends is alerted then. The
+  recovery for an alert posted before the mute still goes out.
+- **Identity:** the Worker posts as its own Buzz member, "live.setkernel.com watcher". Its key is the
+  Worker secret `BUZZ_PRIVATE_KEY`, which the deploy workflow brings from Infisical (project
+  `setkernel-live`, prod). It is never in this repo or in logs. The relay and the channel are
+  plain vars in `wrangler.jsonc`.
+
+### Owner: create the identity (once)
+
+The deploy fails until `BUZZ_PRIVATE_KEY` is in Infisical, so do this before the next deploy. It
+is the same procedure as the Grafana alerts identity in setkernel/hq `observability/README.md`;
+the private details (hosts, logins) are there, not in this public repo. Only the public key is
+ever printed.
+
+1. On sk-obs01, make the key in a new private file with hq's `buzz/agent-identity.sh`, with
+   `SK_BUZZ_CONF` set to that file and `SK_BUZZ_CHANNEL` to the #infra channel id from
+   `wrangler.jsonc`. It prints only the public key (hex).
+2. Make that public key a relay member (`buzzctl add-member <hex>`, hq `buzz/README.md`).
+3. With that file's variables loaded (`set -a; . <file>; set +a`), name the identity
+   (`buzz users set-profile --name "live.setkernel.com watcher"`) and join #infra
+   (`buzz channels join --channel "$BUZZ_CHANNEL"`).
+4. Put the key in Infisical as `BUZZ_PRIVATE_KEY` (project `setkernel-live`, environment prod,
+   path `/`) by piping it, never through a clipboard or the web UI. From setkernel-cloudflare:
+   `ssh <obs host> "sed -n 's/^BUZZ_PRIVATE_KEY=//p' <file>" | scripts/infisical-put.py setkernel-live BUZZ_PRIVATE_KEY prod`
+   (it prints only the key name, the project and the HTTP status; see "Credentials for a repo" in
+   setkernel/hq `docs/repo-standard.md`).
+5. `shred -u <file>`, so Infisical holds the only copy.
+6. Run the Deploy workflow. To check the whole path, stop sk-obs01's publisher for 6 minutes: an
+   alert should arrive in #infra, and a recovery message within a minute of restarting it.
+
+To retire the identity: remove its relay member, delete the Infisical secret, and in one PR take
+the cron out of `wrangler.jsonc` and `BUZZ_PRIVATE_KEY` out of the deploy workflow.
+
 Tracking: setkernel/hq#105.

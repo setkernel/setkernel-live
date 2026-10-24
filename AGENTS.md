@@ -16,7 +16,7 @@ Public repo: everything here is visible to anyone.
 # test:     npm test                 (node --test: allowlist, state, the Halifax day and replay buffer,
 #                                    the line's columns, Access token check, GitHub receiver, page wording/
 #                                    headline/demo/replay, Day's lanes/Now column/key/scrubbing/fitWall,
-#                                    page hosts, fonts and contrast, the smoke check, the showcase's
+#                                    Buzz alert, page hosts, fonts and contrast, the smoke check, the showcase's
 #                                    publisher, and repo names against GitHub's public list, live)
 # worker:   npm run test:worker      (vitest in workerd: the real Worker and Hub, see test/worker/)
 # lint:     npm run check            (node --check on every script)
@@ -36,6 +36,8 @@ a laptop.
 - `src/logic.js`: the allowlist (pure, tested); re-exports the state from `public/lib/state.js`.
 - `src/access.js`: checks the Cloudflare Access token on `/ingest` and `/github/queue` (pure, tested).
 - `src/github.js`: the GitHub Actions webhook check, the fields it keeps, and the pull queue (pure, tested).
+- `src/watch.js`: when to post "updates stopped" and "updates resumed" to Buzz (pure, tested).
+- `src/buzz.js`: signs and posts a Buzz message as the Worker's own identity (tested).
 - `src/evidence.js`: the v4 showcase's publisher (setkernel-live#52), a public pull request's evidence and
   the team's numbers, as an allowlist (pure, tested). Only the v4 prototype uses it so far.
 - `docs/design/v4/showcase/`: the v4 prototype (one `index.html`, its `build.mjs`, `shoot.mjs`,
@@ -88,6 +90,8 @@ a laptop.
 - The page builds everything with `textContent`, never `innerHTML`; keep it that way. The CSP in
   `public/_headers` allows only same-origin scripts, styles and fonts; the fonts are self-hosted in
   `public/fonts/` (SIL OFL, licences beside them). Never add a third-party host.
+- `BUZZ_PRIVATE_KEY` is a Worker secret from Infisical (README, "When updates stop"); never put it
+  in `wrangler.jsonc`, a log line or an error message.
 - The Durable Object migration tag `v1` creates `Hub`; never edit an applied migration, add a new tag.
 - `test/private-repos.test.mjs` asks the GitHub API for setkernel's public repos. With `LIVE_REPO_CHECK=1`
   (set only in `ci.yml`) a failed request fails it; elsewhere, including the deploy's re-gate (no
