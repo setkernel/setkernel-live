@@ -32,11 +32,13 @@ const DOING = {
   review: "reviewing a pull request",
   discussion: "in a design discussion",
 };
-const STATE_WORD = { WORKING: "Working", REVIEW: "Reviewing", DISCUSS: "Discussing", PAUSED: "Paused", IDLE: "Idle" };
+// SILENT (setkernel-live#54): the engineer's VM stopped reporting, with lastRun when its last run ended.
+const STATE_WORD = { WORKING: "Working", REVIEW: "Reviewing", DISCUSS: "Discussing", PAUSED: "Paused", IDLE: "Idle", SILENT: "Not reporting" };
 const ACTIVE = new Set(["WORKING", "REVIEW", "DISCUSS"]);
 export const OFFLINE_AFTER_MS = 120_000;
 
 export const isActive = (info) => ACTIVE.has(info?.state);
+export const isSilent = (info) => info?.state === "SILENT";
 
 // Times are shown in the visitor's own time zone. Every function that prints a time takes an
 // optional IANA zone (tests pin "UTC" or "America/Halifax"); left out, the browser's zone is used.
@@ -54,6 +56,23 @@ export function clock(t, timeZone) {
 export function zoneName(t, timeZone, locale) {
   const f = format(`zone ${timeZone} ${locale}`, () => new Intl.DateTimeFormat(locale, { timeZoneName: "short", timeZone }));
   return f.formatToParts(new Date(toMs(t))).find((p) => p.type === "timeZoneName")?.value ?? "";
+}
+
+// When a time was, by the Halifax day: "" today, "yesterday ", or "Fri 16 Oct " before that (nowS
+// in seconds, ts in seconds). whenDay puts the clock after it: "14:05", "yesterday 21:40".
+const dayDate = (ts, timeZone) => format(`date ${timeZone}`, () => new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone })).format(new Date(ts * 1000));
+export function dayOf(ts, nowS, timeZone) {
+  const mid = homeMidnight(nowS);
+  return ts >= mid ? "" : ts >= homeMidnight(mid - 1) ? "yesterday " : `${dayDate(ts, timeZone)} `;
+}
+export const whenDay = (ts, nowS, timeZone) => `${dayOf(ts, nowS, timeZone)}${clock(ts, timeZone)}`;
+
+// How long, in whole minutes -> "35 min", "2 h 35 min", "3 h", "1 day", "3 days".
+export function age(s) {
+  const m = Math.max(0, Math.floor(s / 60)), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  if (h < 1) return `${m} min`;
+  if (h < 24) return m % 60 ? `${h} h ${m % 60} min` : `${h} h`;
+  return `${d} ${d === 1 ? "day" : "days"}`;
 }
 
 const localDay = (ms, timeZone) => format(`day ${timeZone}`, () => new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone })).format(new Date(ms));
@@ -77,8 +96,9 @@ export function freshness(lastIngest, now = Date.now()) {
   return `updated ${Math.floor(s / 3600)} h ago`;
 }
 
-// An agent's state -> "working on an issue in setkernel-live" (or "idle", "paused").
+// An agent's state -> "working on an issue in setkernel-live" (or "idle", "paused", "not reporting").
 export function doing(info) {
+  if (isSilent(info)) return "not reporting";
   if (!isActive(info)) return info?.state === "PAUSED" ? "paused" : "idle";
   const what = DOING[info.work] || (info.state === "REVIEW" ? DOING.review : info.state === "DISCUSS" ? DOING.discussion : "working");
   return info.repo ? `${what} in ${info.repo}` : what;
@@ -121,7 +141,7 @@ export function ciSummary(c) {
 // the first that fits in three lines (fitHeadline).
 
 // Each state as a glyph too, so the colour of a ring is never the only way to tell.
-export const GLYPH = { WORKING: "●", REVIEW: "◎", DISCUSS: "⋯", IDLE: "○", PAUSED: "‖" };
+export const GLYPH = { WORKING: "●", REVIEW: "◎", DISCUSS: "⋯", IDLE: "○", PAUSED: "‖", SILENT: "◌" };
 export const STATE_WORDS = STATE_WORD;
 
 // "Vega", "Vega and Rigel", "Vega, Rigel and Lyra", as parts.
@@ -232,7 +252,29 @@ export function headline({ agents = {}, seen = {}, feed = [], lastIngest = 0, no
   }
   const order = [...names].sort((a, b) => (seen[b] ?? 0) - (seen[a] ?? 0));
   const mood = names.some((n) => isActive(agents[n])) ? "live" : "quiet";
-  return { forms: headlineForms(agents, order, targets), latest, mood };
+  // the engineers whose VM stopped reporting come first, in their own sentence (setkernel-live#54)
+  const down = order.filter((n) => isSilent(agents[n]));
+  if (!down.length) return { forms: headlineForms(agents, order, targets), latest, mood };
+  const others = order.filter((n) => !down.includes(n));
+  const said = silentSentence(down, agents, Math.floor(toMs(now) / 1000), timeZone);
+  const forms = (others.length ? headlineForms(agents, others, targets) : [[]]).map((f) => {
+    const own = plain(f) === "The engineers are between tasks." ? ["The other engineers are between tasks."] : f;
+    return merge([...said, ...(own.length ? [" ", ...own] : [])]);
+  });
+  return { forms, latest, mood };
+}
+
+// "Orion stopped reporting at 14:05.", "Vega stopped reporting at 04:31 and Orion at 04:48.", each
+// with its own time; "Orion is not reporting." when a time isn't known.
+function silentSentence(down, agents, nowS, timeZone) {
+  const t = (n) => (agents[n].lastRun ? whenDay(agents[n].lastRun, nowS, timeZone) : "");
+  if (down.some((n) => !t(n))) return [...nameList(down), down.length > 1 ? " are not reporting." : " is not reporting."];
+  const out = [];
+  down.forEach((n, i) => {
+    if (i) out.push(i === down.length - 1 ? " and " : ", ");
+    out.push({ name: n }, `${i ? " at " : " stopped reporting at "}${t(n)}`);
+  });
+  return [...out, "."];
 }
 
 // The words beside a star, and on its card: { glyph, state: "Working", words: "working on an

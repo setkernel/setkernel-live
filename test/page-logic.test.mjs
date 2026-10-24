@@ -4,8 +4,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { COLUMNS, POLE, cleanBatch, cleanEvent, emptyReplay, emptyState, recordReplay, applyBatch } from "../src/logic.js";
 import { ENGINEERS } from "../src/logic.js";
-import { STAR_NOTE, ciSummary, ciWhere, ciWord, clock, createAnnouncer, deed, doing, fitHeadline, freshness, headline, headlineForms, plain, reviewTarget, sentence, stateWords, summarise, tally, todaySince, whereWork, zoneName } from "../public/lib/words.js";
-import { busyDay, createDemo, quietDay, runDay, seeded, slowDemo } from "../public/lib/demo.js";
+import { STAR_NOTE, age, ciSummary, ciWhere, ciWord, clock, createAnnouncer, deed, doing, fitHeadline, freshness, headline, headlineForms, plain, reviewTarget, sentence, stateWords, summarise, tally, todaySince, whenDay, whereWork, zoneName } from "../public/lib/words.js";
+import { DOWN, busyDay, createDemo, downDay, quietDay, runDay, seeded, slowDemo } from "../public/lib/demo.js";
+import { view } from "../public/lib/state.js";
 import { eventsBefore, plan } from "../public/lib/replay.js";
 
 const T0 = 490_000 * 3600; // seconds; 2025-11-23 16:00 UTC
@@ -57,6 +58,64 @@ test("headline block: most recently active first, the Latest line, and waiting o
   assert.equal(headline({ agents: { Vega: { state: "IDLE" } }, lastIngest: now, now, names: ENGINEERS }).mood, "quiet");
   assert.equal(plain(headline({ lastIngest: now - 10 * 60_000, now, timeZone: "UTC" }).forms[0]), "No word from the office since 15:50.");
   assert.equal(headline({ lastIngest: 0, now }).mood, "waiting");
+});
+
+// setkernel-live#54: an engineer whose VM stopped reporting, on the design's clock
+const NOW_D = Date.UTC(2026, 9, 14, 19, 40) / 1000; // Wednesday 14 October 2026, 16:40 ADT
+const HFX = "America/Halifax";
+
+test("SILENT on the page: the allowlist keeps the state and a trusted time only, as the Worker's suite checks", () => {
+  const ran = NOW_D - 155 * 60;
+  const agents = (v) => cleanBatch({ events: [], agents: { Orion: v } }, NOW_D).agents.Orion;
+  assert.deepEqual(agents({ state: "SILENT", lastRun: ran }), { state: "SILENT", lastRun: ran });
+  assert.deepEqual(agents({ state: "SILENT" }), { state: "SILENT" });
+  for (const bad of [ran + 1.5, ran + 30, NOW_D + 60, NOW_D - 8 * 86_400, "14:05"]) assert.deepEqual(agents({ state: "SILENT", lastRun: bad }), { state: "SILENT" }, String(bad));
+  assert.deepEqual(agents({ state: "SILENT", lastRun: ran, host: "orion-dev", sk_agent_last_run_end_seconds: ran + 17 }), { state: "SILENT", lastRun: ran }, "extra fields dropped");
+  assert.deepEqual(agents({ state: "IDLE", lastRun: ran }), { state: "IDLE" }, "lastRun on another state dropped");
+  // its words: "Not reporting", a glyph of its own, and never active
+  assert.deepEqual(stateWords({ state: "SILENT", lastRun: ran }), { glyph: "◌", state: "Not reporting", words: "not reporting", repo: "" });
+  assert.equal(doing({ state: "SILENT" }), "not reporting");
+});
+
+test("Day's time and how long: today, yesterday or the date, by the Halifax day; minutes, hours, days", () => {
+  assert.equal(whenDay(NOW_D - 155 * 60, NOW_D, HFX), "14:05");
+  assert.equal(whenDay(NOW_D - 19 * 3600, NOW_D, HFX), "yesterday 21:40");
+  assert.equal(whenDay(Date.UTC(2026, 9, 9, 7, 10) / 1000, NOW_D, HFX), "Fri 9 Oct 04:10");
+  assert.deepEqual([age(59), age(35 * 60), age(155 * 60), age(3 * 3600), age(25 * 3600), age(80 * 3600)], ["0 min", "35 min", "2 h 35 min", "3 h", "1 day", "3 days"]);
+});
+
+test("headline, option C: the engineers who stopped reporting first, each with their own time, then the others", () => {
+  const now = NOW_D * 1000;
+  const h = (agents, extra = {}) => headline({ agents, lastIngest: now - 5000, now, timeZone: HFX, names: ENGINEERS, ...extra });
+  const busy = { Vega: { state: "WORKING", work: "changes" }, Rigel: { state: "WORKING", work: "issue" }, Lyra: { state: "WORKING", work: "issue" } };
+  const one = h({ ...busy, Orion: { state: "SILENT", lastRun: NOW_D - 155 * 60 } });
+  assert.deepEqual(one.forms.map(plain), [
+    "Orion stopped reporting at 14:05. Vega is addressing review feedback and Rigel and Lyra are working on issues.",
+    "Orion stopped reporting at 14:05. Vega, Rigel and Lyra are working.",
+    "Orion stopped reporting at 14:05. Three engineers are at work: Vega, Rigel and Lyra.",
+  ]);
+  assert.deepEqual(one.forms[0].slice(0, 2), [{ name: "Orion" }, " stopped reporting at 14:05. "], "the name is its own part");
+  assert.equal(one.mood, "live");
+  // two: one sentence, each with its own time, the most recently seen first
+  const idle = { Rigel: { state: "IDLE" }, Lyra: { state: "IDLE" } };
+  const two = h({ ...idle, Vega: { state: "SILENT", lastRun: NOW_D - 19 * 3600 }, Orion: { state: "SILENT", lastRun: NOW_D - 155 * 60 } }, { seen: { Orion: NOW_D - 9400, Vega: NOW_D - 70_000 } });
+  assert.deepEqual(two.forms.map(plain), [
+    "Orion stopped reporting at 14:05 and Vega at yesterday 21:40. Rigel and Lyra are idle.",
+    "Orion stopped reporting at 14:05 and Vega at yesterday 21:40. Rigel and Lyra are idle.",
+    "Orion stopped reporting at 14:05 and Vega at yesterday 21:40. The other engineers are between tasks.",
+  ]);
+  assert.equal(two.mood, "quiet");
+  // no time: "is not reporting"; two with one time missing say it together
+  assert.equal(plain(h({ ...busy, Orion: { state: "SILENT" } }).forms[2]), "Orion is not reporting. Three engineers are at work: Vega, Rigel and Lyra.");
+  assert.equal(plain(h({ ...idle, Vega: { state: "SILENT" }, Orion: { state: "SILENT", lastRun: NOW_D - 600 } }).forms[0]), "Vega and Orion are not reporting. Rigel and Lyra are idle.");
+  const all = Object.fromEntries(ENGINEERS.map((n) => [n, { state: "SILENT" }]));
+  assert.deepEqual(h(all).forms.map(plain), Array(1).fill("Vega, Rigel, Lyra and Orion are not reporting."));
+  // offline and waiting say only what they say today
+  const silent = { ...busy, Orion: { state: "SILENT", lastRun: NOW_D - 155 * 60 } };
+  assert.deepEqual(headline({ agents: silent, lastIngest: now - 10 * 60_000, now, timeZone: HFX, names: ENGINEERS }).forms.map(plain), ["No word from the office since 16:30."]);
+  assert.deepEqual(headline({ agents: silent, lastIngest: 0, now, names: ENGINEERS }).forms.map(plain), ["Waiting for the office to report in."]);
+  // nobody down: as today
+  assert.deepEqual(h({ ...busy, Orion: { state: "IDLE" } }).forms.map(plain)[2], "Three engineers are at work: Vega, Rigel and Lyra.");
 });
 
 test("labels, tallies and feed sentences", () => {
@@ -285,6 +344,37 @@ test("the Day demo: the busy day is the simulation at a quarter speed, and every
   const fast = createDemo(17, 1_800_000_000).advance(1_800_000_000 + 3600).events.filter((e) => e.kind === "github");
   const slow = slowDemo(17, 0).advance(4 * 3600).events.filter((e) => e.kind === "github");
   assert.deepEqual(slow.map((e) => [e.agent, e.action, e.ts]), fast.map((e) => [e.agent, e.action, (e.ts - 1_800_000_000) * 4]));
+});
+
+test("?demo=down: the busy day with Orion stopped 2 h 35 min ago; it passes the allowlist unchanged", () => {
+  const now = NOW_D;
+  const { batches, sim, from } = downDay(now);
+  const busy = busyDay(now).batches;
+  assert.equal(from, now - 155 * 60, "14:05, on a whole minute");
+  for (const b of batches) {
+    for (const e of b.events) assert.deepEqual(cleanEvent(e, b.at), e, JSON.stringify(e));
+    assert.deepEqual(cleanBatch({ events: [], agents: b.agents }, b.at).agents, b.agents);
+  }
+  // his own events end at the stop (a merge of his pull request still arrives from GitHub, below)
+  const after = batches.flatMap((b) => b.events).filter((e) => e.agent === DOWN.name && e.ts >= from);
+  assert.ok(after.every((e) => e.action === "merged"), JSON.stringify(after));
+  // Idle for the first 15 minutes, as sk-obs01 sends it, then SILENT with his last run
+  for (const b of batches.filter((b) => b.at > from)) {
+    assert.deepEqual(b.agents.Orion, b.at - from >= 15 * 60 ? { state: "SILENT", lastRun: from } : { state: "IDLE" }, String(b.at - from));
+  }
+  // everything else is the busy day's
+  const others = (list) => list.map((b) => ({ ...b, events: b.events.filter((e) => e.agent !== DOWN.name), agents: { ...b.agents, Orion: undefined } }));
+  assert.deepEqual(others(batches), others(busy));
+  assert.deepEqual(batches.filter((b) => b.at <= from), busy.filter((b) => b.at <= from), "the same up to the stop");
+  // state.js carries the state and its time through to the page as it is
+  const { state, replay } = runDay(batches);
+  assert.deepEqual(view(state, replay, now * 1000).agents.Orion, { state: "SILENT", lastRun: from });
+  // the live demo keeps going, and he stays stopped; his merges still come from GitHub
+  const next = sim.advance(now + 6 * 3600);
+  assert.deepEqual(next.agents.Orion, { state: "SILENT", lastRun: from });
+  const his = next.events.filter((e) => e.agent === DOWN.name);
+  assert.ok(his.length > 0 && his.every((e) => e.action === "merged"), JSON.stringify(his));
+  for (const e of next.events) assert.deepEqual(cleanEvent(e, now + 6 * 3600), e);
 });
 
 test("the Day demo: the quiet day is the design's, nothing added, and passes the allowlist", () => {

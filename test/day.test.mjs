@@ -4,9 +4,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ENGINEERS, cleanEvent } from "../src/logic.js";
-import { BIN, BINS, activeBins, chartWindow, keyItems, moment, momentTitle, poleTally, prep, readout, scrubKey, tableRows } from "../public/lib/day.js";
+import { BIN, BINS, activeBins, chartWindow, keyItems, moment, momentTitle, poleTally, prep, readout, scrubKey, silentLanes, tableRows } from "../public/lib/day.js";
 import { GRID, WALL, fitWall, hourRules, labelFits, pageMode } from "../public/lib/layout.js";
-import { busyDay, quietDay, runDay } from "../public/lib/demo.js";
+import { busyDay, downDay, quietDay, runDay } from "../public/lib/demo.js";
 
 const TZ = "America/Halifax";
 const NOW = Date.UTC(2026, 9, 14, 19, 40) / 1000; // Wednesday 14 October 2026, 16:40 ADT
@@ -204,6 +204,77 @@ test("scrubbing keys: ten minutes, an hour, three hours, the ends, the next acti
   // the phone's chart runs down the page, newest at the top: up is later
   assert.equal(scrubKey("ArrowUp", false, 50, D, true), 51);
   assert.equal(scrubKey("ArrowDown", false, 50, D, true), 49);
+});
+
+// setkernel-live#54, option C: an engineer whose VM stopped reporting
+const silentDay = (lastRun, until = NOW) => day([
+  gh("Orion", "picked_up", adt(9, 12), "setkernel-live"),
+  claude("Orion", adt(9, 13)),
+  gh("Orion", "opened_pr", adt(10, 31), "setkernel-live"),
+  claude("Orion", adt(13, 50)),
+  gh("Lyra", "picked_up", adt(15, 0)),
+  claude("Lyra", adt(15, 1)),
+], { ...idle(), Lyra: { state: "WORKING", work: "issue" }, Orion: { state: "SILENT", ...(lastRun ? { lastRun } : {}) } }, until);
+
+test("not reporting, the Now column: \"Not reporting\", then since when and how long, in Day's time format", () => {
+  const D = silentDay(adt(14, 5));
+  const now = moment(D, { id: "Orion", kind: "eng" }, null, TZ);
+  assert.deepEqual([...now], ["Not reporting", "Since 14:05 · 2 h 35 min"]);
+  assert.deepEqual([now.idle, now.state, now.silent], [false, "SILENT", true], "the dotted ring, in the signal colour");
+  assert.deepEqual([...moment(silentDay(NOW - 19 * 3600), { id: "Orion", kind: "eng" }, null, TZ)], ["Not reporting", "Since yesterday 21:40 · 19 h"]);
+  assert.deepEqual([...moment(silentDay(Date.UTC(2026, 9, 9, 7, 10) / 1000), { id: "Orion", kind: "eng" }, null, TZ)], ["Not reporting", "Since Fri 9 Oct 04:10 · 5 days"]);
+  assert.deepEqual([...moment(silentDay(null), { id: "Orion", kind: "eng" }, null, TZ)], ["Not reporting", ""], "no time: no second line");
+  // the other engineers are as they were
+  const plain = silentDay(null);
+  const ref = day([gh("Lyra", "picked_up", adt(15, 0)), claude("Lyra", adt(15, 1))], { ...idle(), Lyra: { state: "WORKING", work: "issue" } });
+  for (const n of ["Vega", "Rigel", "Lyra"]) {
+    const [a, b] = [moment(plain, { id: n, kind: "eng" }, null, TZ), moment(ref, { id: n, kind: "eng" }, null, TZ)];
+    assert.deepEqual([[...a], a.idle, a.state, a.silent], [[...b], b.idle, b.state, undefined], n);
+  }
+  assert.equal(moment(D, { id: "Lyra", kind: "eng" }, null, TZ)[0], "Working on an issue");
+});
+
+test("not reporting, the lane: hatched from the last run to now, or to the office's last word; the key only when drawn", () => {
+  const D = silentDay(adt(14, 5));
+  assert.deepEqual(silentLanes(D), [{ name: "Orion", lastRun: adt(14, 5), from: adt(14, 5), to: NOW }]);
+  assert.deepEqual(silentLanes(silentDay(null)), [{ name: "Orion", lastRun: null, from: D.t0, to: NOW }], "no time: the whole window");
+  assert.equal(silentLanes(silentDay(NOW - 30 * 3600))[0].from, D.t0, "a stop before the window: from its start");
+  assert.deepEqual(keyItems(D).at(-1), { kind: "silent", words: "Not reporting" });
+  // nobody down, or nothing heard yet: no hatch and no key entry
+  const none = day([gh("Lyra", "picked_up", adt(15, 0))]);
+  assert.deepEqual(silentLanes(none), []);
+  assert.ok(!keyItems(none).some((k) => k.kind === "silent"));
+  assert.deepEqual(silentLanes(prep({ agents: { Orion: { state: "SILENT", lastRun: adt(14, 5) } } }, null, NOW)), []);
+  // the office gone quiet at 16:00: the hatch stops at its last word; the "Last word" column shows him as he was then
+  const quiet = silentDay(adt(14, 5), adt(16, 0));
+  const late = prep(quiet.s, { pulses: [], work: quiet.work }, NOW);
+  assert.deepEqual(silentLanes(late), [{ name: "Orion", lastRun: adt(14, 5), from: adt(14, 5), to: adt(16, 0) }]);
+  assert.equal(momentTitle(late, null, true, TZ), "Last word, 16:00");
+  assert.deepEqual([...moment(late, { id: "Orion", kind: "eng" }, null, TZ)], ["Not reporting", "Since 14:05 · 1 h 55 min"]);
+});
+
+test("not reporting, scrubbed: the ten-minute columns after the last run say so, and so does the readout", () => {
+  const D = silentDay(adt(14, 5));
+  const col = (h, m) => (adt(h, m) - D.t0) / BIN;
+  const at = (h, m) => moment(D, { id: "Orion", kind: "eng" }, col(h, m), TZ);
+  assert.deepEqual([...at(14, 10)], ["Not reporting", "In review"]);
+  assert.equal(at(14, 10).silent, true);
+  assert.deepEqual([...at(16, 30)], ["Not reporting", "In review"]);
+  assert.deepEqual([...at(14, 0)], ["No activity", "In review"], "the column holding the last run is as it was");
+  assert.deepEqual([...at(13, 50)], ["1 Claude request", "In review"]);
+  assert.equal(readout(D, col(15, 0), TZ), "15:00 to 15:10. Lyra: Building, started on an issue. Orion: In review, not reporting.");
+  // no time: the columns are as they were
+  assert.deepEqual([...moment(silentDay(null), { id: "Orion", kind: "eng" }, col(15, 0), TZ)], ["No activity", "In review"]);
+});
+
+test("?demo=down on Day: Orion not reporting since 14:05, the others as in ?demo", () => {
+  const down = runDay(downDay(NOW).batches), busy = runDay(busyDay(NOW).batches);
+  const D = prep(down.state, down.replay, NOW), B = prep(busy.state, busy.replay, NOW);
+  assert.deepEqual([...moment(D, { id: "Orion", kind: "eng" }, null, TZ)], ["Not reporting", "Since 14:05 · 2 h 35 min"]);
+  assert.deepEqual(silentLanes(D), [{ name: "Orion", lastRun: adt(14, 5), from: adt(14, 5), to: NOW }]);
+  for (const n of ["Vega", "Rigel", "Lyra"]) assert.deepEqual([...moment(D, { id: n, kind: "eng" }, null, TZ)], [...moment(B, { id: n, kind: "eng" }, null, TZ)], n);
+  assert.deepEqual(keyItems(D).slice(0, -1).map((k) => k.kind), keyItems(B).map((k) => k.kind));
+  assert.equal(keyItems(D).at(-1).kind, "silent");
 });
 
 test("fitWall: the 1440 x 810 canvas scaled whole and centred, filling every 16:9 screen", () => {

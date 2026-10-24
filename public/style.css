@@ -108,12 +108,18 @@ a:focus-visible, summary:focus-visible { outline: 2px solid var(--focus); outlin
 .st-fixing { stroke: var(--signal); }
 .hatch-ground { fill: var(--bg); }
 .hatch-line { stroke: var(--rule-2); }
+.f-hatch-sig { fill: url(#hatch-sig); } /* a VM that stopped reporting (setkernel-live#54) */
+.hatch-sig-line { stroke: var(--signal); stroke-opacity: 0.5; }
+.s-hatch-edge { stroke: var(--rule-2); }
 .cursor-band { fill: var(--focus); opacity: 0.14; }
 .plotframe { fill: none; stroke: none; }
 .mark { color: var(--ink); }
 .tick { color: var(--bar); }
 .mark.sig, svg.sig { color: var(--signal); }
 .mood-offline .mark.st, .mood-offline .now .st { color: var(--ink-2); }
+/* "Not reporting" in the Now column and the Now list: the signal colour, its ring too, offline as well */
+.t-now-do.silent { fill: var(--signal); }
+.mark.st.silent { color: var(--signal); }
 
 /* the Now list: above the chart on a phone, and at medium widths where the Now column won't fit */
 .now { margin: 0 0 var(--s4); padding: var(--s2) var(--s3); list-style: none; background: var(--surface); border-radius: var(--s1); }
@@ -123,6 +129,7 @@ a:focus-visible, summary:focus-visible { outline: 2px solid var(--focus); outlin
 .now .l1 { font-weight: 600; font-size: var(--f4); line-height: var(--l3); }
 .now .l1 .st { width: 0.84em; height: 0.84em; margin-right: 0.3em; vertical-align: -0.04em; color: var(--ink); }
 .now .l1.idle { font-weight: 400; color: var(--ink-3); }
+.now .l1.silent, .now .l1.silent .st { color: var(--signal); }
 .now .l2 { color: var(--ink-2); grid-column: 2; }
 .now .when { font: var(--f1) var(--mono); color: var(--ink-3); border: 0; padding: 0 0 var(--s1); display: block; }
 
