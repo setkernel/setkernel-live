@@ -24,7 +24,8 @@ Public repo: everything here is visible to anyone.
 ```
 
 ## Deploy
-`.github/workflows/deploy.yml`, started by hand (workflow_dispatch) on `main`. It reads
+`.github/workflows/deploy.yml`, runs on every push to `main` (not for `*.md` or `docs/` only) and by hand
+(workflow_dispatch); a failed smoke check rolls back and opens an `agent-ready` issue. It reads
 `CLOUDFLARE_API_TOKEN` from Infisical (project `setkernel-live`, prod) through the OIDC identity
 `setkernel-live-deploy`, which accepts only that workflow on `main`. The token itself is
 `setkernel-live-deploy` in setkernel-cloudflare `stacks/services/api_tokens.tf`. Never deploy from
