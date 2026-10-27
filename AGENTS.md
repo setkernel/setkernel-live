@@ -17,7 +17,7 @@ Public repo: everything here is visible to anyone.
 #                                    the line's columns, Access token check, GitHub receiver, page wording/
 #                                    headline/demo/replay, Day's lanes/Now column/key/scrubbing/fitWall,
 #                                    Buzz alert, page hosts, fonts and contrast, the smoke check, the showcase's
-#                                    publisher, and repo names against GitHub's public list, live)
+#                                    publisher, the workflow runner guard, and repo names against GitHub's public list, live)
 # worker:   npm run test:worker      (vitest in workerd: the real Worker and Hub, see test/worker/)
 # lint:     npm run check            (node --check on every script)
 # validate: npm run validate         (check + test + test:worker + wrangler deploy --dry-run; what CI runs)
@@ -64,6 +64,8 @@ a laptop.
   end to end.
 
 ## Traps and don't-touch
+- A workflow that a pull request starts must run on a GitHub-hosted runner (`ubuntu-latest`), never
+  `setkernel-linux`: this repo is public and a fork's PR runs its code. `test/workflows.test.mjs` enforces it.
 - Anything added to what the page shows must be added to the allowlist on **both** sides
   (setkernel/hq `observability/wall/public.py` and `src/logic.js`) and to both test suites. Never
   show issue or PR titles or numbers, usernames, hostnames, private repo names or costs.
