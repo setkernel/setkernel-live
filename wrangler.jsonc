@@ -29,7 +29,7 @@
     "VERSION": "dev"
   },
   // GITHUB_WEBHOOK_SECRET is a Worker secret, set by .github/workflows/deploy.yml from Infisical.
-  // Once a minute: has live.setkernel.com stopped getting updates? (Hub.watch)
-  "triggers": { "crons": ["* * * * *"] },
+  // Every 5 minutes: has live.setkernel.com stopped getting updates? (Hub.watch; README, "When updates stop")
+  "triggers": { "crons": ["*/5 * * * *"] },
   "observability": { "enabled": true }
 }

@@ -8,7 +8,7 @@
 //   GET  /github/queue    those events, cut down, for sk-obs01 to pull (its own Access token, checked again)
 // One Durable Object ("live") holds the picture, a capped 24-hour replay buffer and the GitHub queue,
 // and fans batches out to every open WebSocket.
-// A Cron Trigger asks it once a minute whether updates have stopped, and it tells Buzz #infra.
+// A Cron Trigger asks it every 5 minutes whether updates have stopped, and it tells Buzz #infra.
 import { DurableObject } from "cloudflare:workers";
 import { applyBatch, cleanBatch, emptyReplay, emptyState, homeDay, recordReplay, replaySince, view } from "./logic.js";
 import { jwksFetcher, verifyAccessJwt } from "./access.js";
@@ -110,7 +110,7 @@ export class Hub extends DurableObject {
     });
   }
 
-  // Called by the Cron Trigger once a minute (setkernel-live#9). Posts at most one message per
+  // Called by the Cron Trigger every 5 minutes (setkernel-live#9). Posts at most one message per
   // tick; one that fails stays due and is tried again next tick.
   async watch() {
     const { BUZZ_RELAY_URL: relay, BUZZ_CHANNEL: channel, BUZZ_PRIVATE_KEY: key, ALERTS_MUTED } = this.env;
@@ -131,7 +131,7 @@ export class Hub extends DurableObject {
         await this.saveWatch(delivered(this.watchState, send.type));
         console.log(`watch: posted the ${send.type} to Buzz`);
       } catch (e) {
-        console.error(`watch: posting the ${send.type} to Buzz failed, retrying next minute: ${e.message}`);
+        console.error(`watch: posting the ${send.type} to Buzz failed, retrying next tick: ${e.message}`);
       }
     } finally {
       this.watching = false;
