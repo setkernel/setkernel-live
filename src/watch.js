@@ -1,5 +1,5 @@
-// Pure logic for the "updates stopped" alert (setkernel-live#9): a Cron Trigger calls tick() once
-// a minute with the Durable Object's lastIngest, and posts what it returns to Buzz #infra. No
+// Pure logic for the "updates stopped" alert (setkernel-live#9): a Cron Trigger calls tick() every
+// 5 minutes with the Durable Object's lastIngest, and posts what it returns to Buzz #infra. No
 // Workers APIs here, so it runs under `node --test`.
 //
 // One alert per outage and one recovery message. A post that fails is tried again on the next

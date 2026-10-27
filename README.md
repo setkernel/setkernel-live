@@ -207,12 +207,22 @@ deliveries (github.com/organizations/setkernel/settings/hooks) and redeliver any
 
 ## When updates stop
 
-A Cron Trigger asks the Durable Object once a minute when the last batch arrived. After more than
+A Cron Trigger asks the Durable Object every 5 minutes when the last batch arrived. After more than
 5 minutes without one, the Worker posts to Buzz #infra; when batches come back, it posts once more
-with how long they were gone. One alert per outage. A post Buzz doesn't take is tried again every
-minute (so, rarely, a post that timed out after Buzz stored it appears twice). Buzz runs in the
-office, so during a full office outage the alert can't get through; the recovery message is then
-the first report, and says how long it lasted.
+with how long they were gone. One alert per outage. A post Buzz doesn't take is tried again on the
+next check, 5 minutes later (so, rarely, a post that timed out after Buzz stored it appears twice).
+Buzz runs in the office, so during a full office outage the alert can't get through; the recovery
+message is then the first report, and says how long it lasted.
+
+The check runs every 5 minutes, not every minute, to keep the Durable Object's request count down
+(setkernel/hq#243). What that costs:
+
+- The alert comes 5-10 minutes after the last update (with a check every minute it was 5-6).
+- The recovery comes up to 5 minutes after updates resume (it was 1). Its end time is the last
+  update the check saw, and its duration can read up to 5 minutes too long.
+- A gap of up to about 10 minutes can pass with no alert and no recovery (it was about 6): if
+  updates are back before the first check that finds them more than 5 minutes stale, neither is
+  posted.
 
 - **Mute** for planned maintenance: set `ALERTS_MUTED` to `"true"` in `wrangler.jsonc` and deploy;
   set it back to `"false"` afterwards. While muted no alert is posted, and an outage that ends
@@ -243,8 +253,8 @@ ever printed.
    (it prints only the key name, the project and the HTTP status; see "Credentials for a repo" in
    setkernel/hq `docs/repo-standard.md`).
 5. `shred -u <file>`, so Infisical holds the only copy.
-6. Run the Deploy workflow. To check the whole path, stop sk-obs01's publisher for 6 minutes: an
-   alert should arrive in #infra, and a recovery message within a minute of restarting it.
+6. Run the Deploy workflow. To check the whole path, stop sk-obs01's publisher for 11 minutes: an
+   alert should arrive in #infra, and a recovery message within 5 minutes of restarting it.
 
 To retire the identity: remove its relay member, delete the Infisical secret, and in one PR take
 the cron out of `wrangler.jsonc` and `BUZZ_PRIVATE_KEY` out of the deploy workflow.
