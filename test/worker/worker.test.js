@@ -269,6 +269,18 @@ describe("eviction", () => {
     const total = replay.pulses.reduce((n, r) => n + r.slice(1).reduce((a, b) => a + b, 0), 0);
     expect(total).toBe(2);
   });
+
+  it("saves a heartbeat once the last save is over a minute old", async () => {
+    await ingest(batch([claude()])); // saves, so lastSaved is now
+    await runInDurableObject(hub(), (instance) => {
+      instance.lastSaved = Date.now() - 61_000;
+    });
+    await ingest(batch([], { Rigel: { state: "IDLE" } }));
+    await evictDurableObject(hub());
+    const after = await state();
+    expect(after.agents).toEqual({ Rigel: { state: "IDLE" } });
+    expect(after.now - after.lastIngest).toBeLessThan(OFFLINE_AFTER_MS);
+  });
 });
 
 describe("a quiet office", () => {
