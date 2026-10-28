@@ -96,9 +96,10 @@ a laptop.
   then one generic family (`"Manrope", sans-serif`, `"IBM Plex Mono", monospace`), never a named
   system font. The design mockups embed the files from `public/fonts/` (`docs/design/v2/fonts.mjs`,
   `docs/design/v3/day/build.mjs`); `test/page.test.mjs` checks all of it.
-- `public/og.png` (the share preview) is a 1200x630 browser screenshot of a local `?demo` render
-  (Night) from #42; no generator is committed. When it is next regenerated, commit the generator
-  with the fonts as TTF and a pinned `FONTCONFIG_FILE`, so every host draws the same text.
+- `public/og.png` (the share preview) is taken by `docs/design/v3/day/built/shoot.mjs` (the `?demo`
+  page at 1440x756, scaled to 1200x630; last regenerated in #49). That script renders through the
+  host's system fonts, with no TTF files and no pinned `FONTCONFIG_FILE`, so glyphs outside the
+  Latin subset (`●`, `○`, `→`) depend on the machine. Pin both when `og.png` is next regenerated.
 - `BUZZ_PRIVATE_KEY` is a Worker secret from Infisical (README, "When updates stop"); never put it
   in `wrangler.jsonc`, a log line or an error message.
 - The Durable Object migration tag `v1` creates `Hub`; never edit an applied migration, add a new tag.

@@ -99,7 +99,7 @@ test("no named system font and no font CDN, in the page or the design mockups", 
 
 test("the design mockups embed the page's own font files, whose licences sit beside them", () => {
   const ours = new Set(readdirSync(new URL("fonts/", pub)).filter((f) => f.endsWith(".woff2")).map((f) => readFileSync(new URL(`fonts/${f}`, pub)).toString("base64")));
-  for (const file of ["docs/design/v2/reference.html", "docs/design/v3/day/index.html"]) {
+  for (const file of ["docs/design/v2/reference.html", "docs/design/v3/day/index.html", "docs/design/v3/not-reporting/index.html", "docs/design/v4/showcase/index.html"]) {
     const embedded = [...readFileSync(new URL(file, repo), "utf8").matchAll(/data:font\/woff2;base64,([A-Za-z0-9+/=]+)/g)].map((m) => m[1]);
     assert.ok(embedded.length > 0, `${file} embeds its fonts`);
     for (const data of embedded) assert.ok(ours.has(data), `${file} embeds a font that is not in public/fonts/; rerun its build script`);
