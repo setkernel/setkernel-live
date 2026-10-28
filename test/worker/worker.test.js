@@ -256,6 +256,19 @@ describe("eviction", () => {
     expect(msg.t).toBe("batch");
     expect(msg.counts.claude).toBe(3);
   });
+
+  it("keeps every batch that carries events, even within the minute of the last save", async () => {
+    await ingest(batch([claude()]));
+    await ingest(batch([claude("Lyra")]));
+    await evictDurableObject(hub());
+    const after = await state();
+    expect(after.counts.claude).toBe(2);
+    const res = await exports.default.fetch(`${BASE}/api/replay?h=24`);
+    const replay = await res.json();
+    // pulses are one row per minute: both batches land in it, as [minute, ...counts]
+    const total = replay.pulses.reduce((n, r) => n + r.slice(1).reduce((a, b) => a + b, 0), 0);
+    expect(total).toBe(2);
+  });
 });
 
 describe("a quiet office", () => {

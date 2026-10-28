@@ -180,9 +180,11 @@ export class Hub extends DurableObject {
       if (!batch) return new Response("Not a batch", { status: 400 });
       this.state = applyBatch(this.state, batch, now, today());
       if (batch.events.length) this.replay = recordReplay(this.replay, batch, now);
-      if (now - this.lastSaved > 60_000) {
-        // at most once a minute: a restart loses under a minute of counts, and storage writes stay low.
-        // The replay buffer is capped (public/lib/state.js), so it stays far below the value limit.
+      if (batch.events.length || now - this.lastSaved > 60_000) {
+        // every batch that carries events, so a hibernation can't lose them (the Hub can be evicted
+        // ~10 s after its last request); heartbeat batches save once a minute. Writes are at most one
+        // per event batch, about one every 15 s. The replay buffer is capped (public/lib/state.js),
+        // so it stays far below the value limit.
         this.lastSaved = now;
         await this.ctx.storage.put({ state: this.state, replay: this.replay });
       }
