@@ -22,9 +22,13 @@ top, and one chart under it.
   anyone who wants the detail.
 - **Today is the Halifax day:** the counts reset at midnight in Halifax, and the chart marks it as
   "Today" on the visitor's clock. Times are in the visitor's own zone.
+- **An engineer whose VM stopped reporting** (sk-obs01 sends `SILENT`, setkernel-live#54) leads the
+  sentence ("Orion stopped reporting at 14:05."), reads "Not reporting" in red in the Now column,
+  and their lane is hatched red from the last run. When the VM comes back, the hatch goes.
 
 - `?demo`: a sample day (labelled as such), so the page can be shown any time. `?demo=quiet` is a
-  quiet day, `?demo=offline` the office gone quiet 47 minutes ago, `?demo=waiting` nothing yet.
+  quiet day, `?demo=offline` the office gone quiet 47 minutes ago, `?demo=down` the busy day with
+  Orion's VM stopped 2 h 35 min ago, `?demo=waiting` nothing yet.
 - `?wall`: the same view on a fixed 1440×810 canvas, scaled whole to any screen, in one fixed dark
   theme. It fills a 16:9 screen edge to edge and never scrolls or clips on any other.
 - Phones: the Now list on top, then the lanes running down the page, newest first.
@@ -58,8 +62,10 @@ wall service ── filtered events ──▶  /ingest (Access: service token on
 
 ## Deploy
 
-The Deploy workflow (`.github/workflows/deploy.yml`) runs `npm run validate` and deploys. Never
-deploy from a laptop. `/api/state` carries `version`, the `VERSION` var from `wrangler.jsonc`:
+The Deploy workflow (`.github/workflows/deploy.yml`) runs on every push to `main`, so a merge
+deploys. It runs `npm run validate`, deploys, runs the smoke check and, if that fails, rolls back.
+Pushes that change only `*.md` files or `docs/` don't deploy. Runs never overlap; a waiting run is replaced by a newer one. To redeploy
+`main` without a change, start the workflow by hand (workflow_dispatch). Never deploy from a laptop. `/api/state` carries `version`, the `VERSION` var from `wrangler.jsonc`:
 `dev` unless the deploy sets the commit with `wrangler deploy --var VERSION:<commit>`.
 
 `node scripts/smoke.mjs --expect <commit>` first polls `/api/state` until its `version` is that
@@ -70,6 +76,11 @@ each route once: `/` 200, `/api/state` 200 with every key the page uses, `/api/r
 status codes, key names and the version, never a response body, and exits 1 on failure (2 on bad
 arguments).
 
+If the smoke fails, the workflow runs `wrangler rollback` to the previous version (message
+"smoke check failed for <commit>") and opens an issue titled "Deploy smoke check failed for
+<short commit>", labelled `agent-ready`, with the run link and the last 60 lines of the smoke
+output. The issue exists because the rollback happened: fix the change and merge it again.
+
 ### Reading a failed smoke
 
 Read the output from the top:
@@ -78,6 +89,10 @@ Read the output from the top:
   10 minutes. `version unknown` means `/api/state` never answered with a version at all; the
   `waiting:` lines show its status (404 or 5xx is old code or a crash). `version dev` means the
   deploy didn't set `VERSION`.
+- `FAIL GET /api/state: 200, version X, want Y`: the version changed after the wait had seen
+  the right one. Either the Durable Object is still switching between old and new code, or someone
+  rolled back or deployed by hand. The Deployments list shows which. A later Deploy run can't
+  overlap this one (`concurrency: deploy-production`).
 - `FAIL GET /api/state: 200, missing keys: …`: the page's data changed shape; `view()` in
   `public/lib/state.js` and `STATE_KEYS` in `scripts/smoke.mjs` must agree (the worker tests check).
 - `FAIL GET /…: 404, want 200` and the like: that route is broken in the new code. `0 (TimeoutError)`
@@ -87,6 +102,9 @@ Read the output from the top:
 
 ### Rolling back by hand
 
+The automatic rollback covers a failed smoke; for anything the smoke misses, roll back by hand.
+Rollbacks use the deploy token, which lives in Infisical and never on a laptop, so use the
+dashboard.
 In the Cloudflare dashboard: Workers & Pages, `setkernel-live`, Deployments, pick the last good
 version and "Rollback". The Durable Object again takes a few minutes to follow; check with
 `node scripts/smoke.mjs --expect <that version's commit>`. Then revert the bad change in a PR.
@@ -186,5 +204,59 @@ deliveries (github.com/organizations/setkernel/settings/hooks) and redeliver any
    to them.
 4. After setkernel-cloudflare#54 is applied, put its audience tag in `QUEUE_AUD` in
    `wrangler.jsonc` (a PR) and deploy again.
+
+## When updates stop
+
+A Cron Trigger asks the Durable Object every 5 minutes when the last batch arrived. After more than
+5 minutes without one, the Worker posts to Buzz #infra; when batches come back, it posts once more
+with how long they were gone. One alert per outage. A post Buzz doesn't take is tried again on the
+next check, 5 minutes later (so, rarely, a post that timed out after Buzz stored it appears twice).
+Buzz runs in the office, so during a full office outage the alert can't get through; the recovery
+message is then the first report, and says how long it lasted.
+
+The check runs every 5 minutes, not every minute, to keep the Durable Object's request count down
+(setkernel/hq#243). What that costs:
+
+- The alert comes 5-10 minutes after the last update (with a check every minute it was 5-6).
+- The recovery comes up to 5 minutes after updates resume (it was 1). Its end time is the last
+  update the check saw, and its duration can read up to 5 minutes too long.
+- A gap of up to about 10 minutes can pass with no alert and no recovery (it was about 6): if
+  updates are back before the first check that finds them more than 5 minutes stale, neither is
+  posted.
+
+- **Mute** for planned maintenance: set `ALERTS_MUTED` to `"true"` in `wrangler.jsonc` and deploy;
+  set it back to `"false"` afterwards. While muted no alert is posted, and an outage that ends
+  inside the mute is never reported. One still going when the mute ends is alerted then. The
+  recovery for an alert posted before the mute still goes out.
+- **Identity:** the Worker posts as its own Buzz member, "live.setkernel.com watcher". Its key is the
+  Worker secret `BUZZ_PRIVATE_KEY`, which the deploy workflow brings from Infisical (project
+  `setkernel-live`, prod). It is never in this repo or in logs. The relay and the channel are
+  plain vars in `wrangler.jsonc`.
+
+### Owner: create the identity (once)
+
+The deploy fails until `BUZZ_PRIVATE_KEY` is in Infisical, so do this before the next deploy. It
+is the same procedure as the Grafana alerts identity in setkernel/hq `observability/README.md`;
+the private details (hosts, logins) are there, not in this public repo. Only the public key is
+ever printed.
+
+1. On sk-obs01, make the key in a new private file with hq's `buzz/agent-identity.sh`, with
+   `SK_BUZZ_CONF` set to that file and `SK_BUZZ_CHANNEL` to the #infra channel id from
+   `wrangler.jsonc`. It prints only the public key (hex).
+2. Make that public key a relay member (`buzzctl add-member <hex>`, hq `buzz/README.md`).
+3. With that file's variables loaded (`set -a; . <file>; set +a`), name the identity
+   (`buzz users set-profile --name "live.setkernel.com watcher"`) and join #infra
+   (`buzz channels join --channel "$BUZZ_CHANNEL"`).
+4. Put the key in Infisical as `BUZZ_PRIVATE_KEY` (project `setkernel-live`, environment prod,
+   path `/`) by piping it, never through a clipboard or the web UI. From setkernel-cloudflare:
+   `ssh <obs host> "sed -n 's/^BUZZ_PRIVATE_KEY=//p' <file>" | scripts/infisical-put.py setkernel-live BUZZ_PRIVATE_KEY prod`
+   (it prints only the key name, the project and the HTTP status; see "Credentials for a repo" in
+   setkernel/hq `docs/repo-standard.md`).
+5. `shred -u <file>`, so Infisical holds the only copy.
+6. Run the Deploy workflow. To check the whole path, stop sk-obs01's publisher for 11 minutes: an
+   alert should arrive in #infra, and a recovery message within 5 minutes of restarting it.
+
+To retire the identity: remove its relay member, delete the Infisical secret, and in one PR take
+the cron out of `wrangler.jsonc` and `BUZZ_PRIVATE_KEY` out of the deploy workflow.
 
 Tracking: setkernel/hq#105.

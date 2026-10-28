@@ -128,7 +128,8 @@ const contrast = (vars, a, b) => {
 
 // Text sits on the page ground (--bg) and on the Now column's and Now list's (--surface).
 // Every new text colour goes in TEXT; marks and lines that carry data go in MARKS.
-const TEXT = ["ink", "ink-2", "ink-3"];
+// --signal is text too: "Not reporting" in the Now column and the Now list (setkernel-live#54).
+const TEXT = ["ink", "ink-2", "ink-3", "signal"];
 const MARKS = ["ink", "ink-2", "ink-3", "signal", "bar"];
 for (const [name, vars] of [["Page", page], ["Wall", wall]]) {
   test(`${name}: every text colour meets WCAG AA on both grounds, AAA for names and body text`, () => {

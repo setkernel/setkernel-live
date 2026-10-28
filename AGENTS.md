@@ -16,15 +16,16 @@ Public repo: everything here is visible to anyone.
 # test:     npm test                 (node --test: allowlist, state, the Halifax day and replay buffer,
 #                                    the line's columns, Access token check, GitHub receiver, page wording/
 #                                    headline/demo/replay, Day's lanes/Now column/key/scrubbing/fitWall,
-#                                    page hosts, fonts and contrast, the smoke check, the showcase's
-#                                    publisher, and repo names against GitHub's public list, live)
+#                                    Buzz alert, page hosts, fonts and contrast, the smoke check, the showcase's
+#                                    publisher, the workflow runner guard, and repo names against GitHub's public list, live)
 # worker:   npm run test:worker      (vitest in workerd: the real Worker and Hub, see test/worker/)
 # lint:     npm run check            (node --check on every script)
 # validate: npm run validate         (check + test + test:worker + wrangler deploy --dry-run; what CI runs)
 ```
 
 ## Deploy
-`.github/workflows/deploy.yml`, started by hand (workflow_dispatch) on `main`. It reads
+`.github/workflows/deploy.yml`, runs on every push to `main` (not for `*.md` or `docs/` only) and by hand
+(workflow_dispatch); a failed smoke check rolls back and opens an `agent-ready` issue. It reads
 `CLOUDFLARE_API_TOKEN` from Infisical (project `setkernel-live`, prod) through the OIDC identity
 `setkernel-live-deploy`, which accepts only that workflow on `main`. The token itself is
 `setkernel-live-deploy` in setkernel-cloudflare `stacks/services/api_tokens.tf`. Never deploy from
@@ -35,10 +36,15 @@ a laptop.
 - `src/logic.js`: the allowlist (pure, tested); re-exports the state from `public/lib/state.js`.
 - `src/access.js`: checks the Cloudflare Access token on `/ingest` and `/github/queue` (pure, tested).
 - `src/github.js`: the GitHub Actions webhook check, the fields it keeps, and the pull queue (pure, tested).
+- `src/watch.js`: when to post "updates stopped" and "updates resumed" to Buzz (pure, tested).
+- `src/buzz.js`: signs and posts a Buzz message as the Worker's own identity (tested).
 - `src/evidence.js`: the v4 showcase's publisher (setkernel-live#52), a public pull request's evidence and
   the team's numbers, as an allowlist (pure, tested). Only the v4 prototype uses it so far.
 - `docs/design/v4/showcase/`: the v4 prototype (one `index.html`, its `build.mjs`, `shoot.mjs`,
   `evidence.json` and screenshots). Nothing in `public/` comes from it until Raghav picks a direction.
+- `docs/design/v3/not-reporting/`: the prototype for setkernel-live#54 (an engineer whose VM stopped
+  reporting). `build.mjs` bundles `public/app.js` with `src/`'s overrides into one `index.html`.
+  Raghav picked option C; `public/` builds it (`SILENT`, `?demo=down`), and the prototype stays as it was.
 - `public/`: the page, v3 "Day" (`index.html`, `app.js`, `style.css`, `early.js` for `?wall`
   before the first paint), its security headers (`_headers`), `favicon.svg`, `og.png` (the share
   preview, taken by `docs/design/v3/day/built/shoot.mjs`) and `fonts/`. The design is
@@ -58,6 +64,8 @@ a laptop.
   end to end.
 
 ## Traps and don't-touch
+- A workflow that a pull request starts must run on a GitHub-hosted runner (`ubuntu-latest`), never
+  `setkernel-linux`: this repo is public and a fork's PR runs its code. `test/workflows.test.mjs` enforces it.
 - Anything added to what the page shows must be added to the allowlist on **both** sides
   (setkernel/hq `observability/wall/public.py` and `src/logic.js`) and to both test suites. Never
   show issue or PR titles or numbers, usernames, hostnames, private repo names or costs.
@@ -72,7 +80,7 @@ a laptop.
   stays under 128 KiB even at its worst (`test/state.test.mjs`); keep that test passing if you add a column.
 - "Today" is the Halifax day: the Worker passes `homeDay()` as `applyBatch`'s day key, so the counts
   reset at midnight in Halifax (AST or ADT), and the page shows that midnight on the visitor's clock.
-- `?demo` data (and `?demo=quiet|offline|waiting`) must pass `cleanEvent` unchanged
+- `?demo` data (and `?demo=quiet|offline|down|waiting`) must pass `cleanEvent` unchanged
   (`test/page-logic.test.mjs`). If the allowlist changes, the demo changes with it. The demo names
   only a real public repo.
 - Text colours are checked for contrast in `test/page.test.mjs`, on the page (`:root`) and on the
@@ -91,6 +99,8 @@ a laptop.
 - `public/og.png` (the share preview) is a 1200x630 browser screenshot of a local `?demo` render
   (Night) from #42; no generator is committed. When it is next regenerated, commit the generator
   with the fonts as TTF and a pinned `FONTCONFIG_FILE`, so every host draws the same text.
+- `BUZZ_PRIVATE_KEY` is a Worker secret from Infisical (README, "When updates stop"); never put it
+  in `wrangler.jsonc`, a log line or an error message.
 - The Durable Object migration tag `v1` creates `Hub`; never edit an applied migration, add a new tag.
 - `test/private-repos.test.mjs` asks the GitHub API for setkernel's public repos. With `LIVE_REPO_CHECK=1`
   (set only in `ci.yml`) a failed request fails it; elsewhere, including the deploy's re-gate (no

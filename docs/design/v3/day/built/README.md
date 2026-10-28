@@ -25,6 +25,7 @@ doesn't fit the window.
 | `day-live-375x812.png`, `day-live-375-full.png`, `day-quiet-375x812.png` | `?demo`, `?demo=quiet` | the phone |
 | `day-live-1024x768.png` | `?demo` | a width the prototype didn't draw: the Now list above the chart |
 | `day-wall-*.png` | `?demo&wall` | the wall at 2560×1440, 1920×1080, 1440×810, a quiet day, and a 1280×1024 window |
+| `day-down-*.png`, `day-wall-down-1920x1080.png` | `?demo=down` | Orion's VM stopped at 14:05 (setkernel-live#54, option C of [`../../not-reporting`](../../not-reporting/README.md)): the page, scrubbed to 15:20, the phone and the wall |
 
 ## Where the built page differs from the prototype, on purpose
 - **The masthead on `?demo`** says "Demo: sample data, not the real office · live page" where the

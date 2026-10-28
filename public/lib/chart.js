@@ -2,8 +2,8 @@
 // across the page with the Now column (wide, and the wall), across without it (medium), or down
 // the page (the phone); the Now list, the key and the table. Every string goes in with
 // textContent, and every colour comes from a class in style.css, so the CSP needs no inline style.
-import { STAR_NOTE, ciSummary, clock, stateWords, tally, zoneName } from "./words.js";
-import { BIN, BINS, ROWS, band, binTime, ciLabel, label, levels, moment, momentTitle, poleMerges, poleTally } from "./day.js";
+import { STAR_NOTE, ciSummary, clock, stateWords, tally, whenDay, zoneName } from "./words.js";
+import { BIN, BINS, ROWS, band, binTime, ciLabel, label, levels, moment, momentTitle, poleMerges, poleTally, silentLanes } from "./day.js";
 import { GRID, hourRules, labelFits } from "./layout.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -99,10 +99,10 @@ export function drawWide(box, D, { tz, offline, now = true }) {
     }
   }
 
-  // where the data stops: hatched, and said in words
-  const hatch = (from, to, y0, y1, words) => {
+  // where the data stops: hatched, and said in words; a VM that stopped reporting in the signal colour
+  const hatch = (from, to, y0, y1, words, cls = "f-hatch") => {
     if (!(to > from)) return;
-    node("rect", { x: x(from), y: y0, width: x(to) - x(from), height: y1 - y0, class: "f-hatch" }, bg);
+    node("rect", { x: x(from), y: y0, width: x(to) - x(from), height: y1 - y0, class: cls }, bg);
     if (words && x(to) - x(from) > 120) {
       const t = text(bg, x(from) + 8, (y0 + y1) / 2 + 4, words, "t-label");
       node("rect", { x: x(from) + 2, y: (y0 + y1) / 2 - 10, width: t.getComputedTextLength() + 12, height: 20, class: "f-bg" }, bg).after(t);
@@ -113,26 +113,56 @@ export function drawWide(box, D, { tz, offline, now = true }) {
   if (!D.s.lastIngest) hatch(D.t0, D.nowS, rows[0].y, ciRow.y + ciRow.h, "Nothing has arrived yet");
   if (D.ciFrom) hatch(D.t0, D.ciFrom, ciRow.y + 4, ciRow.y + ciRow.h - 4, "Older runs aren't kept");
   if (D.workFrom) for (const r of rows.filter((r) => r.kind === "eng" || r.kind === "pole")) hatch(D.t0, D.workFrom, r.y + 4, r.y + r.h - 4, "Older actions aren't kept");
+  // a VM that stopped reporting (setkernel-live#54): its lane hatched red from the last run
+  const silent = Object.fromEntries(silentLanes(D).map((l) => [l.name, l]));
+  for (const r of rows.filter((r) => silent[r.id])) hatch(silent[r.id].from, silent[r.id].to, r.y + 4, r.y + r.h - 4, null, "f-hatch-sig");
 
   // engineer lanes: one quiet activity band, and the stage line through the lane
   for (const r of rows.filter((r) => r.kind === "eng")) {
     const base = ys(r, 48), bandH = 32, track = ys(r, 68);
+    const down = silent[r.id];
     const sm = band(D, r.id);
     if (sm.some((n) => n > 0)) {
-      const pts = sm.map((n, i) => [x(binTime(D, i) + BIN / 2), base - (bandH * n) / D.maxAct]);
+      let pts = sm.map((n, i) => [x(binTime(D, i) + BIN / 2), base - (bandH * n) / D.maxAct]);
+      if (down?.lastRun != null) {
+        // the band stops at the last run, where the hatch begins, so it never runs into it
+        const xs = x(down.from), k = pts.findIndex(([px]) => px > xs);
+        if (k >= 0) {
+          const [[ax, ay], [bx, by]] = [pts[k - 1] ?? [xs, base], pts[k]];
+          pts = [...pts.slice(0, k), [xs, ay + ((by - ay) * (xs - ax)) / (bx - ax || 1)]];
+          sm.length = pts.length;
+        }
+      }
       const line = pts.map(([px, py], i) => `${i ? "L" : "M"}${px.toFixed(1)} ${py.toFixed(1)}`).join("");
       node("path", { d: `${line}L${pts.at(-1)[0].toFixed(1)} ${base}L${pts[0][0].toFixed(1)} ${base}Z`, class: "f-band" }, fg);
       // the edge only where there is activity: an empty stretch draws nothing, not a second rule
       const edge = pts.map(([px, py], i) => (sm[i] > 0 || sm[i - 1] > 0 ? `${i && (sm[i - 1] > 0 || sm[i - 2] > 0) ? "L" : "M"}${px.toFixed(1)} ${py.toFixed(1)}` : "")).join("");
       node("path", { d: edge, class: "s-bar", "stroke-width": 1, "stroke-linejoin": "round" }, fg);
     }
-    node("line", { x1: px0, x2: nowX, y1: track, y2: track, class: "s-rule-2", "stroke-width": 1 }, fg);
+    // the faint track; a VM that stopped reporting: it stops at the last run, with a red end cap
+    const trackTo = down ? x(down.from) : nowX;
+    if (trackTo > px0) node("line", { x1: px0, x2: trackTo, y1: track, y2: track, class: "s-rule-2", "stroke-width": 1 }, fg);
     for (const sp of D.spans[r.id]) {
       const st = STAGE_STYLE[sp.stage];
       const a = x(sp.from), z = Math.max(x(sp.to), a + 1);
       node("line", { x1: a, x2: z, y1: track, y2: track, class: st.cls, "stroke-width": st.w, ...(st.dash ? { "stroke-dasharray": st.dash } : {}) }, fg);
     }
     for (const { w, dy } of levels(D.marks[r.id], x, 2 * S.r + 2, [0, -12])) mark(fg, w.action, x(w.ts), track + dy, S.r, w.title, markCls(w.action));
+    if (down) silentWords(r, down, track);
+  }
+  // the words: in the hatch when they fit, else "Last ran 14:05" under the track before the end cap
+  function silentWords(r, { lastRun, from, to }, track) {
+    const xl = x(from), when = lastRun == null ? "" : whenDay(lastRun, D.nowS, tz);
+    if (lastRun != null && lastRun >= D.t0) node("line", { x1: xl, x2: xl, y1: track - 8, y2: track + 8, class: "st-fixing", "stroke-width": 2 }, fg);
+    const t = text(fg, xl + 8, ys(r, 52), when ? `Not reporting since ${when}` : "Not reporting", "t-label");
+    if (x(to) - xl > t.getComputedTextLength() + 24) {
+      node("rect", { x: xl + 2, y: ys(r, 38), width: t.getComputedTextLength() + 12, height: 20, class: "f-bg" }, fg).after(t);
+    } else if (when) {
+      t.textContent = `Last ran ${when}`;
+      t.setAttribute("x", xl - 6);
+      t.setAttribute("y", track + 16);
+      t.setAttribute("text-anchor", "end");
+    } else t.remove();
   }
   // Polaris: one quiet tick per merge, on a light rule
   for (const r of rows.filter((r) => r.kind === "pole")) {
@@ -158,15 +188,15 @@ export function drawWide(box, D, { tz, offline, now = true }) {
     text(mom, mx, lab, momentTitle(D, i, offline, tz), i != null ? "t-axis-strong" : "t-now-h");
     // a lane's headline: big, and a step smaller only when a scrubbed line wouldn't fit; a live
     // lane's state goes before it as a shape, sized and centred on the text
-    const big = (yy, s, idle, state) => {
-      const cls = `t-now-do${idle ? " idle" : ""}`;
+    const big = (yy, s, idle, state, silent) => {
+      const cls = `t-now-do${idle ? " idle" : ""}${silent ? " silent" : ""}`;
       const t = text(mom, mx, yy, s, cls);
       const shift = () => (state && s ? parseFloat(getComputedStyle(t).fontSize) * 1.15 : 0);
       if (t.getComputedTextLength() > room - shift()) t.setAttribute("class", `${cls} small`);
       const f = parseFloat(getComputedStyle(t).fontSize), dx = shift();
       if (dx) {
         t.setAttribute("x", mx + dx);
-        const r = f * 0.42, gl = node("g", { class: "mark st" }, mom);
+        const r = f * 0.42, gl = node("g", { class: `mark st${silent ? " silent" : ""}` }, mom);
         node("use", { href: `#s-${state}`, x: mx, y: yy - f * 0.34 - r, width: 2 * r, height: 2 * r }, gl);
         node("title", {}, gl).textContent = stateWords({ state }).state;
       }
@@ -177,7 +207,7 @@ export function drawWide(box, D, { tz, offline, now = true }) {
       const lines = moment(D, r, i, tz);
       if (r.kind === "eng") {
         text(mom, mx, ys(r, 24), lines[0] ? r.id : "", "t-now-who");
-        big(ys(r, 48), lines[0] ?? "", lines.idle, lines.state);
+        big(ys(r, 48), lines[0] ?? "", lines.idle, lines.state, lines.silent);
         fit(text(mom, mx, ys(r, 72), lines[1] ?? "", "t-now-detail"), room);
       } else if (r.kind === "pole") {
         fit(text(mom, mx, ys(r, 28), lines[0] ?? "", "t-now-pole"), room);
@@ -238,9 +268,9 @@ export function drawTall(box, D, { tz, offline }) {
   }
   text(bg, 0, y(D.nowS) + 4, clock(D.nowS, tz), "t-axis-strong");
   node("line", { x1: ax - 4, x2: W, y1: y(D.nowS), y2: y(D.nowS), class: "s-ink", "stroke-width": 1.5 }, bg);
-  const hatch = (from, to, x0, x1, words) => {
+  const hatch = (from, to, x0, x1, words, cls = "f-hatch") => {
     if (!(to > from)) return;
-    node("rect", { x: x0, y: y(to), width: x1 - x0, height: y(from) - y(to), class: "f-hatch" }, bg);
+    node("rect", { x: x0, y: y(to), width: x1 - x0, height: y(from) - y(to), class: cls }, bg);
     if (words && y(from) - y(to) > 30) {
       const t = text(bg, x0 + 6, y(to) + 16, words, "t-label");
       node("rect", { x: x0 + 2, y: y(to) + 4, width: t.getComputedTextLength() + 8, height: 16, class: "f-bg" }, bg).after(t);
@@ -250,9 +280,15 @@ export function drawTall(box, D, { tz, offline }) {
   if (offline && D.lastS) hatch(D.lastS, D.nowS, ax, W, `No word since ${clock(D.lastS, tz)}`);
   if (!D.s.lastIngest) hatch(D.t0, D.nowS, ax, W, "Nothing has arrived yet");
   if (D.ciFrom) hatch(D.t0, D.ciFrom, ciCol.x + 2, ciCol.x + ciCol.w - 2);
+  // a VM that stopped reporting (setkernel-live#54): its column hatched red from the last run, with
+  // a red end cap; no words in it, the Now list above says them
+  const silent = Object.fromEntries(silentLanes(D).map((l) => [l.name, l]));
+  for (const c of cols.filter((c) => silent[c.id])) hatch(silent[c.id].from, silent[c.id].to, c.x + 2, c.x + c.w - 2, null, "f-hatch-sig");
   for (const c of cols) {
     if (c.kind === "eng") {
       const left = c.x + 4, barW = c.w * 0.5, track = c.x + c.w * 0.68;
+      const down = silent[c.id];
+      if (down?.lastRun != null && down.lastRun >= D.t0) node("line", { x1: track - 8, x2: track + 8, y1: y(down.from), y2: y(down.from), class: "st-fixing", "stroke-width": 2 }, fg);
       const total = D.total[c.id];
       for (let i = 0; i < BINS; i++) {
         if (total[i]) node("rect", { x: left, y: y(binTime(D, i) + BIN), width: Math.max(1.5, (barW * total[i]) / D.maxAct), height: binH, class: "f-band" }, fg);
@@ -312,7 +348,7 @@ export function drawNowList(ul, D, i, { tz, offline }) {
     if (r.kind === "sep") continue;
     const lines = moment(D, r, i, tz);
     const li = el("li");
-    const a = el("span", r.kind === "eng" ? `l1${lines.idle ? " idle" : ""}` : "l2", lines[0] || (r.kind === "pole" ? poleTally(D.s.byAgent?.Polaris) : ""));
+    const a = el("span", r.kind === "eng" ? `l1${lines.idle ? " idle" : ""}${lines.silent ? " silent" : ""}` : "l2", lines[0] || (r.kind === "pole" ? poleTally(D.s.byAgent?.Polaris) : ""));
     if (lines.state && lines[0]) a.prepend(stateShape(lines.state));
     const extra = r.kind === "ci" ? [lines[1], ciSummary(D.s.counts)].filter(Boolean).join(" · ") : lines[1] ?? "";
     li.append(el("span", "who", r.id), a, el("span", "l2", extra));

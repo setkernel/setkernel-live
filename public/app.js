@@ -9,7 +9,7 @@ import { reviewers } from "/lib/line.js";
 import { BIN, BINS, keyItems, prep, readout, scrubKey, tableRows } from "/lib/day.js";
 import { fitWall, pageMode } from "/lib/layout.js";
 import { drawNowList, drawTall, drawWide, fillLegend, fillTable } from "/lib/chart.js";
-import { busyDay, quietDay, runDay } from "/lib/demo.js";
+import { busyDay, downDay, quietDay, runDay } from "/lib/demo.js";
 
 const $ = (id) => document.getElementById(id);
 const root = document.documentElement;
@@ -196,8 +196,8 @@ async function startLive() {
 }
 
 // ?demo: a sample day through the same reducers and view as the Durable Object. ?demo=quiet is the
-// hand-written quiet day, ?demo=offline the busy day as it stood 47 minutes ago, ?demo=waiting
-// nothing at all.
+// hand-written quiet day, ?demo=offline the busy day as it stood 47 minutes ago, ?demo=down the
+// busy day with Orion's VM stopped 2 h 35 min ago (setkernel-live#54), ?demo=waiting nothing at all.
 function startDemo() {
   $("demo-note").hidden = false;
   const nowS = Math.floor(Date.now() / 1000);
@@ -215,7 +215,7 @@ function startDemo() {
     beat();
     return setInterval(beat, 30_000);
   }
-  const { batches, sim } = busyDay(nowS);
+  const { batches, sim } = DEMO === "down" ? downDay(nowS) : busyDay(nowS);
   if (DEMO === "offline") {
     const { state, replay: r } = runDay(batches, nowS - 47 * 60);
     replay = r;

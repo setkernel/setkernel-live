@@ -14,6 +14,7 @@ const BASE = "https://live.setkernel.com";
 const hub = () => env.HUB.get(env.HUB.idFromName("live"));
 
 // Access tokens signed with a throwaway key; the Worker's fetch of Access's certs gets its public half.
+const buzzPosts = []; // what the Worker posted to the Buzz relay
 let privateKey;
 let jwk;
 const b64url = (s) => btoa(typeof s === "string" ? s : String.fromCharCode(...s)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -34,12 +35,18 @@ beforeAll(async () => {
   const realFetch = globalThis.fetch;
   vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = input instanceof Request ? input.url : String(input);
-    return url === CERTS ? Promise.resolve(Response.json({ keys: [jwk] })) : realFetch(input, init);
+    if (url === CERTS) return Promise.resolve(Response.json({ keys: [jwk] }));
+    if (url === `${env.BUZZ_RELAY_URL}/events`) {
+      buzzPosts.push(JSON.parse(init.body));
+      return Promise.resolve(Response.json({ accepted: true }));
+    }
+    return realFetch(input, init);
   });
 });
 
 const sockets = [];
 afterEach(async () => {
+  buzzPosts.length = 0;
   for (const ws of sockets.splice(0)) {
     try {
       ws.close(1000, "done");
@@ -128,6 +135,16 @@ describe("ingest auth", () => {
     expect(s.counts.claude).toBe(2);
     expect(s.agents).toEqual({ Vega: { state: "WORKING", work: "issue", repo: "setkernel-live" } });
     expect(s.lastIngest).toBeGreaterThan(0);
+  });
+
+  it("carries a VM that stopped reporting to /api/state: SILENT and its last run, checked on the Worker's clock (setkernel-live#54)", async () => {
+    const lastRun = Math.floor(Date.now() / 60_000) * 60 - 20 * 60; // 20 minutes ago, on a whole minute
+    expect(await ingest(batch([], {
+      Orion: { state: "SILENT", lastRun, host: "orion-dev" },
+      Vega: { state: "SILENT", lastRun: lastRun + 3600 }, // in the future: the time goes, the state stays
+      Lyra: { state: "IDLE", lastRun },
+    }))).toBe(200);
+    expect((await state()).agents).toEqual({ Orion: { state: "SILENT", lastRun }, Vega: { state: "SILENT" }, Lyra: { state: "IDLE" } });
   });
 });
 
@@ -238,6 +255,19 @@ describe("eviction", () => {
     const msg = await v.next();
     expect(msg.t).toBe("batch");
     expect(msg.counts.claude).toBe(3);
+  });
+
+  it("keeps every batch that carries events, even within the minute of the last save", async () => {
+    await ingest(batch([claude()]));
+    await ingest(batch([claude("Lyra")]));
+    await evictDurableObject(hub());
+    const after = await state();
+    expect(after.counts.claude).toBe(2);
+    const res = await exports.default.fetch(`${BASE}/api/replay?h=24`);
+    const replay = await res.json();
+    // pulses are one row per minute: both batches land in it, as [minute, ...counts]
+    const total = replay.pulses.reduce((n, r) => n + r.slice(1).reduce((a, b) => a + b, 0), 0);
+    expect(total).toBe(2);
   });
 });
 
@@ -476,5 +506,78 @@ describe("GitHub webhook and queue", () => {
     // an ingest token must not open the queue: each Access app has its own audience
     expect((await pull("", { token: await sign(claims()) })).status).toBe(403);
     expect((await pull("?since=-1")).status).toBe(400);
+  });
+});
+
+describe("updates-stopped alert (cron)", () => {
+  // the Worker hands the Hub's promise to waitUntil; await it here
+  const runCron = async () => {
+    let pending;
+    await worker.scheduled({}, env, { waitUntil: (p) => (pending = p) });
+    await pending;
+  };
+  // Calling the Hub directly: an RPC stub kept from the Worker's cron keeps its request open, and an
+  // eviction then hangs, so tests that evict dispose the stub themselves.
+  const tickHub = async () => {
+    const stub = hub();
+    await stub.watch();
+    stub[Symbol.dispose]?.();
+  };
+  // pushes a batch, then makes it look `ms` old, in memory and in storage
+  async function ingestAged(ms) {
+    expect(await ingest(batch([claude()]))).toBe(200);
+    await runInDurableObject(hub(), async (instance, ctx) => {
+      instance.state.lastIngest = Date.now() - ms;
+      await ctx.storage.put("state", instance.state);
+    });
+  }
+
+  it("posts one signed alert, survives an eviction without repeating, then one recovery", async () => {
+    await ingestAged(6 * 60_000);
+    await tickHub();
+    expect(buzzPosts).toHaveLength(1);
+    const alert = buzzPosts[0];
+    expect(alert.kind).toBe(9);
+    expect(alert.tags).toEqual([["h", env.BUZZ_CHANNEL]]);
+    expect(alert.sig).toMatch(/^[0-9a-f]{128}$/);
+
+    await tickHub(); // already told
+    expect(buzzPosts).toHaveLength(1);
+
+    await evictDurableObject(hub()); // a restarted Hub neither repeats nor forgets
+    await tickHub();
+    expect(buzzPosts).toHaveLength(1);
+
+    expect(await ingest(batch([claude()]))).toBe(200); // updates are back
+    await tickHub();
+    expect(buzzPosts).toHaveLength(2);
+    expect(buzzPosts[1].content).not.toBe(alert.content);
+    await tickHub();
+    expect(buzzPosts).toHaveLength(2);
+  });
+
+  it("is started by the Worker's cron trigger", async () => {
+    await ingestAged(6 * 60_000);
+    await runCron();
+    expect(buzzPosts).toHaveLength(1);
+  });
+
+  it("says nothing while updates are fresh, or before any has arrived", async () => {
+    await runCron();
+    expect(await ingest(batch([claude()]))).toBe(200);
+    await runCron();
+    expect(buzzPosts).toHaveLength(0);
+  });
+
+  it("retries a failed post on the next tick", async () => {
+    await ingestAged(6 * 60_000);
+    const spy = globalThis.fetch;
+    const impl = spy.getMockImplementation();
+    spy.mockImplementationOnce(() => Promise.resolve(new Response("nope", { status: 500 })));
+    await runCron();
+    expect(buzzPosts).toHaveLength(0);
+    spy.mockImplementation(impl);
+    await runCron();
+    expect(buzzPosts).toHaveLength(1);
   });
 });

@@ -10,7 +10,10 @@ import { AGENTS, ENGINEERS, POLE, REQUEST_ACTIONS } from "../public/lib/state.js
 
 export { AGENTS, ENGINEERS, POLE };
 export { COLUMNS, HOME_ZONE, applyBatch, emptyReplay, emptyState, homeDay, homeMidnight, hourly, recordReplay, replaySince, view } from "../public/lib/state.js";
-export const STATES = ["WORKING", "REVIEW", "DISCUSS", "IDLE", "PAUSED"];
+// SILENT (setkernel-live#54): the engineer's VM has stopped reporting. sk-obs01 sends it when no run
+// has ended for 15 minutes and none is running, or the watch itself stopped writing (setkernel/hq#396).
+// Not OFFLINE: the page already says "offline" for the whole office.
+export const STATES = ["WORKING", "REVIEW", "DISCUSS", "IDLE", "PAUSED", "SILENT"];
 export const WORK = ["issue", "review", "changes", "discussion", "decision"];
 // "merged": the agent's pull request was merged (by a person); from the GitHub webhook (setkernel-live#33).
 // "merged_by": Polaris merged a pull request, anyone's (setkernel-live#35).
@@ -45,24 +48,33 @@ export function guard(out) {
   return out && !hasNever(out) ? out : null;
 }
 
-function cleanAgentInfo(v) {
-  return guard(agentInfo(v));
+function cleanAgentInfo(v, nowS) {
+  return guard(agentInfo(v, nowS));
 }
 
-function agentInfo(v) {
+// The oldest last-run time a SILENT state keeps: older, the page says "Not reporting" with no time.
+export const LAST_RUN_KEEP_S = 7 * 86_400;
+
+function agentInfo(v, nowS) {
   if (!v || typeof v !== "object" || !STATES.includes(v.state)) return null;
   const out = { state: v.state };
   if (WORK.includes(v.work)) out.work = v.work;
   if (typeof v.repo === "string" && REPO.test(v.repo)) out.repo = v.repo;
+  // SILENT's lastRun: when the last run ended, in seconds, on a whole minute, not in the future and
+  // not older than LAST_RUN_KEEP_S. Anything else drops the time and keeps the state, so the page
+  // says "Not reporting" with no time rather than a wrong one. No other state carries it.
+  const t = v.lastRun;
+  if (v.state === "SILENT" && Number.isInteger(t) && t % 60 === 0 && t <= nowS && t >= nowS - LAST_RUN_KEEP_S) out.lastRun = t;
   return out;
 }
 
 // One pushed event -> a clean copy, or null. Unknown fields are dropped, unknown values rejected.
-export function cleanEvent(e) {
-  return guard(eventFields(e));
+// nowS (seconds) is the clock a SILENT state's lastRun is checked against.
+export function cleanEvent(e, nowS = Math.floor(Date.now() / 1000)) {
+  return guard(eventFields(e, nowS));
 }
 
-function eventFields(e) {
+function eventFields(e, nowS) {
   if (!e || typeof e !== "object") return null;
   const ts = Number.isFinite(e.ts) ? Math.trunc(e.ts) : null;
   // A CI run has no agent. Only the result, and the repo name when sk-obs01 sends one: it sends a
@@ -79,7 +91,7 @@ function eventFields(e) {
   // one exception: its Claude requests come from its own machine's telemetry (setkernel-live#35).
   if (POLE.includes(e.agent) && !(e.t === "msg" && (e.kind === "github" || e.kind === "request" || (e.kind === "claude" && e.agent === "Yildun")))) return null;
   if (e.t === "agent") {
-    const info = cleanAgentInfo(e);
+    const info = cleanAgentInfo(e, nowS);
     return info ? { t: "agent", agent: e.agent, ...info, ...(ts ? { ts } : {}) } : null;
   }
   if (e.t !== "msg") return null;
@@ -94,14 +106,15 @@ function eventFields(e) {
   return null;
 }
 
-// A pushed batch -> { events, agents } with only clean content, or null if it isn't a batch.
-export function cleanBatch(body) {
+// A pushed batch -> { events, agents } with only clean content, or null if it isn't a batch. nowS
+// (seconds) is the Worker's clock, for a SILENT state's lastRun.
+export function cleanBatch(body, nowS = Math.floor(Date.now() / 1000)) {
   if (!body || typeof body !== "object" || !Array.isArray(body.events)) return null;
-  const events = body.events.slice(0, MAX_EVENTS).map(cleanEvent).filter(Boolean);
+  const events = body.events.slice(0, MAX_EVENTS).map((e) => cleanEvent(e, nowS)).filter(Boolean);
   const agents = {};
   for (const name of AGENTS) {
     if (POLE.includes(name)) continue; // no state for the pole stars, as above
-    const info = cleanAgentInfo(body.agents?.[name]);
+    const info = cleanAgentInfo(body.agents?.[name], nowS);
     if (info) agents[name] = info;
   }
   return { events, agents };

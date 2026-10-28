@@ -8,10 +8,13 @@
 //   GET  /github/queue    those events, cut down, for sk-obs01 to pull (its own Access token, checked again)
 // One Durable Object ("live") holds the picture, a capped 24-hour replay buffer and the GitHub queue,
 // and fans batches out to every open WebSocket.
+// A Cron Trigger asks it every 5 minutes whether updates have stopped, and it tells Buzz #infra.
 import { DurableObject } from "cloudflare:workers";
 import { applyBatch, cleanBatch, emptyReplay, emptyState, homeDay, recordReplay, replaySince, view } from "./logic.js";
 import { jwksFetcher, verifyAccessJwt } from "./access.js";
 import { EVENTS, cleanDelivery, cleanWebhook, emptyQueue, fetchHub, parseCursor, pushEvent, readCapped, readQueue, verifySignature } from "./github.js";
+import { delivered, emptyWatch, tick } from "./watch.js";
+import { postMessage } from "./buzz.js";
 
 const getKeys = jwksFetcher();
 const MAX_BODY = 256 * 1024;
@@ -51,6 +54,10 @@ export default {
       return fetchHub(() => hub().fetch(`https://hub/github/queue?since=${since}`));
     }
     return env.ASSETS.fetch(request);
+  },
+
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(env.HUB.get(env.HUB.idFromName("live")).watch());
   },
 };
 
@@ -92,12 +99,49 @@ export class Hub extends DurableObject {
     this.lastSaved = 0;
     this.lastBroadcast = 0;
     this.queue = emptyQueue();
+    this.watchState = emptyWatch();
+    this.watching = false;
     ctx.blockConcurrencyWhile(async () => {
-      const saved = await ctx.storage.get(["state", "replay", "github-queue"]);
+      const saved = await ctx.storage.get(["state", "replay", "github-queue", "watch"]);
       this.state = saved.get("state") ?? this.state;
       this.replay = saved.get("replay") ?? this.replay;
       this.queue = saved.get("github-queue") ?? this.queue;
+      this.watchState = saved.get("watch") ?? this.watchState;
     });
+  }
+
+  // Called by the Cron Trigger every 5 minutes (setkernel-live#9). Posts at most one message per
+  // tick; one that fails stays due and is tried again next tick.
+  async watch() {
+    const { BUZZ_RELAY_URL: relay, BUZZ_CHANNEL: channel, BUZZ_PRIVATE_KEY: key, ALERTS_MUTED } = this.env;
+    if (!relay || !channel || !key) {
+      console.log("watch: Buzz is not configured (BUZZ_RELAY_URL, BUZZ_CHANNEL, BUZZ_PRIVATE_KEY); not checking");
+      return;
+    }
+    if (this.watching) return; // the previous tick is still posting
+    this.watching = true;
+    try {
+      const now = Date.now();
+      const muted = String(ALERTS_MUTED) === "true";
+      const { watch, send } = tick(this.watchState, { lastIngest: this.state.lastIngest, now, muted });
+      await this.saveWatch(watch);
+      if (!send) return;
+      try {
+        await postMessage({ relay, channel, key, text: send.text, now });
+        await this.saveWatch(delivered(this.watchState, send.type));
+        console.log(`watch: posted the ${send.type} to Buzz`);
+      } catch (e) {
+        console.error(`watch: posting the ${send.type} to Buzz failed, retrying next tick: ${e.message}`);
+      }
+    } finally {
+      this.watching = false;
+    }
+  }
+
+  async saveWatch(watch) {
+    if (JSON.stringify(watch) === JSON.stringify(this.watchState)) return;
+    this.watchState = watch;
+    await this.ctx.storage.put("watch", watch);
   }
 
   view() {
@@ -131,14 +175,16 @@ export class Hub extends DurableObject {
       } catch {
         return new Response("Bad JSON", { status: 400 });
       }
-      const batch = cleanBatch(body);
-      if (!batch) return new Response("Not a batch", { status: 400 });
       const now = Date.now();
+      const batch = cleanBatch(body, Math.floor(now / 1000));
+      if (!batch) return new Response("Not a batch", { status: 400 });
       this.state = applyBatch(this.state, batch, now, today());
       if (batch.events.length) this.replay = recordReplay(this.replay, batch, now);
-      if (now - this.lastSaved > 60_000) {
-        // at most once a minute: a restart loses under a minute of counts, and storage writes stay low.
-        // The replay buffer is capped (public/lib/state.js), so it stays far below the value limit.
+      if (batch.events.length || now - this.lastSaved > 60_000) {
+        // every batch that carries events, so a hibernation can't lose them (the Hub can be evicted
+        // ~10 s after its last request); heartbeat batches save once a minute. Writes are at most one
+        // per event batch, about one every 15 s. The replay buffer is capped (public/lib/state.js),
+        // so it stays far below the value limit.
         this.lastSaved = now;
         await this.ctx.storage.put({ state: this.state, replay: this.replay });
       }
