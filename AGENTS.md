@@ -92,6 +92,14 @@ a laptop.
 - The page builds everything with `textContent`, never `innerHTML`; keep it that way. The CSP in
   `public/_headers` allows only same-origin scripts, styles and fonts; the fonts are self-hosted in
   `public/fonts/` (SIL OFL, licences beside them). Never add a third-party host.
+- Fonts follow setkernel/hq `docs/repo-standard.md` ("Fonts"): every stack is a self-hosted face,
+  then one generic family (`"Manrope", sans-serif`, `"IBM Plex Mono", monospace`), never a named
+  system font. The design mockups embed the files from `public/fonts/` (`docs/design/v2/fonts.mjs`,
+  `docs/design/v3/day/build.mjs`); `test/page.test.mjs` checks all of it.
+- `public/og.png` (the share preview) is taken by `docs/design/v3/day/built/shoot.mjs` (the `?demo`
+  page at 1440x756, scaled to 1200x630; last regenerated in #49). That script renders through the
+  host's system fonts, with no TTF files and no pinned `FONTCONFIG_FILE`, so glyphs outside the
+  Latin subset (`●`, `○`, `→`) depend on the machine. Pin both when `og.png` is next regenerated.
 - `BUZZ_PRIVATE_KEY` is a Worker secret from Infisical (README, "When updates stop"); never put it
   in `wrangler.jsonc`, a log line or an error message.
 - The Durable Object migration tag `v1` creates `Hub`; never edit an applied migration, add a new tag.

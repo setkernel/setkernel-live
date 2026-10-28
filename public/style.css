@@ -13,8 +13,8 @@
   --bg: #f6f5f1; --surface: #ecebe4; --ink: #18181a; --ink-2: #4a4945; --ink-3: #66645e;
   --rule: #e6e3db; --rule-2: #cdc9be; --band: #e1ded4; --bar: #918d82;
   --signal: #b42318; --focus: #1d4ed8;
-  --sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --sans: "Manrope", sans-serif;
+  --mono: "IBM Plex Mono", monospace;
   --f1: 12px; --f2: 14px; --f3: 16px; --f4: 20px; --f5: 24px; --f6: 32px;
   --l1: 16px; --l2: 20px; --l3: 24px; --l5: 32px; --l6: 40px;
   --s1: 4px; --s2: 8px; --s3: 16px; --s4: 24px; --s5: 32px; --s6: 48px;
