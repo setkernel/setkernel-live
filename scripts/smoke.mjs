@@ -16,17 +16,30 @@ export const BASE = "https://live.setkernel.com";
 export const WAIT_MS = 10 * 60_000;
 export const POLL_MS = 10_000;
 export const REQUEST_MS = 15_000;
+// Where Access sends a visitor with no login (its 302 to /cdn-cgi/access/login/...).
+export const ACCESS_HOST = "setkernel.cloudflareaccess.com";
 // What /api/state must carry: view() in public/lib/state.js plus the Hub's version.
 export const STATE_KEYS = ["agents", "counts", "byAgent", "seen", "line", "feed", "ci", "hours", "lastIngest", "now", "version"];
 
-// One GET, never following redirects (Access answers some routes itself). Returns the status and,
-// if asked, the parsed JSON body; a network error or timeout is status 0 with the error's name.
+// The host a redirect points at, or null if there is none or it isn't a URL.
+function locationHost(location, base) {
+  if (!location) return null;
+  try {
+    return new URL(location, base).host;
+  } catch {
+    return null;
+  }
+}
+
+// One GET, never following redirects (Access answers some routes itself). Returns the status, the
+// host of the Location header (only the host: the rest of the URL carries an Access `kid`) and, if
+// asked, the parsed JSON body; a network error or timeout is status 0 with the error's name.
 async function get(fetchFn, url, { json = false } = {}) {
   try {
     const res = await fetchFn(url, { redirect: "manual", headers: { "Cache-Control": "no-cache" }, signal: AbortSignal.timeout(REQUEST_MS) });
     if (!json) {
       await res.body?.cancel();
-      return { status: res.status };
+      return { status: res.status, location: locationHost(res.headers.get("Location"), url) };
     }
     try {
       return { status: res.status, body: await res.json() };
@@ -56,10 +69,14 @@ export async function waitForVersion(expected, { base = BASE, fetch: fetchFn = f
 
 // Each route once. Returns [{ name, ok, detail }].
 export async function checkRoutes(expected, { base = BASE, fetch: fetchFn = fetch }) {
-  const status = (name, path, want) => async () => {
+  // `redirectHost`: a 302 also passes, but only to that exact host. Only the status and that host are printed.
+  const status = (name, path, want, { redirectHost } = {}) => async () => {
     const res = await get(fetchFn, `${base}${path}`);
-    const ok = [want].flat().includes(res.status);
-    return { name, ok, detail: `${res.status}${res.error ? ` (${res.error})` : ""}, want ${[want].flat().join(" or ")}` };
+    const wants = [want].flat();
+    const ok = wants.includes(res.status) || (redirectHost !== undefined && res.status === 302 && res.location === redirectHost);
+    const redirected = res.status === 302 && redirectHost !== undefined ? ` to ${res.location ?? "no Location"}` : "";
+    const also = redirectHost !== undefined ? ` or 302 to ${redirectHost}` : "";
+    return { name, ok, detail: `${res.status}${res.error ? ` (${res.error})` : ""}${redirected}, want ${wants.join(" or ")}${also}` };
   };
   const state = async () => {
     const name = "GET /api/state";
@@ -84,8 +101,10 @@ export async function checkRoutes(expected, { base = BASE, fetch: fetchFn = fetc
     replay(),
     status("GET /github/webhook", "/github/webhook", 405)(), // public, POST only
     status("GET /github/queue", "/github/queue", 401)(), // Access answers before the Worker
-    // private: Access answers once its app exists, the Worker 503 (no USAGE_AUD) or 403 until then
-    status("GET /usage/data", "/usage/data", [401, 403, 503])(),
+    // private, behind its own Access app: with no login Access answers 302 to its login page (only
+    // on Access's own host), 401 or 403; the Worker's own 503 (no USAGE_AUD) also refuses. A 200
+    // means the route is open, and a 302 anywhere else is not Access.
+    status("GET /usage/data", "/usage/data", [401, 403, 503], { redirectHost: ACCESS_HOST })(),
   ]);
 }
 

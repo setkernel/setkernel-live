@@ -1,5 +1,5 @@
 // The Usage Durable Object and its two routes in workerd (setkernel-live#66): /ingest/usage on the
-// ingest's Access app, /usage/data on its own (503 while USAGE_AUD is empty), sums per Halifax
+// ingest's Access app, /usage/data on its own (503 if USAGE_AUD is empty), sums per Halifax
 // day, and nothing of it on the public routes.
 // Run: npm run test:worker
 import { env, exports } from "cloudflare:workers";
@@ -11,7 +11,7 @@ import { COUNTS, hourOf as hour } from "../../src/usage.js";
 
 const BASE = "https://live.setkernel.com";
 const OTHER_AUD = "c".repeat(64); // another Access app's tag
-const USAGE_AUD = "d".repeat(64); // stands in for the /usage Access app's tag; wrangler.jsonc ships ""
+const USAGE_AUD = "5fb92f4788226bc0b1bc4d1e71e171d68e15528c876740365cb79effc8462cb7"; // the "live usage" Access app's tag, as wrangler.jsonc ships it
 const store = () => env.USAGE.get(env.USAGE.idFromName("usage"));
 const hub = () => env.HUB.get(env.HUB.idFromName("live"));
 
@@ -49,7 +49,7 @@ async function push(body, { token } = {}) {
   if (token !== null) headers["Cf-Access-Jwt-Assertion"] = token ?? (await sign(env.INGEST_AUD));
   return answer(await exports.default.fetch(`${BASE}/ingest/usage`, { method: "POST", headers, body: typeof body === "string" ? body : JSON.stringify(body) }));
 }
-// GET /usage/data as if the /usage Access app existed (USAGE_AUD set), unless `aud` says otherwise.
+// GET /usage/data with the shipped USAGE_AUD, unless `aud` says otherwise.
 async function read(month, { token, aud = USAGE_AUD } = {}) {
   const headers = {};
   if (token !== null) headers["Cf-Access-Jwt-Assertion"] = token ?? (await sign(USAGE_AUD));
@@ -137,12 +137,13 @@ describe("usage", () => {
     }
   });
 
-  it("fails closed: /usage/data answers 503 while USAGE_AUD is empty, as wrangler.jsonc ships it", async () => {
-    expect(env.USAGE_AUD).toBe("");
+  it("ships USAGE_AUD as the live usage Access app's tag, and fails closed with 503 if it is ever empty", async () => {
+    expect(env.USAGE_AUD).toBe(USAGE_AUD);
     const token = await sign(USAGE_AUD);
-    expect((await answer(await exports.default.fetch(`${BASE}/usage/data?month=2026-10`, { headers: { "Cf-Access-Jwt-Assertion": token } }))).status).toBe(503);
+    expect((await answer(await exports.default.fetch(`${BASE}/usage/data?month=2026-10`, { headers: { "Cf-Access-Jwt-Assertion": token } }))).status).toBe(200);
+    expect((await answer(await exports.default.fetch(`${BASE}/usage/data?month=2026-10`))).status).toBe(403);
     expect((await read("2026-10", { aud: "" })).status).toBe(503);
-    expect((await read("2026-10", { aud: undefined, token })).status).toBe(200); // the same token passes once the tag is set
+    expect((await read("2026-10", { aud: "", token: null })).status).toBe(503);
   });
 
   it("answers /usage/data 405 for anything but GET and 400 for a bad month, after the token check", async () => {

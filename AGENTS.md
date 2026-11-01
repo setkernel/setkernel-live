@@ -75,6 +75,10 @@ a laptop.
   and never widen what `cleanWebhook` keeps without the same review as the page allowlist.
 - `QUEUE_AUD` works like `INGEST_AUD` below, for the "live queue" Access app. `GITHUB_WEBHOOK_SECRET`
   is a Worker secret set by the deploy workflow from Infisical; never put it in `vars`.
+- `USAGE_AUD` is the same for the "live usage" Access app in front of `/usage` (output `live_usage_aud`;
+  setkernel-cloudflare#119); `/usage/data` is open behind it. That app sends a visitor with no login a
+  302 to `setkernel.cloudflareaccess.com`, which the smoke check accepts for that route only. Empty
+  would make `/usage/data` answer 503.
 - `INGEST_AUD` in `wrangler.jsonc` is the audience tag of the "live ingest" Access app (not a
   secret). Empty means `/ingest` answers 503.
 - `public/lib/state.js` is served to visitors (demo mode runs it) and bundled into the Worker.

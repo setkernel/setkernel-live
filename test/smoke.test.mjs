@@ -95,7 +95,10 @@ test("each route check fails on its own wrong answer", async () => {
     ["/github/webhook", () => new Response("ok", { status: 200 }), "GET /github/webhook", "200, want 405"],
     ["/github/queue", () => new Response("Forbidden", { status: 403 }), "GET /github/queue", "403, want 401"],
     ["/github/queue", () => new Response(null, { status: 302, headers: { Location: "https://login.example" } }), "GET /github/queue", "302, want 401"],
-    ["/usage/data", () => Response.json({ days: {} }), "GET /usage/data", "200, want 401 or 403 or 503"],
+    ["/usage/data", () => Response.json({ days: {} }), "GET /usage/data", "200, want 401 or 403 or 503 or 302 to setkernel.cloudflareaccess.com"],
+    ["/usage/data", () => new Response(null, { status: 302, headers: { Location: "https://login.example/cdn-cgi/access/login/live.example?kid=abc" } }), "GET /usage/data", "302 to login.example, want"],
+    ["/usage/data", () => new Response(null, { status: 302, headers: { Location: "https://setkernel.cloudflareaccess.com.evil.example/x" } }), "GET /usage/data", "302 to setkernel.cloudflareaccess.com.evil.example, want"],
+    ["/usage/data", () => new Response(null, { status: 302 }), "GET /usage/data", "302 to no Location, want"],
     ["/api/state", () => Response.json({ agents: {}, version: SHA }), "GET /api/state", "missing keys: counts, byAgent"],
     ["/api/state", () => Response.json([1]), "GET /api/state", "missing keys"],
     ["/api/state", () => new Response("Not found", { status: 404 }), "GET /api/state", "404 (not JSON)"],
@@ -144,4 +147,25 @@ test("running the script directly parses its arguments", () => {
     assert.equal(run.status, 2, path);
     assert.match(run.stderr, /must be a lowercase hex commit id/);
   }
+});
+
+test("GET /usage/data passes on Access's 302 to its own host, and the report keeps only that host", async () => {
+  const location = "https://setkernel.cloudflareaccess.com/cdn-cgi/access/login/live.setkernel.com?kid=0123abcd";
+  for (const status of [401, 403, 503]) {
+    const { fetch } = site({ override: { "/usage/data": () => new Response(null, { status }) } });
+    assert.ok((await checkRoutes(SHA, { base: BASE, fetch })).every((r) => r.ok), String(status));
+  }
+  const { fetch } = site({ override: { "/usage/data": () => new Response(null, { status: 302, headers: { Location: location } }) } });
+  const { ok, lines } = await smoke(SHA, { base: BASE, fetch, ...clock() });
+  assert.equal(ok, true, lines.join("\n"));
+  const line = lines.find((l) => l.includes("GET /usage/data"));
+  assert.match(line, /302 to setkernel\.cloudflareaccess\.com/);
+  assert.doesNotMatch(lines.join("\n"), /kid|0123abcd|cdn-cgi/);
+});
+
+test("a 302 elsewhere fails without printing its URL", async () => {
+  const { fetch } = site({ override: { "/usage/data": () => new Response(null, { status: 302, headers: { Location: "https://evil.example/login?token=s3cret" } }) } });
+  const { ok, lines } = await smoke(SHA, { base: BASE, fetch, ...clock() });
+  assert.equal(ok, false);
+  assert.doesNotMatch(lines.join("\n"), /s3cret|token|login/);
 });
