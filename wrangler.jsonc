@@ -7,7 +7,8 @@
   "workers_dev": false,
   "preview_urls": false,
   "routes": [{ "pattern": "live.setkernel.com", "custom_domain": true }],
-  "assets": { "directory": "./public", "binding": "ASSETS" },
+  // /usage/ (the private usage page, setkernel-live#71) runs the Worker first, so it checks Access's token too.
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/usage", "/usage/*"] },
   "durable_objects": { "bindings": [{ "name": "HUB", "class_name": "Hub" }, { "name": "USAGE", "class_name": "Usage" }] },
   // Never edit an applied migration; add a tag. v2: the private usage store (setkernel-live#66).
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Hub"] }, { "tag": "v2", "new_sqlite_classes": ["Usage"] }],

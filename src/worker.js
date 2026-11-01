@@ -8,6 +8,7 @@
 //   GET  /github/queue    those events, cut down, for sk-obs01 to pull (its own Access token, checked again)
 //   POST /ingest/usage    hourly token usage per seat (the ingest's Access token, checked again; setkernel-live#66)
 //   GET  /usage/data      that usage summed per Halifax day for ?month=YYYY-MM (its own Access app; 503 until it exists)
+//   GET  /usage/          the page that reads it (public/usage/), behind the same Access app and token check
 // One Durable Object ("live") holds the picture, a capped 24-hour replay buffer and the GitHub queue,
 // and fans batches out to every open WebSocket.
 // A Cron Trigger asks it every 5 minutes whether updates have stopped, and it tells Buzz #infra.
@@ -70,7 +71,15 @@ export default {
       if (!ok) return new Response("Forbidden", { status: 403 });
       const month = new URL(request.url).searchParams.get("month");
       if (!monthRange(month)) return new Response("Bad month, want YYYY-MM", { status: 400 });
-      return Response.json(await usage(env).month(month), { headers: { "Cache-Control": "no-store" } });
+      // the newest hour stored goes in a header, so the body keeps the shape #69 shipped
+      const { newest, ...body } = await usage(env).month(month);
+      return Response.json(body, { headers: { "Cache-Control": "no-store", ...(newest && { "Usage-Newest-Hour": newest }) } });
+    }
+    if (pathname === "/usage" || pathname.startsWith("/usage/")) {
+      if (!env.USAGE_AUD) return new Response("Usage is not configured", { status: 503 });
+      const ok = await verifyAccessJwt(request.headers.get("Cf-Access-Jwt-Assertion"), { aud: env.USAGE_AUD, getKeys });
+      if (!ok) return new Response("Forbidden", { status: 403 });
+      return env.ASSETS.fetch(request);
     }
     if (pathname === "/github/webhook") return githubWebhook(request, env, hub);
     if (pathname === "/github/queue") {
@@ -152,10 +161,12 @@ export class Usage extends DurableObject {
     return { stored: buckets.length, days: sumByDay(this.#rows("hour IN (SELECT value FROM json_each(?))", hours)).days };
   }
 
-  // The month's Halifax days, each seat's sums per day, and each seat's totals for the month.
+  // The month's Halifax days, each seat's sums per day, each seat's totals for the month, and the
+  // newest hour stored in any month (null if none).
   month(month) {
     const { from, to } = monthRange(month);
-    return { month, ...sumByDay(this.#rows("hour >= ? AND hour < ?", from, to), month) };
+    const newest = this.sql.exec("SELECT MAX(hour) AS h FROM buckets").one().h;
+    return { month, ...sumByDay(this.#rows("hour >= ? AND hour < ?", from, to), month), newest };
   }
 }
 

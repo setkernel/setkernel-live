@@ -237,6 +237,14 @@ Hours older than 400 days are deleted on each push.
 
 The read is open behind Access: the app for `live.setkernel.com/usage` exists (setkernel-cloudflare#119).
 
+Everything under `/usage` (the page Raghav reads it on, setkernel-live#71, and its files in
+`public/usage/`) needs the same `USAGE_AUD` token as `/usage/data`, not only Access in front:
+`wrangler.jsonc` runs the Worker first for `/usage` and `/usage/*` (without it the assets are served
+before the Worker sees the request). `/usage/data` names the newest hour stored, in any month, in a
+`Usage-Newest-Hour` header (absent while nothing is stored); the body keeps its shape.
+`public/usage/table.js` turns a month into the page's rows: fresh tokens are input + output + cache
+writes, and a day or seat with no data is a dash, not zero.
+
 ## When updates stop
 
 A Cron Trigger asks the Durable Object every 5 minutes when the last batch arrived. After more than
