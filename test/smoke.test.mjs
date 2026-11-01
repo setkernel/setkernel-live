@@ -24,6 +24,7 @@ function site({ version = () => SHA, override = {} } = {}) {
     if (path === "/") return new Response("<!doctype html>", { headers: { "Content-Type": "text/html" } });
     if (path === "/github/webhook") return new Response("Method not allowed", { status: 405 });
     if (path === "/github/queue") return new Response("Access", { status: 401 });
+    if (path === "/usage/data") return new Response("Usage is not configured", { status: 503 });
     return new Response("Not found", { status: 404 });
   };
   return { fetch, calls };
@@ -39,7 +40,7 @@ test("passes at once when the deployed version is already serving", async () => 
   const { fetch, calls } = site();
   const { ok, lines } = await smoke(SHA, { base: BASE, fetch, ...clock() });
   assert.equal(ok, true, lines.join("\n"));
-  assert.deepEqual(new Set(calls.map((c) => c.path)), new Set(["/api/state", "/", "/api/replay?h=1", "/github/webhook", "/github/queue"]));
+  assert.deepEqual(new Set(calls.map((c) => c.path)), new Set(["/api/state", "/", "/api/replay?h=1", "/github/webhook", "/github/queue", "/usage/data"]));
   assert.ok(calls.every((c) => c.init.redirect === "manual"), "never follows redirects");
   assert.equal(lines.filter((l) => l.startsWith("FAIL")).length, 0);
 });
@@ -94,6 +95,7 @@ test("each route check fails on its own wrong answer", async () => {
     ["/github/webhook", () => new Response("ok", { status: 200 }), "GET /github/webhook", "200, want 405"],
     ["/github/queue", () => new Response("Forbidden", { status: 403 }), "GET /github/queue", "403, want 401"],
     ["/github/queue", () => new Response(null, { status: 302, headers: { Location: "https://login.example" } }), "GET /github/queue", "302, want 401"],
+    ["/usage/data", () => Response.json({ days: {} }), "GET /usage/data", "200, want 401 or 403 or 503"],
     ["/api/state", () => Response.json({ agents: {}, version: SHA }), "GET /api/state", "missing keys: counts, byAgent"],
     ["/api/state", () => Response.json([1]), "GET /api/state", "missing keys"],
     ["/api/state", () => new Response("Not found", { status: 404 }), "GET /api/state", "404 (not JSON)"],

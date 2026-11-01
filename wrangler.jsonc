@@ -8,8 +8,9 @@
   "preview_urls": false,
   "routes": [{ "pattern": "live.setkernel.com", "custom_domain": true }],
   "assets": { "directory": "./public", "binding": "ASSETS" },
-  "durable_objects": { "bindings": [{ "name": "HUB", "class_name": "Hub" }] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Hub"] }],
+  "durable_objects": { "bindings": [{ "name": "HUB", "class_name": "Hub" }, { "name": "USAGE", "class_name": "Usage" }] },
+  // Never edit an applied migration; add a tag. v2: the private usage store (setkernel-live#66).
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Hub"] }, { "tag": "v2", "new_sqlite_classes": ["Usage"] }],
   "vars": {
     // Audience tag of the "live ingest" Access app (setkernel-cloudflare, access stack, output
     // live_ingest_aud): not a secret. Empty would make /ingest answer 503.
@@ -17,6 +18,9 @@
     // Audience tag of the "live queue" Access app for /github/queue (setkernel-cloudflare, access
     // stack, output live_queue_aud; #54): not a secret. Empty would make /github/queue answer 503.
     "QUEUE_AUD": "cea94643c81566d341aa12cbbdaf56b27563781d7537206839b80812af302104",
+    // Audience tag of the Access app in front of /usage/data (setkernel-live#66): not a secret.
+    // Empty, until that app exists, makes /usage/data answer 503 to everyone.
+    "USAGE_AUD": "",
     // "Updates stopped" alerts (setkernel-live#9): where they go (not secrets). The identity's key,
     // BUZZ_PRIVATE_KEY, is a Worker secret that the deploy workflow brings from Infisical.
     "BUZZ_RELAY_URL": "https://buzz.setkernel.net",
