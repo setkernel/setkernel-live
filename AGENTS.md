@@ -32,7 +32,7 @@ Public repo: everything here is visible to anyone.
 a laptop.
 
 ## Layout
-- `src/worker.js`: routes (`/ws`, `/api/state`, `/api/replay`, `/ingest`, `/ingest/usage`, `/usage/data`, `/github/webhook`, `/github/queue`) and the `Hub` and `Usage` Durable Objects.
+- `src/worker.js`: routes (`/ws`, `/api/state`, `/api/replay`, `/ingest`, `/ingest/usage`, `/usage/data`, `/usage/`, `/github/webhook`, `/github/queue`) and the `Hub` and `Usage` Durable Objects.
 - `src/logic.js`: the allowlist (pure, tested); re-exports the state from `public/lib/state.js`.
 - `src/access.js`: checks the Cloudflare Access token on `/ingest` and `/github/queue` (pure, tested).
 - `src/github.js`: the GitHub Actions webhook check, the fields it keeps, and the pull queue (pure, tested).
@@ -51,6 +51,9 @@ a laptop.
   before the first paint), its security headers (`_headers`), `favicon.svg`, `og.png` (the share
   preview, taken by `docs/design/v3/day/built/shoot.mjs`) and `fonts/`. The design is
   `docs/design/v3/day/` (the prototype and its README); `built/` holds the built page's shots.
+- `public/usage/`: the private usage page's files (setkernel-live#71), served by the Worker only with
+  a `USAGE_AUD` token (`run_worker_first` in `wrangler.jsonc`, pinned by `test/usage-page.test.mjs`).
+  `table.js` (a month's rows, cells and the box's text) is pure and tested. Never move them out of `/usage`.
 - `public/lib/`: ES modules for the page. `state.js` is the public state, the Halifax day
   (`homeDay`, `homeMidnight`) and the 24-hour replay buffer; the Durable Object and `?demo` both
   run it. `line.js` derives each engineer's stage (state.js keeps the lanes). `words.js` (wording,
