@@ -58,7 +58,8 @@ export async function waitForVersion(expected, { base = BASE, fetch: fetchFn = f
 export async function checkRoutes(expected, { base = BASE, fetch: fetchFn = fetch }) {
   const status = (name, path, want) => async () => {
     const res = await get(fetchFn, `${base}${path}`);
-    return { name, ok: res.status === want, detail: `${res.status}${res.error ? ` (${res.error})` : ""}, want ${want}` };
+    const ok = [want].flat().includes(res.status);
+    return { name, ok, detail: `${res.status}${res.error ? ` (${res.error})` : ""}, want ${[want].flat().join(" or ")}` };
   };
   const state = async () => {
     const name = "GET /api/state";
@@ -83,6 +84,8 @@ export async function checkRoutes(expected, { base = BASE, fetch: fetchFn = fetc
     replay(),
     status("GET /github/webhook", "/github/webhook", 405)(), // public, POST only
     status("GET /github/queue", "/github/queue", 401)(), // Access answers before the Worker
+    // private: Access answers once its app exists, the Worker 503 (no USAGE_AUD) or 403 until then
+    status("GET /usage/data", "/usage/data", [401, 403, 503])(),
   ]);
 }
 

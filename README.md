@@ -72,7 +72,8 @@ Pushes that change only `*.md` files or `docs/` don't deploy. Runs never overlap
 commit. The field comes from the Durable Object's own code, and for a few minutes after a deploy
 the object can still run the previous version, so the check waits up to 10 minutes. Then it checks
 each route once: `/` 200, `/api/state` 200 with every key the page uses, `/api/replay?h=1` 200,
-`GET /github/webhook` 405 (POST only) and `GET /github/queue` 401 (Access answers first). It prints
+`GET /github/webhook` 405 (POST only), `GET /github/queue` 401 (Access answers first) and
+`GET /usage/data` refused (401, 403 or 503; a 200 fails it). It prints
 status codes, key names and the version, never a response body, and exits 1 on failure (2 on bad
 arguments).
 
@@ -99,6 +100,8 @@ Read the output from the top:
   means no answer within 15 s.
 - `GET /github/queue: 403, want 401` or a 302: Access no longer sits in front of the queue; check
   the "live queue" Access app (setkernel-cloudflare) before anything else.
+- `GET /usage/data: 200, want 401 or 403 or 503`: the private usage route answered without a
+  token. The rollback has already happened; find why before merging anything else.
 
 ### Rolling back by hand
 
@@ -220,8 +223,14 @@ Hours older than 400 days are deleted on each push.
   cloud, codex; the counts are whole numbers from 0. One bad bucket makes the whole push 400.
   A bucket pushed again replaces the stored one, so a pusher can resend an hour's running totals.
   The answer is `{ stored, days }`: what is now stored for the hours pushed, per Halifax day and seat.
+- `GET /usage/data?month=YYYY-MM` needs a token for its own Access app, checked against
+  `USAGE_AUD`. While `USAGE_AUD` is `""` in `wrangler.jsonc` (until that app exists) it answers 503
+  to everyone. It returns `{ month, days: { "2026-10-14": { seat: sums } }, totals: { seat: sums } }`
+  with `Cache-Control: no-store`. Days are Halifax days (`homeDay`), so an hour's usage counts on
+  the day it was in Halifax: 03:00 UTC is 23:00 the day before in winter.
 
-Nothing reads the usage yet: the read route is the next slice of setkernel-live#66.
+To open the read: create the Access app for `live.setkernel.com/usage` (setkernel-cloudflare,
+access stack), put its audience tag in `USAGE_AUD` in `wrangler.jsonc`, and merge.
 
 ## When updates stop
 

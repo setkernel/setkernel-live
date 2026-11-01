@@ -1,7 +1,7 @@
 // Daily tokens per seat (setkernel-live#66, setkernel/hq#721): hourly usage buckets pushed to
-// POST /ingest/usage and summed per Halifax day. Private: the Usage Durable Object keeps them apart
-// from the Hub, so no public route can return them. Nothing reads them yet (slice B, the read route,
-// follows). Pure and tested (test/usage.test.mjs); the Durable Object is in src/worker.js.
+// POST /ingest/usage and read back, summed per Halifax day, from GET /usage/data. Private: the
+// Usage Durable Object keeps them apart from the Hub, so no public route can return them. Pure and
+// tested (test/usage.test.mjs); the Durable Object is in src/worker.js.
 import { homeDay } from "../public/lib/state.js";
 
 export const SEATS = ["vega", "rigel", "lyra", "orion", "polaris", "codex", "other"];
