@@ -32,11 +32,11 @@ Public repo: everything here is visible to anyone.
 a laptop.
 
 ## Layout
-- `src/worker.js`: routes (`/ws`, `/api/state`, `/api/replay`, `/ingest`, `/ingest/usage`, `/github/webhook`, `/github/queue`) and the `Hub` and `Usage` Durable Objects.
+- `src/worker.js`: routes (`/ws`, `/api/state`, `/api/replay`, `/ingest`, `/ingest/usage`, `/usage/data`, `/github/webhook`, `/github/queue`) and the `Hub` and `Usage` Durable Objects.
 - `src/logic.js`: the allowlist (pure, tested); re-exports the state from `public/lib/state.js`.
 - `src/access.js`: checks the Cloudflare Access token on `/ingest` and `/github/queue` (pure, tested).
 - `src/github.js`: the GitHub Actions webhook check, the fields it keeps, and the pull queue (pure, tested).
-- `src/usage.js`: what `/ingest/usage` accepts and how it sums per Halifax day (pure, tested);
+- `src/usage.js`: what `/ingest/usage` accepts and how `/usage/data` sums it per Halifax day (pure, tested);
   the `Usage` Durable Object (SQLite, migration `v2`) is in `src/worker.js`. Private: never route it to the Hub.
 - `src/watch.js`: when to post "updates stopped" and "updates resumed" to Buzz (pure, tested).
 - `src/buzz.js`: signs and posts a Buzz message as the Worker's own identity (tested).
@@ -75,6 +75,10 @@ a laptop.
   and never widen what `cleanWebhook` keeps without the same review as the page allowlist.
 - `QUEUE_AUD` works like `INGEST_AUD` below, for the "live queue" Access app. `GITHUB_WEBHOOK_SECRET`
   is a Worker secret set by the deploy workflow from Infisical; never put it in `vars`.
+- `USAGE_AUD` is the same for the "live usage" Access app in front of `/usage` (output `live_usage_aud`;
+  setkernel-cloudflare#119); `/usage/data` is open behind it. That app sends a visitor with no login a
+  302 to `setkernel.cloudflareaccess.com`, which the smoke check accepts for that route only. Empty
+  would make `/usage/data` answer 503.
 - `INGEST_AUD` in `wrangler.jsonc` is the audience tag of the "live ingest" Access app (not a
   secret). Empty means `/ingest` answers 503.
 - `public/lib/state.js` is served to visitors (demo mode runs it) and bundled into the Worker.

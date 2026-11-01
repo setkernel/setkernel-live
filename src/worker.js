@@ -7,6 +7,7 @@
 //   POST /github/webhook  GitHub Actions, pull request, review, issue and comment events from the org webhook (public; HMAC-signed)
 //   GET  /github/queue    those events, cut down, for sk-obs01 to pull (its own Access token, checked again)
 //   POST /ingest/usage    hourly token usage per seat (the ingest's Access token, checked again; setkernel-live#66)
+//   GET  /usage/data      that usage summed per Halifax day for ?month=YYYY-MM (its own Access app; 503 until it exists)
 // One Durable Object ("live") holds the picture, a capped 24-hour replay buffer and the GitHub queue,
 // and fans batches out to every open WebSocket.
 // A Cron Trigger asks it every 5 minutes whether updates have stopped, and it tells Buzz #infra.
@@ -17,7 +18,7 @@ import { jwksFetcher, verifyAccessJwt } from "./access.js";
 import { EVENTS, cleanDelivery, cleanWebhook, emptyQueue, fetchHub, parseCursor, pushEvent, readCapped, readQueue, verifySignature } from "./github.js";
 import { delivered, emptyWatch, tick } from "./watch.js";
 import { postMessage } from "./buzz.js";
-import { COUNTS, cleanUsage, keepFrom, sumByDay } from "./usage.js";
+import { COUNTS, cleanUsage, keepFrom, monthRange, sumByDay } from "./usage.js";
 
 const getKeys = jwksFetcher();
 const MAX_BODY = 256 * 1024;
@@ -61,6 +62,15 @@ export default {
       }
       if (!buckets) return new Response("Not usage", { status: 400 });
       return Response.json(await usage(env).push(buckets, Date.now()), { headers: { "Cache-Control": "no-store" } });
+    }
+    if (pathname === "/usage/data") {
+      if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
+      if (!env.USAGE_AUD) return new Response("Usage is not configured", { status: 503 });
+      const ok = await verifyAccessJwt(request.headers.get("Cf-Access-Jwt-Assertion"), { aud: env.USAGE_AUD, getKeys });
+      if (!ok) return new Response("Forbidden", { status: 403 });
+      const month = new URL(request.url).searchParams.get("month");
+      if (!monthRange(month)) return new Response("Bad month, want YYYY-MM", { status: 400 });
+      return Response.json(await usage(env).month(month), { headers: { "Cache-Control": "no-store" } });
     }
     if (pathname === "/github/webhook") return githubWebhook(request, env, hub);
     if (pathname === "/github/queue") {
@@ -140,6 +150,12 @@ export class Usage extends DurableObject {
     });
     const hours = JSON.stringify([...new Set(buckets.map((b) => b.hour))]);
     return { stored: buckets.length, days: sumByDay(this.#rows("hour IN (SELECT value FROM json_each(?))", hours)).days };
+  }
+
+  // The month's Halifax days, each seat's sums per day, and each seat's totals for the month.
+  month(month) {
+    const { from, to } = monthRange(month);
+    return { month, ...sumByDay(this.#rows("hour >= ? AND hour < ?", from, to), month) };
   }
 }
 

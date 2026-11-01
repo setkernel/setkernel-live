@@ -1,4 +1,4 @@
-// src/usage.js: what /ingest/usage accepts and how it is summed (setkernel-live#66).
+// src/usage.js: what /ingest/usage accepts and how /usage/data sums it (setkernel-live#66).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { COUNTS, SEATS, SURFACES, cleanUsage, hourMs, keepFrom, monthRange, sumByDay } from "../src/usage.js";

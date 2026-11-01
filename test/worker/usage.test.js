@@ -1,6 +1,6 @@
-// The Usage Durable Object and POST /ingest/usage in workerd (setkernel-live#66): the ingest's
-// Access app, the echo of sums per Halifax day, and nothing of it on the public routes. Nothing
-// reads the usage yet, so the tests look in the store itself.
+// The Usage Durable Object and its two routes in workerd (setkernel-live#66): /ingest/usage on the
+// ingest's Access app, /usage/data on its own (503 if USAGE_AUD is empty), sums per Halifax
+// day, and nothing of it on the public routes.
 // Run: npm run test:worker
 import { env, exports } from "cloudflare:workers";
 import { evictDurableObject, runInDurableObject } from "cloudflare:test";
@@ -11,6 +11,7 @@ import { COUNTS, hourOf as hour } from "../../src/usage.js";
 
 const BASE = "https://live.setkernel.com";
 const OTHER_AUD = "c".repeat(64); // another Access app's tag
+const USAGE_AUD = "5fb92f4788226bc0b1bc4d1e71e171d68e15528c876740365cb79effc8462cb7"; // the "live usage" Access app's tag, as wrangler.jsonc ships it
 const store = () => env.USAGE.get(env.USAGE.idFromName("usage"));
 const hub = () => env.HUB.get(env.HUB.idFromName("live"));
 
@@ -48,6 +49,12 @@ async function push(body, { token } = {}) {
   if (token !== null) headers["Cf-Access-Jwt-Assertion"] = token ?? (await sign(env.INGEST_AUD));
   return answer(await exports.default.fetch(`${BASE}/ingest/usage`, { method: "POST", headers, body: typeof body === "string" ? body : JSON.stringify(body) }));
 }
+// GET /usage/data with the shipped USAGE_AUD, unless `aud` says otherwise.
+async function read(month, { token, aud = USAGE_AUD } = {}) {
+  const headers = {};
+  if (token !== null) headers["Cf-Access-Jwt-Assertion"] = token ?? (await sign(USAGE_AUD));
+  return answer(await worker.fetch(new Request(`${BASE}/usage/data?month=${month}`, { headers }), { ...env, USAGE_AUD: aud }));
+}
 // What the store holds, per hour, seat and model.
 const stored = () => runInDurableObject(store(), (_, ctx) => ctx.storage.sql.exec("SELECT hour, seat, model, input, requests FROM buckets ORDER BY hour, seat, model").toArray());
 
@@ -69,6 +76,12 @@ describe("usage", () => {
     const day2 = { vega: counts((48 * 49) / 2 - (24 * 25) / 2), rigel: counts(12) };
     expect(pushed.json).toEqual({ stored: 72, days: { "2026-10-14": day1, "2026-10-15": day2 } });
     expect(await stored()).toHaveLength(72);
+
+    const got = await read("2026-10");
+    expect(got.status).toBe(200);
+    expect(got.cache).toBe("no-store");
+    expect(got.json).toEqual({ month: "2026-10", days: { "2026-10-14": day1, "2026-10-15": day2 }, totals: { vega: counts((48 * 49) / 2), rigel: counts(24) } });
+    expect((await read("2026-11")).json).toEqual({ month: "2026-11", days: {}, totals: {} });
   });
 
   it("replaces a bucket pushed again, adds another model's, and echoes only the hours pushed", async () => {
@@ -85,6 +98,9 @@ describe("usage", () => {
   it("puts 03:00 UTC on the day the clocks go forward on the previous Halifax day", async () => {
     const pushed = await push({ buckets: [bucket("2026-03-08T03", "lyra", 1), bucket("2026-03-08T04", "lyra", 2), bucket("2026-03-01T03", "lyra", 4)] });
     expect(pushed.json.days).toEqual({ "2026-02-28": { lyra: counts(4) }, "2026-03-07": { lyra: counts(1) }, "2026-03-08": { lyra: counts(2) } });
+    // the read keeps each Halifax day in its own month, though 2026-03-01T03 is already March in UTC
+    expect((await read("2026-03")).json.days).toEqual({ "2026-03-07": { lyra: counts(1) }, "2026-03-08": { lyra: counts(2) } });
+    expect((await read("2026-02")).json.days).toEqual({ "2026-02-28": { lyra: counts(4) } });
   });
 
   it("deletes hours older than 400 days", async () => {
@@ -112,6 +128,32 @@ describe("usage", () => {
     expect(await stored()).toEqual([]);
   });
 
+  it("answers /usage/data 403 for no token, a forged one, the ingest app's or an expired one", async () => {
+    await push({ buckets: [bucket("2026-10-14T15", "vega", 1)] });
+    for (const token of [null, "", "not.a.jwt", await sign(env.INGEST_AUD), await sign(OTHER_AUD), await sign(USAGE_AUD, { iss: "https://evil.cloudflareaccess.com" }), await sign(USAGE_AUD, { exp: 1 })]) {
+      const res = await read("2026-10", { token });
+      expect(res.status).toBe(403);
+      expect(res.text).not.toContain("vega");
+    }
+  });
+
+  it("ships USAGE_AUD as the live usage Access app's tag, and fails closed with 503 if it is ever empty", async () => {
+    expect(env.USAGE_AUD).toBe(USAGE_AUD);
+    const token = await sign(USAGE_AUD);
+    expect((await answer(await exports.default.fetch(`${BASE}/usage/data?month=2026-10`, { headers: { "Cf-Access-Jwt-Assertion": token } }))).status).toBe(200);
+    expect((await answer(await exports.default.fetch(`${BASE}/usage/data?month=2026-10`))).status).toBe(403);
+    expect((await read("2026-10", { aud: "" })).status).toBe(503);
+    expect((await read("2026-10", { aud: "", token: null })).status).toBe(503);
+  });
+
+  it("answers /usage/data 405 for anything but GET and 400 for a bad month, after the token check", async () => {
+    const headers = { "Cf-Access-Jwt-Assertion": await sign(USAGE_AUD) };
+    for (const method of ["POST", "PUT", "DELETE"]) expect((await answer(await worker.fetch(new Request(`${BASE}/usage/data?month=2026-10`, { method, headers }), { ...env, USAGE_AUD }))).status, method).toBe(405);
+    for (const month of ["", "2026-13", "2026-00", "2026-10-01", "x"]) expect((await read(month)).status, month).toBe(400);
+    expect((await read("2026-13", { token: null })).status).toBe(403);
+    expect((await answer(await worker.fetch(new Request(`${BASE}/usage/data`, { headers }), { ...env, USAGE_AUD }))).status).toBe(400);
+  });
+
   it("answers 405 for anything but POST and 503 while INGEST_AUD is empty", async () => {
     for (const method of ["GET", "PUT", "DELETE"]) expect((await answer(await exports.default.fetch(`${BASE}/ingest/usage`, { method }))).status, method).toBe(405);
     const req = new Request(`${BASE}/ingest/usage`, { method: "POST", headers: { "Cf-Access-Jwt-Assertion": await sign(env.INGEST_AUD) }, body: "{}" });
@@ -127,6 +169,7 @@ describe("usage", () => {
     ws.close(1000, "done");
     await evictDurableObject(hub(), { webSockets: "close" });
     // "requests" is left out: the page's own counts have one (issues opened and comments)
+    expect((await answer(await exports.default.fetch(`${BASE}/api/state?month=2026-10`))).text).not.toContain("days");
     const words = ["input", "output", "cache_read", "cache_write", "usd_micros", "rigel", "claude-haiku-5-5", "codex", "surface", "usage"];
     for (const text of seen) {
       for (const n of Object.values(counts(7_654_321))) expect(text).not.toContain(String(n));
