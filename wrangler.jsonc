@@ -8,8 +8,9 @@
   "preview_urls": false,
   "routes": [{ "pattern": "live.setkernel.com", "custom_domain": true }],
   "assets": { "directory": "./public", "binding": "ASSETS" },
-  "durable_objects": { "bindings": [{ "name": "HUB", "class_name": "Hub" }] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Hub"] }],
+  "durable_objects": { "bindings": [{ "name": "HUB", "class_name": "Hub" }, { "name": "USAGE", "class_name": "Usage" }] },
+  // Never edit an applied migration; add a tag. v2: the private usage store (setkernel-live#66).
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Hub"] }, { "tag": "v2", "new_sqlite_classes": ["Usage"] }],
   "vars": {
     // Audience tag of the "live ingest" Access app (setkernel-cloudflare, access stack, output
     // live_ingest_aud): not a secret. Empty would make /ingest answer 503.
