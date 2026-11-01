@@ -6,15 +6,18 @@
 //   POST /ingest          batches from sk-obs01 (Access service token at the edge, checked again here)
 //   POST /github/webhook  GitHub Actions, pull request, review, issue and comment events from the org webhook (public; HMAC-signed)
 //   GET  /github/queue    those events, cut down, for sk-obs01 to pull (its own Access token, checked again)
+//   POST /ingest/usage    hourly token usage per seat (the ingest's Access token, checked again; setkernel-live#66)
 // One Durable Object ("live") holds the picture, a capped 24-hour replay buffer and the GitHub queue,
 // and fans batches out to every open WebSocket.
 // A Cron Trigger asks it every 5 minutes whether updates have stopped, and it tells Buzz #infra.
+// A second, private Durable Object ("usage") holds the usage, in SQLite; the Hub never sees it.
 import { DurableObject } from "cloudflare:workers";
 import { applyBatch, cleanBatch, emptyReplay, emptyState, homeDay, recordReplay, replaySince, view } from "./logic.js";
 import { jwksFetcher, verifyAccessJwt } from "./access.js";
 import { EVENTS, cleanDelivery, cleanWebhook, emptyQueue, fetchHub, parseCursor, pushEvent, readCapped, readQueue, verifySignature } from "./github.js";
 import { delivered, emptyWatch, tick } from "./watch.js";
 import { postMessage } from "./buzz.js";
+import { COUNTS, cleanUsage, keepFrom, sumByDay } from "./usage.js";
 
 const getKeys = jwksFetcher();
 const MAX_BODY = 256 * 1024;
@@ -42,6 +45,22 @@ export default {
       const body = await request.text();
       if (body.length > MAX_BODY) return new Response("Too large", { status: 413 });
       return hub().fetch("https://hub/ingest", { method: "POST", body });
+    }
+    if (pathname === "/ingest/usage") {
+      if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+      if (!env.INGEST_AUD) return new Response("Ingest is not configured", { status: 503 });
+      const ok = await verifyAccessJwt(request.headers.get("Cf-Access-Jwt-Assertion"), { aud: env.INGEST_AUD, getKeys });
+      if (!ok) return new Response("Forbidden", { status: 403 });
+      const body = await request.text();
+      if (body.length > MAX_BODY) return new Response("Too large", { status: 413 });
+      let buckets;
+      try {
+        buckets = cleanUsage(JSON.parse(body));
+      } catch {
+        return new Response("Bad JSON", { status: 400 });
+      }
+      if (!buckets) return new Response("Not usage", { status: 400 });
+      return Response.json(await usage(env).push(buckets, Date.now()), { headers: { "Cache-Control": "no-store" } });
     }
     if (pathname === "/github/webhook") return githubWebhook(request, env, hub);
     if (pathname === "/github/queue") {
@@ -89,6 +108,39 @@ async function githubWebhook(request, env, hub) {
   // 404 there, so fetchHub waits for the new one rather than the old one queueing an empty item
   const push = JSON.stringify({ delivery, events: cleaned });
   return fetchHub(() => hub().fetch("https://hub/github/push-all", { method: "POST", body: push }));
+}
+
+const usage = (env) => env.USAGE.get(env.USAGE.idFromName("usage"));
+
+// Hourly usage per seat, model and surface (setkernel-live#66). Only the Worker calls it, over RPC,
+// with buckets cleanUsage has already checked. A bucket pushed again replaces the stored one, so a
+// pusher can resend an hour's running totals.
+export class Usage extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.sql = ctx.storage.sql;
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS buckets (hour TEXT NOT NULL, seat TEXT NOT NULL, model TEXT NOT NULL,
+      surface TEXT NOT NULL, ${COUNTS.map((k) => `${k} INTEGER NOT NULL`).join(", ")}, PRIMARY KEY (hour, seat, model, surface))`);
+  }
+
+  // Each hour summed per seat over its models and surfaces, oldest first.
+  #rows(where, ...params) {
+    const sums = COUNTS.map((k) => `SUM(${k}) AS ${k}`).join(", ");
+    return this.sql.exec(`SELECT hour, seat, ${sums} FROM buckets WHERE ${where} GROUP BY hour, seat ORDER BY hour, seat`, ...params).toArray();
+  }
+
+  // Stores the buckets, deletes hours older than KEEP_DAYS, and answers with the stored totals of
+  // the hours pushed, per Halifax day and seat, for the pusher to compare.
+  push(buckets, now) {
+    const cols = ["hour", "seat", "model", "surface", ...COUNTS];
+    const insert = `INSERT OR REPLACE INTO buckets (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`;
+    this.ctx.storage.transactionSync(() => {
+      for (const b of buckets) this.sql.exec(insert, ...cols.map((c) => b[c]));
+      this.sql.exec("DELETE FROM buckets WHERE hour < ?", keepFrom(now));
+    });
+    const hours = JSON.stringify([...new Set(buckets.map((b) => b.hour))]);
+    return { stored: buckets.length, days: sumByDay(this.#rows("hour IN (SELECT value FROM json_each(?))", hours)).days };
+  }
 }
 
 export class Hub extends DurableObject {

@@ -1,0 +1,136 @@
+// The Usage Durable Object and POST /ingest/usage in workerd (setkernel-live#66): the ingest's
+// Access app, the echo of sums per Halifax day, and nothing of it on the public routes. Nothing
+// reads the usage yet, so the tests look in the store itself.
+// Run: npm run test:worker
+import { env, exports } from "cloudflare:workers";
+import { evictDurableObject, runInDurableObject } from "cloudflare:test";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import worker from "../../src/worker.js";
+import { CERTS, ISSUER } from "../../src/access.js";
+import { COUNTS, hourOf as hour } from "../../src/usage.js";
+
+const BASE = "https://live.setkernel.com";
+const OTHER_AUD = "c".repeat(64); // another Access app's tag
+const store = () => env.USAGE.get(env.USAGE.idFromName("usage"));
+const hub = () => env.HUB.get(env.HUB.idFromName("live"));
+
+// Access tokens signed with a throwaway key; the Worker's fetch of Access's certs gets its public half.
+let privateKey;
+const b64url = (s) => btoa(typeof s === "string" ? s : String.fromCharCode(...s)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+async function sign(aud, extra = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  const head = `${b64url(JSON.stringify({ alg: "RS256", kid: "k1", typ: "JWT" }))}.${b64url(JSON.stringify({ iss: ISSUER, aud: [aud], exp: now + 600, iat: now, ...extra }))}`;
+  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey, new TextEncoder().encode(head));
+  return `${head}.${b64url(new Uint8Array(sig))}`;
+}
+
+beforeAll(async () => {
+  const pair = await crypto.subtle.generateKey({ name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["sign", "verify"]);
+  privateKey = pair.privateKey;
+  const jwk = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid: "k1", alg: "RS256", use: "sig" };
+  const realFetch = globalThis.fetch;
+  vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => ((input instanceof Request ? input.url : String(input)) === CERTS ? Promise.resolve(Response.json({ keys: [jwk] })) : realFetch(input, init)));
+});
+
+afterEach(async () => {
+  await runInDurableObject(store(), (_, ctx) => ctx.storage.deleteAll());
+  await evictDurableObject(store());
+});
+
+// Every body is read: an unread one keeps the request open and evictDurableObject waits on it.
+async function answer(res) {
+  const text = await res.text();
+  const json = res.headers.get("Content-Type")?.startsWith("application/json") ? JSON.parse(text) : undefined;
+  return { status: res.status, json, text, cache: res.headers.get("Cache-Control") };
+}
+async function push(body, { token } = {}) {
+  const headers = {};
+  if (token !== null) headers["Cf-Access-Jwt-Assertion"] = token ?? (await sign(env.INGEST_AUD));
+  return answer(await exports.default.fetch(`${BASE}/ingest/usage`, { method: "POST", headers, body: typeof body === "string" ? body : JSON.stringify(body) }));
+}
+// What the store holds, per hour, seat and model.
+const stored = () => runInDurableObject(store(), (_, ctx) => ctx.storage.sql.exec("SELECT hour, seat, model, input, requests FROM buckets ORDER BY hour, seat, model").toArray());
+
+const bucket = (hour, seat, n, extra = {}) => ({ hour, seat, model: "claude-opus-5-5", surface: "vm", ...Object.fromEntries(COUNTS.map((k, i) => [k, n * (i + 1)])), ...extra });
+const counts = (n) => Object.fromEntries(COUNTS.map((k, i) => [k, n * (i + 1)]));
+
+describe("usage", () => {
+  it("echoes 48 hourly buckets summed into their two Halifax days", async () => {
+    const start = Date.UTC(2026, 9, 14, 3); // midnight ADT on 14 October
+    const buckets = [];
+    for (let i = 0; i < 48; i++) {
+      buckets.push(bucket(hour(start + i * 3_600_000), "vega", i + 1));
+      if (i % 2) buckets.push(bucket(hour(start + i * 3_600_000), "rigel", 1, { surface: "desktop" }));
+    }
+    const pushed = await push({ buckets });
+    expect(pushed.status).toBe(200);
+    expect(pushed.cache).toBe("no-store");
+    const day1 = { vega: counts((24 * 25) / 2), rigel: counts(12) }; // vega 1..24, rigel 12 hours
+    const day2 = { vega: counts((48 * 49) / 2 - (24 * 25) / 2), rigel: counts(12) };
+    expect(pushed.json).toEqual({ stored: 72, days: { "2026-10-14": day1, "2026-10-15": day2 } });
+    expect(await stored()).toHaveLength(72);
+  });
+
+  it("replaces a bucket pushed again, adds another model's, and echoes only the hours pushed", async () => {
+    await push({ buckets: [bucket("2026-10-14T15", "orion", 5), bucket("2026-10-14T16", "orion", 7)] });
+    const again = await push({ buckets: [bucket("2026-10-14T15", "orion", 3), bucket("2026-10-14T15", "orion", 2, { model: "claude-sonnet-5-5" })] });
+    expect(again.json).toEqual({ stored: 2, days: { "2026-10-14": { orion: counts(5) } } });
+    expect(await stored()).toEqual([
+      { hour: "2026-10-14T15", seat: "orion", model: "claude-opus-5-5", input: 3, requests: 18 },
+      { hour: "2026-10-14T15", seat: "orion", model: "claude-sonnet-5-5", input: 2, requests: 12 },
+      { hour: "2026-10-14T16", seat: "orion", model: "claude-opus-5-5", input: 7, requests: 42 },
+    ]);
+  });
+
+  it("puts 03:00 UTC on the day the clocks go forward on the previous Halifax day", async () => {
+    const pushed = await push({ buckets: [bucket("2026-03-08T03", "lyra", 1), bucket("2026-03-08T04", "lyra", 2), bucket("2026-03-01T03", "lyra", 4)] });
+    expect(pushed.json.days).toEqual({ "2026-02-28": { lyra: counts(4) }, "2026-03-07": { lyra: counts(1) }, "2026-03-08": { lyra: counts(2) } });
+  });
+
+  it("deletes hours older than 400 days", async () => {
+    const old = hour(Date.now() - 401 * 86_400_000);
+    await push({ buckets: [bucket(old, "polaris", 1), bucket(hour(Date.now()), "polaris", 1)] });
+    expect((await stored()).map((r) => r.hour)).toEqual([hour(Date.now())]);
+    await push({ buckets: [bucket(hour(Date.now() - 399 * 86_400_000), "polaris", 1)] });
+    expect(await stored()).toHaveLength(2);
+  });
+
+  it("refuses a bad push with 400 and stores none of it", async () => {
+    const good = bucket("2026-10-14T15", "vega", 1);
+    for (const body of ["{", { buckets: [good, { ...good, seat: "raghav" }] }, { buckets: [{ ...good, surface: "phone" }] }, { buckets: [{ ...good, input: -1 }] }, { buckets: [{ ...good, hour: "2026-10-14 15" }] }, { rows: [good] }]) {
+      expect((await push(body)).status, JSON.stringify(body)).toBe(400);
+    }
+    expect((await push("x".repeat(256 * 1024 + 1))).status).toBe(413);
+    expect(await stored()).toEqual([]);
+  });
+
+  it("answers 403 for no token, a forged one or another app's, and stores nothing", async () => {
+    const body = { buckets: [bucket("2026-10-14T15", "vega", 1)] };
+    for (const token of [null, "", "not.a.jwt", await sign(OTHER_AUD), await sign(env.INGEST_AUD, { iss: "https://evil.cloudflareaccess.com" }), await sign(env.INGEST_AUD, { exp: 1 })]) {
+      expect((await push(body, { token })).status).toBe(403);
+    }
+    expect(await stored()).toEqual([]);
+  });
+
+  it("answers 405 for anything but POST and 503 while INGEST_AUD is empty", async () => {
+    for (const method of ["GET", "PUT", "DELETE"]) expect((await answer(await exports.default.fetch(`${BASE}/ingest/usage`, { method }))).status, method).toBe(405);
+    const req = new Request(`${BASE}/ingest/usage`, { method: "POST", headers: { "Cf-Access-Jwt-Assertion": await sign(env.INGEST_AUD) }, body: "{}" });
+    expect((await answer(await worker.fetch(req, { ...env, INGEST_AUD: "" }))).status).toBe(503);
+  });
+
+  it("shows none of it on /api/state, /api/replay or the /ws first frame", async () => {
+    await push({ buckets: [bucket("2026-10-14T15", "rigel", 7_654_321, { model: "claude-haiku-5-5", surface: "codex" })] });
+    const ws = (await exports.default.fetch(`${BASE}/ws`, { headers: { Upgrade: "websocket" } })).webSocket;
+    const first = new Promise((resolve) => ws.addEventListener("message", (m) => resolve(m.data)));
+    ws.accept();
+    const seen = [(await answer(await exports.default.fetch(`${BASE}/api/state`))).text, (await answer(await exports.default.fetch(`${BASE}/api/replay?h=24`))).text, await first];
+    ws.close(1000, "done");
+    await evictDurableObject(hub(), { webSockets: "close" });
+    // "requests" is left out: the page's own counts have one (issues opened and comments)
+    const words = ["input", "output", "cache_read", "cache_write", "usd_micros", "rigel", "claude-haiku-5-5", "codex", "surface", "usage"];
+    for (const text of seen) {
+      for (const n of Object.values(counts(7_654_321))) expect(text).not.toContain(String(n));
+      for (const word of words) expect(text).not.toContain(word);
+    }
+  });
+});

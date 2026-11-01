@@ -205,6 +205,24 @@ deliveries (github.com/organizations/setkernel/settings/hooks) and redeliver any
 4. After setkernel-cloudflare#54 is applied, put its audience tag in `QUEUE_AUD` in
    `wrangler.jsonc` (a PR) and deploy again.
 
+## Usage: daily tokens per seat
+
+Private, and kept apart from the page (setkernel-live#66, setkernel/hq#721). A second Durable
+Object, `Usage`, holds hourly buckets in SQLite (`buckets`, one row per hour, seat, model and
+surface); the Hub never sees them, so `/ws`, `/api/state` and `/api/replay` can't return them.
+Hours older than 400 days are deleted on each push.
+
+- `POST /ingest/usage` sits behind the same Access app and token as `/ingest`, and the Worker
+  checks `INGEST_AUD` again. Body (up to 256 KiB): `{ "buckets": [{ "hour": "2026-10-14T15",
+  "seat": "vega", "model": "claude-opus-5-5", "surface": "vm", "input": 0, "output": 0,
+  "cache_read": 0, "cache_write": 0, "usd_micros": 0, "requests": 0 }] }`. `hour` is a UTC hour;
+  seat is one of vega, rigel, lyra, orion, polaris, codex, other; surface one of vm, desktop, cli,
+  cloud, codex; the counts are whole numbers from 0. One bad bucket makes the whole push 400.
+  A bucket pushed again replaces the stored one, so a pusher can resend an hour's running totals.
+  The answer is `{ stored, days }`: what is now stored for the hours pushed, per Halifax day and seat.
+
+Nothing reads the usage yet: the read route is the next slice of setkernel-live#66.
+
 ## When updates stop
 
 A Cron Trigger asks the Durable Object every 5 minutes when the last batch arrived. After more than
