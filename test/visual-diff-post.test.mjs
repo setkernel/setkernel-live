@@ -47,7 +47,7 @@ const good = (number = 7) => ({
 });
 
 // A fake GitHub: pulls by number, the shots branch, comments; records every request.
-function fakeGitHub({ pulls = {}, branch = null, comments = [], moves = 0, artifacts = [] } = {}) {
+function fakeGitHub({ pulls = {}, branch = null, comments = [], moves = 0, artifacts = [], rerun = false } = {}) {
   const calls = [];
   const state = { branch, comments: [...comments], n: 0, moves: 0 };
   const sha = () => (++state.n).toString(16).padStart(40, "0");
@@ -62,7 +62,8 @@ function fakeGitHub({ pulls = {}, branch = null, comments = [], moves = 0, artif
       return state.branch ? reply(200, { object: { sha: state.branch } }) : reply(404, { message: "Not Found" });
     if (method === "GET" && (m = path.match(/^\/git\/commits\/(\w+)$/))) return reply(200, { tree: { sha: `tree-of-${m[1]}` } });
     if (method === "POST" && path === "/git/blobs") return reply(201, { sha: sha() });
-    if (method === "POST" && path === "/git/trees") return reply(201, { sha: sha() });
+    // rerun: the shots are already on the branch, so GitHub hands back the tip's own tree.
+    if (method === "POST" && path === "/git/trees") return reply(201, { sha: rerun && body.base_tree ? body.base_tree : sha() });
     if (method === "POST" && path === "/git/commits") return reply(201, { sha: sha() });
     if (method === "POST" && path === "/git/refs") {
       if (state.branch) return reply(422, { message: "Reference already exists" });
@@ -183,6 +184,17 @@ test("the only ref it writes is refs/heads/visual-diff-shots, whatever the artif
   ]);
   assert.match(src, /^export const SHOTS_BRANCH = "visual-diff-shots";$/m);
   assert.match(src, /^const SHOTS_REF = `refs\/heads\/\$\{SHOTS_BRANCH\}`;$/m);
+});
+
+test("a re-run with the same shots makes no commit and links the tip that holds them", async (t) => {
+  const dir = await artifact(good(7));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const tip = "c".repeat(40);
+  const gh = fakeGitHub({ pulls: { 7: openPull() }, branch: tip, rerun: true });
+  assert.match(await post(gh.api, REPO, run(), dir), new RegExp(`on ${SHOTS_BRANCH} at \`${tip}\`; posted the comment on #7`));
+  assert.deepEqual(gh.calls.filter((c) => c.path === "/git/commits" || c.path.startsWith("/git/refs")).filter((c) => c.method !== "GET"), []);
+  assert.equal(gh.state.branch, tip);
+  assert.ok(gh.state.comments[0].body.includes(`https://raw.githubusercontent.com/${REPO}/${tip}/pr-7/${HEAD}/`));
 });
 
 test("one marked comment: a later head rewrites the poster's own, not anyone else's", async (t) => {
