@@ -76,6 +76,8 @@ a laptop.
   one comment marked `<!-- sk-visual head=<sha> -->`. The artifact is untrusted (a fork's pull request
   can change the workflow that made it): never check out or run the pull request's code there, never
   put text from the artifact in the comment, and never write any ref but `visual-diff-shots`.
+  The poster reads only the files main's `SHOTS` (in `scripts/visual-diff.mjs`) names, so a pull request
+  that changes `SHOTS` gets no comment ("unexpected file in the artifact") until it merges.
 - `test/`: `node --test` suites for the pure modules and the page (`day.test.mjs` for Day).
 - `test/worker/`: vitest suites run in workerd by `@cloudflare/vitest-plugin` (`vitest.config.mjs`
   reads `wrangler.jsonc`). They fake Access's certs with a throwaway key and drive every route
