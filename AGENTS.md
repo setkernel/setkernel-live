@@ -55,7 +55,8 @@ a laptop.
   `docs/design/v3/day/` (the prototype and its README); `built/` holds the built page's shots.
 - `public/usage/`: the private usage page's files (setkernel-live#71), served by the Worker only with
   a `USAGE_AUD` token (`run_worker_first` in `wrangler.jsonc`, pinned by `test/usage-page.test.mjs`).
-  `table.js` (a month's rows, cells and the box's text) is pure and tested. Never move them out of `/usage`.
+  `table.js` (a month's rows, cells and the box's text) is pure and tested; `page.js` draws it, tested
+  against a stand-in document. Never move them out of `/usage`.
 - `public/lib/`: ES modules for the page. `state.js` is the public state, the Halifax day
   (`homeDay`, `homeMidnight`) and the 24-hour replay buffer; the Durable Object and `?demo` both
   run it. `line.js` derives each engineer's stage (state.js keeps the lanes). `words.js` (wording,
