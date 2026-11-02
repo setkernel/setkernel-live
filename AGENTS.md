@@ -18,6 +18,7 @@ Public repo: everything here is visible to anyone.
 #                                    headline/demo/replay, Day's lanes/Now column/key/scrubbing/fitWall,
 #                                    Buzz alert, page hosts, fonts and contrast, the smoke check, the showcase's
 #                                    publisher, the workflow runner guard, the visual-diff check's plan and workflow,
+#                                    its poster (the artifact, the pull request, the shots branch, the comment),
 #                                    and repo names against GitHub's public list, live)
 # worker:   npm run test:worker      (vitest in workerd: the real Worker and Hub, see test/worker/)
 # lint:     npm run check            (node --check on every script)
@@ -69,6 +70,14 @@ a laptop.
   from the head at 1440x900 and 375x812, on one runner with a pinned Playwright, and keeps the shots
   as the run's `visual-diff` artifact. It fails only when the head page errs. It always runs, and
   passes with no UI change, so it can be a required check: never give it a `paths:` filter or a job `if:`.
+- `scripts/visual-diff-post.mjs` and `.github/workflows/visual-diff-comment.yml`: its poster. A
+  `workflow_run` after "Visual diff", from main, with the only write token a pull request's run can
+  reach: it commits the shots to the orphan branch `visual-diff-shots` (`pr-<n>/<head sha>/`) and keeps
+  one comment marked `<!-- sk-visual head=<sha> -->`. The artifact is untrusted (a fork's pull request
+  can change the workflow that made it): never check out or run the pull request's code there, never
+  put text from the artifact in the comment, and never write any ref but `visual-diff-shots`.
+  The poster reads only the files main's `SHOTS` (in `scripts/visual-diff.mjs`) names, so a pull request
+  that changes `SHOTS` gets no comment ("unexpected file in the artifact") until it merges.
 - `test/`: `node --test` suites for the pure modules and the page (`day.test.mjs` for Day).
 - `test/worker/`: vitest suites run in workerd by `@cloudflare/vitest-plugin` (`vitest.config.mjs`
   reads `wrangler.jsonc`). They fake Access's certs with a throwaway key and drive every route

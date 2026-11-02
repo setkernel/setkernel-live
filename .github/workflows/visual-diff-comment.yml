@@ -1,0 +1,55 @@
+name: Visual diff comment
+
+# setkernel-live#74, slice 2: posts the shots that "Visual diff" (visual-diff.yml) kept, in one
+# comment on the pull request marked <!-- sk-visual head=<sha> -->. That run has a read-only token,
+# a fork's included, so it can't post; this one runs from main after it completes, with this repo's
+# token. It never checks out or runs the pull request's code: scripts/visual-diff-post.mjs (main's)
+# treats the artifact as untrusted, uses the pull request only if its head is the run's head, and
+# writes only to the visual-diff-shots branch. Not a required check: visual-diff is.
+on:
+  workflow_run:
+    workflows: [Visual diff]
+    types: [completed]
+
+permissions: {}
+
+# A newer run for the same branch supersedes this one; pushes from different pull requests to
+# visual-diff-shots retry on their own (publish in the script).
+concurrency:
+  group: visual-diff-comment-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+jobs:
+  # Public repo: what a fork's pull request made is handled here, so never a self-hosted runner.
+  post:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read # the run's artifact
+      contents: write # visual-diff-shots, and only that ref (scripts/visual-diff-post.mjs)
+      pull-requests: write # the comment
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      # No artifact when no UI path changed: nothing to post.
+      - id: find
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/visual-diff-post.mjs find >> "$GITHUB_OUTPUT"
+      - if: steps.find.outputs.artifact == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: visual-diff
+          path: ${{ runner.temp }}/visual-diff
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - if: steps.find.outputs.artifact == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/visual-diff-post.mjs post "$RUNNER_TEMP/visual-diff" >> "$GITHUB_STEP_SUMMARY"
