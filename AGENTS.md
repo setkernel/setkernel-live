@@ -17,7 +17,8 @@ Public repo: everything here is visible to anyone.
 #                                    the line's columns, Access token check, GitHub receiver, page wording/
 #                                    headline/demo/replay, Day's lanes/Now column/key/scrubbing/fitWall,
 #                                    Buzz alert, page hosts, fonts and contrast, the smoke check, the showcase's
-#                                    publisher, the workflow runner guard, and repo names against GitHub's public list, live)
+#                                    publisher, the workflow runner guard, the visual-diff check's plan and workflow,
+#                                    and repo names against GitHub's public list, live)
 # worker:   npm run test:worker      (vitest in workerd: the real Worker and Hub, see test/worker/)
 # lint:     npm run check            (node --check on every script)
 # validate: npm run validate         (check + test + test:worker + wrangler deploy --dry-run; what CI runs)
@@ -63,6 +64,11 @@ a laptop.
   pure and tested; `chart.js` draws the SVG.
 - `scripts/smoke.mjs`: the post-deploy smoke check (no dependencies); waits for `/api/state`'s
   `version` (the `VERSION` var, set at deploy) to be the deployed commit, then checks each route.
+- `scripts/visual-diff.mjs` and `.github/workflows/visual-diff.yml`: the visual-diff check (setkernel-live#74).
+  On every pull request that touches `public/` (not `public/usage/`), it draws `?demo` from the base and
+  from the head at 1440x900 and 375x812, on one runner with a pinned Playwright, and keeps the shots
+  as the run's `visual-diff` artifact. It fails only when the head page errs. It always runs, and
+  passes with no UI change, so it can be a required check: never give it a `paths:` filter or a job `if:`.
 - `test/`: `node --test` suites for the pure modules and the page (`day.test.mjs` for Day).
 - `test/worker/`: vitest suites run in workerd by `@cloudflare/vitest-plugin` (`vitest.config.mjs`
   reads `wrangler.jsonc`). They fake Access's certs with a throwaway key and drive every route

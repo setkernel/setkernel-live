@@ -1,0 +1,59 @@
+name: Visual diff
+
+# setkernel-live#74: a pull request that touches the page gets screenshots of its base and its head
+# at 1440 x 900 and 375 x 812 (scripts/visual-diff.mjs), kept as the run's visual-diff artifact.
+# The job always runs and passes when no UI path changed, so it can be a required check (hq#799):
+# no paths filter, which would leave a required check waiting for a run that never starts.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: visual-diff-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash # -eo pipefail, so a failed git diff fails the plan
+
+jobs:
+  # Public repo: a fork's pull request runs here with a read-only token and no secrets, so never a
+  # self-hosted runner (setkernel-live#59) and never pull_request_target, which would run the
+  # fork's code with this repo's token.
+  visual-diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # The merge commit is the head; its first parent is the base, so depth 2 holds both.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - id: plan
+        run: git diff --no-renames --name-only HEAD^1 HEAD | node scripts/visual-diff.mjs plan >> "$GITHUB_OUTPUT"
+      - if: steps.plan.outputs.ui != 'true'
+        run: echo "No UI path changed, so nothing was drawn." >> "$GITHUB_STEP_SUMMARY"
+      - if: steps.plan.outputs.ui == 'true'
+        run: git worktree add --detach "$RUNNER_TEMP/base" HEAD^1
+      # Playwright isn't a dependency of this repo: a pinned one outside it, with no install scripts.
+      - if: steps.plan.outputs.ui == 'true'
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pw" --no-save --no-audit --no-fund --ignore-scripts playwright@1.64.1
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps --only-shell chromium
+      - if: steps.plan.outputs.ui == 'true'
+        env:
+          PLAYWRIGHT_DIR: ${{ runner.temp }}/pw
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/visual-diff.mjs render "$RUNNER_TEMP/base" . "$RUNNER_TEMP/visual-diff" >> "$GITHUB_STEP_SUMMARY"
+      - if: ${{ !cancelled() && steps.plan.outputs.ui == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: visual-diff
+          path: ${{ runner.temp }}/visual-diff
+          retention-days: 14
