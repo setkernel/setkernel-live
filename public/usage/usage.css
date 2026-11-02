@@ -1,0 +1,74 @@
+/* live.setkernel.com/usage (setkernel-live#78): option B from setkernel-live#71. The fonts, tokens,
+   masthead and lead come from /style.css; this adds the dark theme (the wall's colours, so the
+   contrast test in test/page.test.mjs covers them), the table, the shading and the box. */
+:root { --heat: 24, 24, 26; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111214; --surface: #1b1c20; --ink: #eeede9; --ink-2: #bdbbb5; --ink-3: #9a9892;
+    --rule: #232427; --rule-2: #3d3e42; --band: #25262a; --bar: #77756f;
+    --signal: #f2735f; --focus: #8fb0ff;
+    --heat: 238, 237, 233; color-scheme: dark;
+  }
+}
+.lead { padding-bottom: var(--s3); }
+.months { display: flex; gap: var(--s4); align-items: baseline; font-size: var(--f2); line-height: var(--l2); color: var(--ink-2); padding-bottom: var(--s3); }
+.months .off { color: var(--ink-3); }
+a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.status { margin: 0 0 var(--s4); color: var(--ink-2); }
+.sum { display: flex; flex-wrap: wrap; gap: var(--s3) var(--s5); margin: 0 0 var(--s4); padding: 0; list-style: none; }
+.sum li { display: flex; flex-direction: column; }
+.sum .k { font-size: var(--f1); line-height: var(--l1); color: var(--ink-3); }
+.sum .v { font-size: var(--f4); line-height: var(--l3); font-weight: 600; }
+.hint { margin: 0 0 var(--s2); font-size: var(--f1); line-height: var(--l1); color: var(--ink-3); }
+.note { margin: var(--s3) 0 0; font-size: var(--f1); line-height: var(--l1); color: var(--ink-3); max-width: 760px; }
+
+/* the table: one row per Halifax day, newest first; only it scrolls sideways on a phone */
+.scroll { overflow-x: auto; border-top: 1px solid var(--rule-2); }
+table { border-collapse: collapse; width: 100%; font-size: var(--f2); line-height: var(--l2); }
+th, td { text-align: right; padding: var(--s2) var(--s3) var(--s2) 0; border-bottom: 1px solid var(--rule); vertical-align: top; white-space: nowrap; }
+thead th { font-weight: 600; color: var(--ink-2); position: sticky; top: 0; background: var(--bg); }
+th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--bg); padding-left: 0; z-index: 1; }
+td:first-child { font: var(--f1)/var(--l2) var(--mono); color: var(--ink-2); }
+td:first-child .wd { color: var(--ink-3); }
+td .m, td .s { display: block; }
+td .m { color: var(--ink); }
+td .s { font-size: var(--f1); line-height: var(--l1); color: var(--ink-3); }
+td.none { color: var(--ink-3); padding-left: var(--s3); }
+th.tot, td.tot { border-left: 1px solid var(--rule-2); padding-left: var(--s3); }
+tr.we td:first-child { color: var(--ink-3); }
+tr.today td, tr.today td:first-child { background-color: var(--surface); }
+.tag { display: inline-block; margin-left: var(--s2); font: 600 var(--f1)/var(--l1) var(--sans); color: var(--signal); }
+tfoot td { border-top: 1px solid var(--rule-2); border-bottom: 0; padding-top: var(--s3); }
+tfoot td:first-child { font: 600 var(--f2)/var(--l2) var(--sans); color: var(--ink); }
+tfoot td .m, td.tot .m { font-weight: 600; }
+.usd { font-size: var(--f1); color: var(--ink-3); }
+.bar { display: block; margin: var(--s1) 0 0 auto; }
+.bar rect { fill: var(--bar); }
+
+/* a seat's day, shaded on 8 steps by its size against the month's biggest (table.js, HEAT): a
+   class each, since the CSP allows no style attribute; laid over today's ground, not in place of it */
+td.h { padding-left: var(--s3); cursor: default; background-image: linear-gradient(var(--tint, transparent), var(--tint, transparent)); }
+td.t1 { --tint: rgba(var(--heat), .04); }
+td.t2 { --tint: rgba(var(--heat), .06); }
+td.t3 { --tint: rgba(var(--heat), .08); }
+td.t4 { --tint: rgba(var(--heat), .10); }
+td.t5 { --tint: rgba(var(--heat), .12); }
+td.t6 { --tint: rgba(var(--heat), .14); }
+td.t7 { --tint: rgba(var(--heat), .16); }
+td.t8 { --tint: rgba(var(--heat), .18); }
+td.h:focus { outline: none; }
+td.h:hover, td.h.on { outline: 2px solid var(--ink); outline-offset: -2px; }
+td.h:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* the box: a number's exact fresh tokens, cache reads and dollars */
+.tip { position: fixed; z-index: 5; min-width: 220px; padding: var(--s2) var(--s3); background: var(--ink); color: var(--bg); border-radius: 6px; font-size: var(--f2); line-height: var(--l2); pointer-events: none; box-shadow: 0 4px 16px rgba(0, 0, 0, .18); }
+.tip .t-h { font-weight: 600; margin-bottom: var(--s1); }
+.tip dl { display: grid; grid-template-columns: auto auto; gap: 0 var(--s3); margin: 0; }
+.tip dt { opacity: .72; }
+.tip dd { margin: 0; text-align: right; font-weight: 600; }
+
+@media (max-width: 719px) {
+  .sum .v { font-size: var(--f3); }
+  .wide { display: none; }
+  table { width: auto; }
+}

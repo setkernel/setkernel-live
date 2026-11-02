@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Usage per seat · setkernel live</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/usage/usage.css">
+  <script type="module" src="/usage/page.js"></script>
+</head>
+<body>
+  <main class="day">
+    <header class="mast">
+      <p class="brand"><a href="https://setkernel.com">setkernel</a> <span>live · usage</span></p>
+      <p class="fresh"><span id="asof">Loading</span><span class="wide"> · Only Raghav can open this page</span></p>
+    </header>
+    <section class="lead">
+      <h1 id="title">Tokens per seat</h1>
+      <p>Fresh tokens are input, output and cache writes. Days run midnight to midnight, Halifax time.</p>
+    </section>
+    <nav class="months" id="months" aria-label="Month"></nav>
+    <p class="status" id="status" role="status">Loading this month's usage…</p>
+    <ul class="sum" id="sum" hidden></ul>
+    <p class="hint" id="hint" hidden>Hover a number for its exact tokens, cache reads and dollars. On a phone, tap it.</p>
+    <div class="scroll" id="scroll" hidden><table id="usage"></table></div>
+    <p class="note">Dollars are what the same tokens would cost at API prices. The seats are on subscriptions, so this is a size guide, not a bill. Polaris covers Raghav's own sessions. A dash means no data, not zero.</p>
+  </main>
+  <div class="tip" id="tip" role="tooltip" hidden></div>
+</body>
+</html>

@@ -39,12 +39,25 @@ async function get(path, token, init = {}) {
 
 describe("usage page", () => {
   it("serves /usage and its files only with a live usage token", async () => {
-    for (const path of ["/usage/", "/usage", "/usage/table.js", "/usage/nothing-here"]) {
+    for (const path of ["/usage/", "/usage", "/usage/index.html", "/usage/page.js", "/usage/usage.css", "/usage/table.js", "/usage/nothing-here"]) {
       for (const token of [undefined, "not.a.jwt", await sign(env.INGEST_AUD)]) expect((await get(path, token)).status, path).toBe(403);
     }
     const file = await get("/usage/table.js", await sign(env.USAGE_AUD));
     expect(file.status).toBe(200);
     expect(file.text).toContain("export function buildMonth");
+  });
+
+  it("serves the page at /usage/ and /usage, and its script and styles, to a valid token", async () => {
+    const token = await sign(env.USAGE_AUD);
+    for (const path of ["/usage/", "/usage", "/usage/index.html"]) {
+      const res = await exports.default.fetch(`${BASE}${path}`, { headers: { "Cf-Access-Jwt-Assertion": token } });
+      const text = await res.text();
+      expect(res.status, path).toBe(200);
+      expect(text, path).toContain('<script type="module" src="/usage/page.js"></script>');
+      expect(res.headers.get("Content-Security-Policy"), path).toContain("script-src 'self'; style-src 'self'");
+    }
+    expect((await get("/usage/page.js", token)).text).toContain('from "./table.js"');
+    expect((await get("/usage/usage.css", token)).text).toContain("td.t8");
   });
 
   it("answers /usage/ files 503 if USAGE_AUD is ever empty", async () => {

@@ -243,7 +243,9 @@ Everything under `/usage` (the page Raghav reads it on, setkernel-live#71, and i
 before the Worker sees the request). `/usage/data` names the newest hour stored, in any month, in a
 `Usage-Newest-Hour` header (absent while nothing is stored); the body keeps its shape.
 `public/usage/table.js` turns a month into the page's rows: fresh tokens are input + output + cache
-writes, and a day or seat with no data is a dash, not zero.
+writes, and a day or seat with no data is a dash, not zero. `public/usage/index.html`, `usage.css`
+and `page.js` draw it (setkernel-live#78): `?month=YYYY-MM` picks the month, the newest hour is
+the header's, and a 403, 503 or expired login shows a message. Its shots are in `docs/design/usage/`.
 
 ## When updates stop
 
