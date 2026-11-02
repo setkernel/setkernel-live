@@ -97,7 +97,7 @@ function draw(v, newest) {
 }
 
 // The box, from the reference in setkernel-live#71: placed with the CSSOM, which the CSP allows.
-let pinned = null;
+let pinned = null, focused = null;
 function show(td) {
   const box = $("tip"), t = tip(td.dataset), dl = el("dl");
   for (const [k, val] of t.rows) dl.append(el("dt", null, k), el("dd", null, val));
@@ -111,7 +111,7 @@ function show(td) {
 }
 function hide() {
   pinned?.classList.remove("on");
-  pinned = null;
+  pinned = focused = null;
   $("tip").hidden = true;
 }
 function listen() {
@@ -119,7 +119,7 @@ function listen() {
   const cell = (n) => { const td = n?.closest?.("td.h"); return td && table.contains(td) ? td : null; };
   table.addEventListener("mouseover", (e) => { const td = cell(e.target); if (td && !pinned) show(td); });
   table.addEventListener("mouseout", (e) => { if (!pinned && cell(e.target) && !cell(e.relatedTarget)) hide(); });
-  table.addEventListener("focusin", (e) => { const td = cell(e.target); if (td) show(td); });
+  table.addEventListener("focusin", (e) => { const td = cell(e.target); if (td) show(focused = td); });
   table.addEventListener("focusout", () => { if (!pinned) hide(); });
   document.addEventListener("click", (e) => {
     const td = cell(e.target), again = td && td === pinned;
@@ -127,8 +127,9 @@ function listen() {
     if (td && !again) { pinned = td; td.classList.add("on"); show(td); }
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
-  // the window's scroll and the table's own: move a pinned box with its number, drop a hovered one
-  document.addEventListener("scroll", () => (pinned ? show(pinned) : hide()), { capture: true, passive: true });
+  // the window's scroll and the table's own: move a pinned or focused box with its number (Tab
+  // scrolls a number into view after focusin), drop a hovered one
+  document.addEventListener("scroll", () => { const td = pinned ?? focused; td ? show(td) : hide(); }, { capture: true, passive: true });
 }
 
 async function load() {

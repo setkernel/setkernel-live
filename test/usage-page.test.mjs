@@ -133,7 +133,11 @@ test("a number's box: hover, focus or tap shows its exact values; Esc or a tap e
   assert.equal(box.hidden, false);
   assert.equal(box.textContent, "Vega · Sun 1 NovFresh tokens25,000,000Cache reads75,000,000At API pricesabout $2,500");
   assert.deepEqual(box.style, { left: "147px", top: "102px" }, "centred above the number, inside a 375 px screen");
+  fire("scroll", ids.scroll); // the browser scrolls a focused number into view: its box stays
+  assert.equal(box.hidden, false);
   fire("keydown", ids.usage, { key: "Escape" });
+  assert.equal(box.hidden, true);
+  fire("scroll", ids.scroll); // and stays closed after Esc, though the number keeps focus
   assert.equal(box.hidden, true);
   fire("click", vega); // a tap pins it: moving the mouse off doesn't close it
   fire("mouseout", vega, { relatedTarget: ids.hint });
@@ -142,6 +146,8 @@ test("a number's box: hover, focus or tap shows its exact values; Esc or a tap e
   assert.deepEqual([box.hidden, vega.className], [true, "h t8"]);
   fire("mouseover", cells.find((td) => td.dataset.who === "All seats" && td.dataset.when === "November"));
   assert.equal(box.kids[0].textContent, "All seats · November");
+  fire("scroll", ids.scroll); // a hovered box drops when the page moves under it
+  assert.equal(box.hidden, true);
 });
 
 test("a refused, failed or empty month shows a plain message, not a blank page", async () => {
