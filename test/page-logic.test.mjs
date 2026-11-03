@@ -72,8 +72,8 @@ test("SILENT on the page: the allowlist keeps the state and a trusted time only,
   for (const bad of [ran + 1.5, ran + 30, NOW_D + 60, NOW_D - 8 * 86_400, "14:05"]) assert.deepEqual(agents({ state: "SILENT", lastRun: bad }), { state: "SILENT" }, String(bad));
   assert.deepEqual(agents({ state: "SILENT", lastRun: ran, host: "orion-dev", sk_agent_last_run_end_seconds: ran + 17 }), { state: "SILENT", lastRun: ran }, "extra fields dropped");
   assert.deepEqual(agents({ state: "IDLE", lastRun: ran }), { state: "IDLE" }, "lastRun on another state dropped");
-  // its words: "Not reporting", a glyph of its own, and never active
-  assert.deepEqual(stateWords({ state: "SILENT", lastRun: ran }), { glyph: "◌", state: "Not reporting", words: "not reporting", repo: "" });
+  // its words: "Not reporting", and never active
+  assert.deepEqual(stateWords({ state: "SILENT", lastRun: ran }), { state: "Not reporting", words: "not reporting", repo: "" });
   assert.equal(doing({ state: "SILENT" }), "not reporting");
 });
 
@@ -122,12 +122,12 @@ test("labels, tallies and feed sentences", () => {
   assert.equal(doing({ state: "DISCUSS" }), "in a design discussion");
   assert.equal(doing({ state: "WORKING", work: "changes", repo: "hq" }), "addressing review feedback in hq");
   assert.equal(doing({ state: "IDLE", work: "issue" }), "idle");
-  assert.deepEqual(stateWords({ state: "WORKING", work: "issue", repo: "setkernel-live" }), { glyph: "●", state: "Working", words: "working on an issue", repo: "setkernel-live" });
-  assert.deepEqual(stateWords({ state: "REVIEW", work: "review" }), { glyph: "◎", state: "Reviewing", words: "reviewing a pull request", repo: "" });
-  assert.deepEqual(stateWords({ state: "DISCUSS", work: "discussion", repo: "hq" }), { glyph: "⋯", state: "Discussing", words: "in a design discussion", repo: "hq" });
-  assert.deepEqual(stateWords({ state: "IDLE", repo: "x" }), { glyph: "○", state: "Idle", words: "idle", repo: "" });
-  assert.deepEqual(stateWords({ state: "PAUSED" }), { glyph: "‖", state: "Paused", words: "paused", repo: "" });
-  assert.deepEqual(stateWords(undefined), { glyph: "○", state: "Idle", words: "idle", repo: "" });
+  assert.deepEqual(stateWords({ state: "WORKING", work: "issue", repo: "setkernel-live" }), { state: "Working", words: "working on an issue", repo: "setkernel-live" });
+  assert.deepEqual(stateWords({ state: "REVIEW", work: "review" }), { state: "Reviewing", words: "reviewing a pull request", repo: "" });
+  assert.deepEqual(stateWords({ state: "DISCUSS", work: "discussion", repo: "hq" }), { state: "Discussing", words: "in a design discussion", repo: "hq" });
+  assert.deepEqual(stateWords({ state: "IDLE", repo: "x" }), { state: "Idle", words: "idle", repo: "" });
+  assert.deepEqual(stateWords({ state: "PAUSED" }), { state: "Paused", words: "paused", repo: "" });
+  assert.deepEqual(stateWords(undefined), { state: "Idle", words: "idle", repo: "" });
   assert.equal(deed({ agent: "Vega", action: "opened_pr", repo: "hq" }), "opened a pull request in hq");
   assert.equal(tally({ prs: 2, reviews: 4, claude: 130, started: 3, helpers: 1 }), "2 PRs · 4 reviews · 130 Claude");
   assert.equal(tally({ prs: 1, reviews: 1, started: 1 }), "1 PR · 1 review");

@@ -140,8 +140,6 @@ export function ciSummary(c) {
 // can underline each name without building markup. Three forms, longest first; the page shows
 // the first that fits in three lines (fitHeadline).
 
-// Each state as a glyph too, so the colour of a ring is never the only way to tell.
-export const GLYPH = { WORKING: "●", REVIEW: "◎", DISCUSS: "⋯", IDLE: "○", PAUSED: "‖", SILENT: "◌" };
 export const STATE_WORDS = STATE_WORD;
 
 // "Vega", "Vega and Rigel", "Vega, Rigel and Lyra", as parts.
@@ -277,12 +275,13 @@ function silentSentence(down, agents, nowS, timeZone) {
   return [...out, "."];
 }
 
-// The words beside a star, and on its card: { glyph, state: "Working", words: "working on an
-// issue", repo } where repo is a public repo's name or "".
+// The words beside a star, and on its card: { state: "Working", words: "working on an issue",
+// repo } where repo is a public repo's name or "". The state's shape is an SVG symbol (#s-WORKING
+// and the rest in index.html), not a character: the fonts have none of those (setkernel-live#80).
 export function stateWords(info) {
   const st = STATE_WORD[info?.state] ? info.state : "IDLE";
   const words = doing({ ...info, repo: undefined });
-  return { glyph: GLYPH[st], state: STATE_WORD[st], words, repo: isActive(info) && info.repo ? info.repo : "" };
+  return { state: STATE_WORD[st], words, repo: isActive(info) && info.repo ? info.repo : "" };
 }
 
 // Whose work a review was about, when the page can tell: an approval or change request in a
