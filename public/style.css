@@ -1,9 +1,14 @@
 /* live.setkernel.com, v3 "Day" (setkernel-live#48; the design is docs/design/v3/day).
    Manrope and IBM Plex Mono, self-hosted (SIL OFL, licences in /fonts). The mono is for clock
-   times only, so the axis digits share one width. */
-@font-face { font-family: "Manrope"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/manrope-latin-400-normal.woff2") format("woff2"); }
-@font-face { font-family: "Manrope"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/manrope-latin-600-normal.woff2") format("woff2"); }
-@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2"); }
+   times only, so the axis digits share one width. Each face's unicode-range is what its file has
+   (its cmap, read by test/glyphs.test.mjs), so a character none of them has, such as an arrow,
+   is an SVG and never falls back to a system font (setkernel-live#80). */
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/manrope-latin-400-normal.woff2") format("woff2");
+  unicode-range: U+0020-007E, U+00A0-00FF, U+0102, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2022, U+2026, U+2039-203A, U+2044, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215; }
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/manrope-latin-600-normal.woff2") format("woff2");
+  unicode-range: U+0020-007E, U+00A0-00FF, U+0102, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2022, U+2026, U+2039-203A, U+2044, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215; }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+  unicode-range: U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+2013-2014, U+2018-201A, U+201C-201E, U+2022, U+2026, U+2032-2033, U+2039-203A, U+2044, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215; }
 
 /* One type scale, one spacing scale. Every font size and every gap below is a step of these two,
    the SVG text classes too. The wall is not a second scale: it is the page drawn once on a fixed
@@ -62,6 +67,9 @@ a:focus-visible, summary:focus-visible { outline: 2px solid var(--focus); outlin
 .legend .sw-3 { width: 80px; }
 .keys { margin: 0 0 0 auto; font-size: var(--f1); line-height: var(--l1); color: var(--ink-3); white-space: nowrap; }
 .keys kbd { font: var(--f1) var(--mono); border: 1px solid var(--rule-2); border-radius: 3px; padding: 0 var(--s1); color: var(--ink-2); }
+/* an arrow drawn, not typed: the fonts' Latin subsets have no left or right arrow. Sized by the
+   text around it, in its colour; the words for it are beside it (#keys) or it is decoration (/usage). */
+.arrow { width: 1em; height: 1em; vertical-align: -0.15em; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
 .mood-waiting .foot, .mood-waiting .keys { display: none; }
 .table { margin-top: var(--s5); font-size: var(--f2); line-height: var(--l2); }
 .table summary { cursor: pointer; font-weight: 600; color: var(--ink-2); }

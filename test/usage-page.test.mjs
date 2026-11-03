@@ -115,7 +115,7 @@ test("the page draws the fixture month: rows, a dash for no data, today so far, 
   assert.equal(ids.asof.textContent, "Newest hour ends 2 Nov, 12:00 AST");
   assert.deepEqual([ids.status.hidden, ids.scroll.hidden, ids.sum.hidden], [true, false, false]);
   assert.equal(ids.sum.textContent, "Fresh tokens this month49MCache reads148MAt API prices, about$4,925Busiest seatVega");
-  assert.deepEqual(ids.months.kids.map((k) => [k.tag, k.textContent, k.href]), [["a", "← October", "?month=2026-10"], ["b", "November 2026", undefined], ["span", "December →", undefined]]);
+  assert.deepEqual(ids.months.kids.map((k) => [k.tag, k.textContent, k.href]), [["a", "October", "?month=2026-10"], ["b", "November 2026", undefined], ["span", "December", undefined]]);
   const [head, body, foot] = ids.usage.kids;
   assert.equal(head.textContent, "DayVegaRigelLyraOrionPolarisCodexAll seats");
   assert.deepEqual(body.kids.map((r) => [r.className, r.kids[0].textContent]), [["today", "2 Monso far"], ["we", "1 Sun"]]);

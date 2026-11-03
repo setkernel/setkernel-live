@@ -13,6 +13,8 @@
 .lead { padding-bottom: var(--s3); }
 .months { display: flex; gap: var(--s4); align-items: baseline; font-size: var(--f2); line-height: var(--l2); color: var(--ink-2); padding-bottom: var(--s3); }
 .months .off { color: var(--ink-3); }
+.months .arrow:first-child { margin-right: var(--s1); }
+.months .arrow:last-child { margin-left: var(--s1); }
 a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .status { margin: 0 0 var(--s4); color: var(--ink-2); }
 .sum { display: flex; flex-wrap: wrap; gap: var(--s3) var(--s5); margin: 0 0 var(--s4); padding: 0; list-style: none; }

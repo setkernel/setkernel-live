@@ -21,9 +21,20 @@ export function failure(status) {
   return `Usage didn't load (${status ? `HTTP ${status}` : "no answer"}). Reload the page to try again; if your login expired, that signs you in.`;
 }
 
+// An arrow drawn, not typed: the page's fonts have no left or right arrow (setkernel-live#80).
+// The month's name beside it says where the link goes.
+function arrow(d) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"), path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  for (const [k, v] of Object.entries({ class: "arrow", viewBox: "0 0 12 12", "aria-hidden": "true", focusable: "false" })) svg.setAttribute(k, v);
+  path.setAttribute("d", d);
+  svg.append(path);
+  return svg;
+}
+
 function nav(month, current) {
-  const link = (m, text) => (m > current ? el("span", "off", text) : Object.assign(el("a", null, text), { href: `?month=${m}` }));
-  $("months").replaceChildren(link(shiftMonth(month, -1), `← ${monthName(shiftMonth(month, -1))}`), el("b", null, `${monthName(month)} ${month.slice(0, 4)}`), link(shiftMonth(month, 1), `${monthName(shiftMonth(month, 1))} →`));
+  const link = (m, ...kids) => { const e = m > current ? el("span", "off") : Object.assign(el("a"), { href: `?month=${m}` }); e.append(...kids); return e; };
+  const prev = shiftMonth(month, -1), next = shiftMonth(month, 1);
+  $("months").replaceChildren(link(prev, arrow("M10.5 6H1.5M5.5 2L1.5 6l4 4"), el("span", null, monthName(prev))), el("b", null, `${monthName(month)} ${month.slice(0, 4)}`), link(next, el("span", null, monthName(next)), arrow("M1.5 6h9M6.5 2l4 4-4 4")));
 }
 
 // A number: its data-* attributes are the exact values its box shows.
