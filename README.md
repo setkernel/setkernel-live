@@ -224,20 +224,25 @@ Hours older than 400 days are deleted on each push.
   checks `INGEST_AUD` again. Body (up to 256 KiB): `{ "buckets": [{ "hour": "2026-10-14T15",
   "seat": "vega", "model": "claude-opus-5-5", "surface": "vm", "input": 0, "output": 0,
   "cache_read": 0, "cache_write": 0, "usd_micros": 0, "requests": 0 }] }`. `hour` is a UTC hour;
-  seat is one of vega, rigel, lyra, orion, polaris, codex, other; surface one of vm, desktop, cli,
+  seat is an employee in `src/hq-registry.json` (below), polaris, codex or other; surface one of vm, desktop, cli,
   cloud, codex; the counts are whole numbers from 0. One bad bucket makes the whole push 400.
   A bucket pushed again replaces the stored one, so a pusher can resend an hour's running totals.
   The answer is `{ stored, days }`: what is now stored for the hours pushed, per Halifax day and seat.
 - `POST /ingest/limits` (setkernel-live#88) takes each seat's newest 5-hour and weekly limit readings,
   behind the same Access app and `INGEST_AUD` check: `{ "vega": { "five_hour": { "utilization": 0.84,
   "resets_at": "…", "observed_at": "…" }, "seven_day": { … }, "event": { "status": "rejected",
-  "rate_limit_type": "five_hour", "resets_at": "…", "received_at": "…" } } }`. The seats are vega, rigel,
-  lyra, orion and polaris (Codex has no Claude limits); `utilization` is a fraction from 0; times are
+  "rate_limit_type": "five_hour", "resets_at": "…", "received_at": "…" } } }`. The seats are the
+  registry copy's employees and polaris (Codex has no Claude limits); `utilization` is a fraction from 0; times are
   ISO 8601 with a zone (`resets_at` may be null: unknown); `status` is allowed, allowed_warning or
   rejected; any part may be null or left out, and changes nothing then. Other fields are dropped; a bad
   seat, value or time makes the whole push 400. The store (`seat_limits`, one row per seat and part)
   keeps a part only if it is as new as or newer than the one it has, and answers `{ limits }`: every
   seat's as now stored.
+- The employees are a copy of setkernel/hq's `registry/people.csv` (setkernel-live#96): each employee
+  who isn't removed, as the wall gives them a lane, handles only. A person added or removed there
+  needs no code edit here, only a fresh copy: `node scripts/copy-hq-registry.mjs --hq <hq checkout>`,
+  then commit `src/hq-registry.json` (`--check` exits 1 when the committed copy differs). Never edit
+  it by hand.
 - `GET /usage/data?month=YYYY-MM` needs a token for its own Access app, checked against
   `USAGE_AUD` (the "live usage" Access app, setkernel-cloudflare#119; its tag is in `wrangler.jsonc`).
   With no login Access answers 302 to its login page; if `USAGE_AUD` were ever empty the Worker would

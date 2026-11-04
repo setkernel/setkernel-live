@@ -3,8 +3,13 @@
 // Usage Durable Object keeps them apart from the Hub, so no public route can return them. Pure and
 // tested (test/usage.test.mjs); the Durable Object is in src/worker.js.
 import { homeDay } from "../public/lib/state.js";
+import registry from "./hq-registry.json" with { type: "json" };
 
-export const SEATS = ["vega", "rigel", "lyra", "orion", "polaris", "codex", "other"];
+// Who may push usage (setkernel-live#96): each employee in the hq registry's copy (written by
+// scripts/copy-hq-registry.mjs, never by hand), then the seats that are no one there: polaris (Raghav's
+// own sessions), codex and other. A person added to or removed from the registry needs no code edit.
+export const usageSeats = (employees) => [...employees, "polaris", "codex", "other"];
+export const SEATS = usageSeats(registry.employees);
 export const SURFACES = ["vm", "desktop", "cli", "cloud", "codex"];
 export const COUNTS = ["input", "output", "cache_read", "cache_write", "usd_micros", "requests"];
 export const KEEP_DAYS = 400;
@@ -23,12 +28,12 @@ export const hourOf = (ms) => new Date(ms).toISOString().slice(0, 13);
 
 // { buckets: [{ hour, seat, model, surface, input, output, cache_read, cache_write, usd_micros,
 // requests }] } -> the buckets with only those fields, or null if any of them is not allowed.
-export function cleanUsage(body) {
+export function cleanUsage(body, seats = SEATS) {
   if (!body || typeof body !== "object" || !Array.isArray(body.buckets)) return null;
   const out = [];
   for (const b of body.buckets) {
     if (!b || typeof b !== "object") return null;
-    if (Number.isNaN(hourMs(b.hour)) || !SEATS.includes(b.seat) || !SURFACES.includes(b.surface)) return null;
+    if (Number.isNaN(hourMs(b.hour)) || !seats.includes(b.seat) || !SURFACES.includes(b.surface)) return null;
     if (typeof b.model !== "string" || !MODEL.test(b.model)) return null;
     if (!COUNTS.every((k) => Number.isSafeInteger(b[k]) && b[k] >= 0)) return null;
     out.push({ hour: b.hour, seat: b.seat, model: b.model, surface: b.surface, ...Object.fromEntries(COUNTS.map((k) => [k, b[k]])) });
@@ -39,7 +44,8 @@ export function cleanUsage(body) {
 // Each seat's 5-hour and weekly limit windows (setkernel-live#88): the newest reading per seat, pushed
 // to POST /ingest/limits and read back as `limits` from GET /usage/data, in the shape
 // public/usage/limits.js reads. Codex has no Claude limits, and "other" is no seat, so neither has any.
-export const LIMIT_SEATS = SEATS.filter((s) => s !== "codex" && s !== "other");
+export const limitSeats = (employees) => usageSeats(employees).filter((s) => s !== "codex" && s !== "other");
+export const LIMIT_SEATS = limitSeats(registry.employees);
 export const WINDOWS = ["five_hour", "seven_day"];
 export const STATUSES = ["allowed", "allowed_warning", "rejected"];
 const ISO = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|[+-](\d{2}):(\d{2}))$/;
@@ -72,15 +78,15 @@ function cleanEvent(e) {
   return resets_at === undefined || !received_at ? undefined : { status: e.status, rate_limit_type: e.rate_limit_type, resets_at, received_at };
 }
 
-// { <seat>: { five_hour, seven_day, event } } -> the same with only LIMIT_SEATS, each window's
+// { <seat>: { five_hour, seven_day, event } } -> the same with only the seats given (LIMIT_SEATS), each window's
 // utilization (a fraction, 0.84), resets_at and observed_at, and the event's status, rate_limit_type,
 // resets_at and received_at, times as toISOString() gives them and a missing part null; or null if any
 // seat, window or event is not allowed. Fields it doesn't name are dropped.
-export function cleanLimits(body) {
+export function cleanLimits(body, seats = LIMIT_SEATS) {
   if (!plain(body)) return null;
   const out = {};
   for (const [seat, s] of Object.entries(body)) {
-    if (!LIMIT_SEATS.includes(seat) || !plain(s)) return null;
+    if (!seats.includes(seat) || !plain(s)) return null;
     const five_hour = cleanWindow(s.five_hour), seven_day = cleanWindow(s.seven_day), event = cleanEvent(s.event);
     if (five_hour === undefined || seven_day === undefined || event === undefined) return null;
     out[seat] = { five_hour, seven_day, event };
