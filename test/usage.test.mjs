@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { COUNTS, SEATS, SURFACES, cleanUsage, hourMs, keepFrom, monthRange, sumByDay } from "../src/usage.js";
+import { LIMIT_SEATS, cleanLimits, isoTime } from "../src/usage.js";
 
 const bucket = (extra = {}) => ({ hour: "2026-10-14T15", seat: "vega", model: "claude-opus-5-5", surface: "vm", input: 10, output: 20, cache_read: 30, cache_write: 40, usd_micros: 50, requests: 1, ...extra });
 const counts = (n) => Object.fromEntries(COUNTS.map((k) => [k, n]));
@@ -23,6 +24,52 @@ test("cleanUsage refuses the whole push for any bad bucket", () => {
   ];
   for (const extra of bad) assert.equal(cleanUsage({ buckets: [bucket(), bucket(extra)] }), null, JSON.stringify(extra));
   for (const body of [null, [], "x", {}, { buckets: {} }, { buckets: [null] }, { buckets: ["x"] }]) assert.equal(cleanUsage(body), null, JSON.stringify(body));
+});
+
+const win = (extra = {}) => ({ utilization: 0.84, resets_at: "2026-11-04T16:10:00.000Z", observed_at: "2026-11-04T14:55:00.000Z", ...extra });
+const ev = (extra = {}) => ({ status: "rejected", rate_limit_type: "five_hour", resets_at: "2026-11-04T16:10:00.000Z", received_at: "2026-11-04T14:47:00.000Z", ...extra });
+const seat = (extra = {}) => ({ five_hour: win(), seven_day: win({ utilization: 0.52 }), event: ev(), ...extra });
+
+test("cleanLimits keeps the seats' windows and event, field for field, and drops everything else", () => {
+  assert.deepEqual(cleanLimits({}), {});
+  assert.deepEqual(cleanLimits({ rigel: seat() }), { rigel: seat() });
+  const extra = { rigel: { ...seat({ five_hour: { ...win(), name: "five_hour", login: "rigel-setkernel" }, event: { ...ev(), prompt: "secret", utilization: 1 } }), id: 7, seven_day_opus: win() } };
+  assert.deepEqual(cleanLimits(extra), { rigel: seat() });
+  // a part null or absent is null; a reset time may be unknown
+  assert.deepEqual(cleanLimits({ lyra: {} }), { lyra: { five_hour: null, seven_day: null, event: null } });
+  assert.deepEqual(cleanLimits({ lyra: seat({ seven_day: null, event: ev({ resets_at: null }) }) }).lyra, { five_hour: win(), seven_day: null, event: ev({ resets_at: null }) });
+  assert.deepEqual(cleanLimits({ lyra: { five_hour: { utilization: 0, observed_at: "2026-11-04T14:55:00.000Z" } } }).lyra.five_hour, { utilization: 0, resets_at: null, observed_at: "2026-11-04T14:55:00.000Z" });
+  // times come back as toISOString gives them, whatever zone and precision they were sent in
+  assert.deepEqual(cleanLimits({ vega: { five_hour: win({ resets_at: "2026-11-04T13:10:00-03:00", observed_at: "2026-11-04T14:55:00.123456+00:00" }) } }).vega.five_hour, win({ observed_at: "2026-11-04T14:55:00.123Z" }));
+  for (const s of LIMIT_SEATS) assert.ok(cleanLimits({ [s]: seat() }), s);
+  for (const status of ["allowed", "allowed_warning"]) assert.ok(cleanLimits({ vega: seat({ event: ev({ status, rate_limit_type: "seven_day" }) }) }), status);
+  assert.ok(cleanLimits({ vega: seat({ five_hour: win({ utilization: 1.2 }) }) }), "over 100% is a reading too");
+});
+
+test("cleanLimits refuses the whole push for any bad seat, window or event", () => {
+  const bad = [
+    { codex: seat() }, { other: seat() }, { raghav: seat() }, { Vega: seat() }, { vega: null }, { vega: [] }, { vega: "x" },
+    { vega: seat({ five_hour: win({ utilization: -0.01 }) }) }, { vega: seat({ five_hour: win({ utilization: "0.5" }) }) },
+    { vega: seat({ seven_day: win({ utilization: Infinity }) }) }, { vega: seat({ seven_day: win({ utilization: NaN }) }) },
+    { vega: seat({ five_hour: win({ utilization: undefined }) }) }, { vega: seat({ five_hour: [] }) }, { vega: seat({ five_hour: 0.5 }) },
+    { vega: seat({ five_hour: win({ observed_at: null }) }) }, { vega: seat({ five_hour: win({ observed_at: "2026-11-04" }) }) },
+    { vega: seat({ five_hour: win({ resets_at: "soon" }) }) }, { vega: seat({ five_hour: win({ resets_at: 1793793600000 }) }) },
+    { vega: seat({ event: ev({ status: "blocked" }) }) }, { vega: seat({ event: ev({ rate_limit_type: "seven_day_opus" }) }) },
+    { vega: seat({ event: ev({ rate_limit_type: null }) }) }, { vega: seat({ event: ev({ received_at: undefined }) }) },
+    { vega: seat({ event: ev({ resets_at: "2026-02-30T00:00:00Z" }) }) }, { vega: seat({ event: "rejected" }) },
+  ];
+  for (const body of bad) assert.equal(cleanLimits({ rigel: seat(), ...body }), null, JSON.stringify(body));
+  for (const body of [null, [], "x", 5, [seat()]]) assert.equal(cleanLimits(body), null, JSON.stringify(body));
+});
+
+test("isoTime reads only real times with a zone", () => {
+  assert.equal(isoTime("2026-11-04T12:00Z"), "2026-11-04T12:00:00.000Z");
+  assert.equal(isoTime("2026-11-01T01:30:00-03:00"), "2026-11-01T04:30:00.000Z");
+  assert.equal(isoTime("2028-02-29T00:00:00Z"), "2028-02-29T00:00:00.000Z");
+  for (const t of ["2026-02-29T00:00:00Z", "2026-02-30T00:00:00Z", "2026-13-01T00:00:00Z", "2026-11-04T24:00:00Z", "2026-11-04T12:60:00Z",
+    "2026-11-04T12:00:00", "2026-11-04", "2026-11-04 12:00:00Z", "2026-11-04T12:00:00+24:00", ` 2026-11-04T12:00:00Z`, `2026-11-04T12:00:00.${"1".repeat(30)}Z`, 1793793600000, null]) {
+    assert.equal(isoTime(t), null, String(t));
+  }
 });
 
 test("hourMs reads only real UTC hours", () => {

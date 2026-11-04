@@ -1,9 +1,11 @@
 // live.setkernel.com/usage (setkernel-live#86): each seat's 5-hour and weekly limit windows, as the
-// page says them. Pure and tested (test/usage-page.test.mjs). GET /usage/data is to carry them as
-// `limits`, from the seat view the wall reads (setkernel/hq observability/wall/limits.py):
+// page says them. Pure and tested (test/usage-page.test.mjs). GET /usage/data carries them as `limits`
+// (setkernel-live#88, src/usage.js cleanLimits), from the seat view the wall reads (setkernel/hq
+// observability/wall/limits.py):
 //   { <seat>: { five_hour: { utilization: 0.84, resets_at, observed_at } | null, seven_day: { ... } | null,
 //               event: { status: "rejected", rate_limit_type: "five_hour", resets_at, received_at } | null } }
-// with times as ISO 8601 strings. Until it does, the page says it can't check limits and shows no figure.
+// with times as ISO 8601 strings. Until a reading is stored, it sends none: the page says it can't check
+// limits and shows no figure.
 // The rules are the wall's: a window with no reset time resets a window's length after it was read.
 import { homeDay } from "../lib/state.js";
 import { seatName } from "./table.js";
