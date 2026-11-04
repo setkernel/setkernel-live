@@ -2,7 +2,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { COUNTS, SEATS, SURFACES, cleanUsage, hourMs, keepFrom, monthRange, sumByDay } from "../src/usage.js";
-import { LIMIT_SEATS, cleanLimits, isoTime } from "../src/usage.js";
+import { LIMIT_SEATS, cleanLimits, isoTime, limitSeats, usageSeats } from "../src/usage.js";
+import { render } from "../scripts/copy-hq-registry.mjs";
+import registry from "../src/hq-registry.json" with { type: "json" };
 
 const bucket = (extra = {}) => ({ hour: "2026-10-14T15", seat: "vega", model: "claude-opus-5-5", surface: "vm", input: 10, output: 20, cache_read: 30, cache_write: 40, usd_micros: 50, requests: 1, ...extra });
 const counts = (n) => Object.fromEntries(COUNTS.map((k) => [k, n]));
@@ -24,6 +26,39 @@ test("cleanUsage refuses the whole push for any bad bucket", () => {
   ];
   for (const extra of bad) assert.equal(cleanUsage({ buckets: [bucket(), bucket(extra)] }), null, JSON.stringify(extra));
   for (const body of [null, [], "x", {}, { buckets: {} }, { buckets: [null] }, { buckets: ["x"] }]) assert.equal(cleanUsage(body), null, JSON.stringify(body));
+});
+
+// A scratch registry/people.csv, in hq's columns, with made-up logins and ids.
+const people = (...rows) => ["handle,kind,github_login,github_id,status,persona,lane", "boss,owner,boss-login,1,active,no,", ...rows].join("\n") + "\n";
+const employee = (handle, status = "active", n = 2) => `${handle},employee,${handle}-login,${n},${status},yes,`;
+
+test("the seats are the registry copy's employees, then polaris, codex and other; anyone else is refused", () => {
+  assert.deepEqual(Object.keys(registry), ["employees"], "handles only: this repo is public");
+  assert.ok(registry.employees.length > 0 && registry.employees.every((h) => /^[a-z][a-z0-9-]{0,31}$/.test(h)), JSON.stringify(registry));
+  assert.deepEqual(SEATS, [...registry.employees, "polaris", "codex", "other"]);
+  assert.deepEqual(LIMIT_SEATS, [...registry.employees, "polaris"]);
+  const stranger = registry.employees.join("-").slice(0, 31) + "x"; // a handle the copy doesn't hold, whoever it holds
+  assert.equal(cleanUsage({ buckets: [bucket({ seat: stranger })] }), null, stranger);
+  assert.equal(cleanLimits({ [stranger]: {} }), null, stranger);
+});
+
+test("a fifth employee row in a scratch registry copy is a seat with no code change; owner and removed rows are not", () => {
+  const csv = people(employee("vega"), employee("rigel"), employee("lyra"), employee("orion"), employee("vela"), employee("nova", "removed"), employee("pax", "paused"));
+  const { employees } = JSON.parse(render(csv));
+  assert.deepEqual(employees, ["vega", "rigel", "lyra", "orion", "vela", "pax"]);
+  assert.ok(!render(csv).includes("login"), "no logins or ids in the copy");
+  assert.deepEqual(cleanUsage({ buckets: [bucket({ seat: "vela" })] }, usageSeats(employees)), [bucket({ seat: "vela" })]);
+  assert.deepEqual(cleanLimits({ vela: {} }, limitSeats(employees)), { vela: { five_hour: null, seven_day: null, event: null } });
+  for (const s of ["nova", "boss", "Vela"]) {
+    assert.equal(cleanUsage({ buckets: [bucket({ seat: s })] }, usageSeats(employees)), null, s);
+    assert.equal(cleanLimits({ [s]: {} }, limitSeats(employees)), null, s);
+  }
+  assert.equal(cleanLimits({ codex: {} }, limitSeats(employees)), null);
+  // A row that isn't a plain handle is left out, and the same handle twice counts once.
+  assert.deepEqual(JSON.parse(render(people(employee("vega"), employee("Bad Name"), employee("vega")))).employees, ["vega"]);
+  for (const bad of ["", 'handle,kind,status\n"vega",employee,active\n', "handle,kind,status\nvega,employee\n", "handle,kind\nvega,employee\n"]) {
+    assert.throws(() => render(bad), JSON.stringify(bad));
+  }
 });
 
 const win = (extra = {}) => ({ utilization: 0.84, resets_at: "2026-11-04T16:10:00.000Z", observed_at: "2026-11-04T14:55:00.000Z", ...extra });
