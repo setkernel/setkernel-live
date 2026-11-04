@@ -104,6 +104,17 @@ describe("usage", () => {
     ]);
   });
 
+  it("replaces every stored bucket of an hour pushed again, even under another seat", async () => {
+    const H = "2026-11-01T14";
+    await push({ buckets: [bucket(H, "other", 4), bucket("2026-11-01T15", "other", 1)] });
+    const again = await push({ buckets: [bucket(H, "polaris", 6)] });
+    expect(again.json).toEqual({ stored: 1, days: { "2026-11-01": { polaris: counts(6) } } });
+    expect(await stored()).toEqual([
+      { hour: H, seat: "polaris", model: "claude-opus-5-5", input: 6, requests: 36 },
+      { hour: "2026-11-01T15", seat: "other", model: "claude-opus-5-5", input: 1, requests: 6 },
+    ]);
+  });
+
   it("puts 03:00 UTC on the day the clocks go forward on the previous Halifax day", async () => {
     const pushed = await push({ buckets: [bucket("2026-03-08T03", "lyra", 1), bucket("2026-03-08T04", "lyra", 2), bucket("2026-03-01T03", "lyra", 4)] });
     expect(pushed.json.days).toEqual({ "2026-02-28": { lyra: counts(4) }, "2026-03-07": { lyra: counts(1) }, "2026-03-08": { lyra: counts(2) } });

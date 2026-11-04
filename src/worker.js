@@ -150,8 +150,8 @@ const usage = (env) => env.USAGE.get(env.USAGE.idFromName("usage"));
 
 // Hourly usage per seat, model and surface (setkernel-live#66), and each seat's newest limit readings
 // (setkernel-live#88). Only the Worker calls it, over RPC, with what cleanUsage or cleanLimits has
-// already checked. A bucket pushed again replaces the stored one, so a pusher can resend an hour's
-// running totals; a limit reading replaces the stored one only if it is as new or newer.
+// already checked. A push replaces whole hours (see push), so a pusher can resend an hour's running
+// totals, even under another seat; a limit reading replaces the stored one only if it is as new or newer.
 export class Usage extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -192,16 +192,20 @@ export class Usage extends DurableObject {
     return this.sql.exec(`SELECT hour, seat, ${sums} FROM buckets WHERE ${where} GROUP BY hour, seat ORDER BY hour, seat`, ...params).toArray();
   }
 
-  // Stores the buckets, deletes hours older than KEEP_DAYS, and answers with the stored totals of
-  // the hours pushed, per Halifax day and seat, for the pusher to compare.
+  // A push replaces whole hours: it deletes every stored bucket of each hour it names, whatever the
+  // seat, model or surface, then stores the buckets, so a bucket a later push leaves out (an hour first
+  // pushed as seat `other`, then as `polaris`) does not linger. Hours it does not name are untouched.
+  // Also deletes hours older than KEEP_DAYS, and answers with the stored totals of the hours pushed,
+  // per Halifax day and seat, for the pusher to compare.
   push(buckets, now) {
     const cols = ["hour", "seat", "model", "surface", ...COUNTS];
     const insert = `INSERT OR REPLACE INTO buckets (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`;
+    const hours = JSON.stringify([...new Set(buckets.map((b) => b.hour))]);
     this.ctx.storage.transactionSync(() => {
+      this.sql.exec("DELETE FROM buckets WHERE hour IN (SELECT value FROM json_each(?))", hours);
       for (const b of buckets) this.sql.exec(insert, ...cols.map((c) => b[c]));
       this.sql.exec("DELETE FROM buckets WHERE hour < ?", keepFrom(now));
     });
-    const hours = JSON.stringify([...new Set(buckets.map((b) => b.hour))]);
     return { stored: buckets.length, days: sumByDay(this.#rows("hour IN (SELECT value FROM json_each(?))", hours)).days };
   }
 
