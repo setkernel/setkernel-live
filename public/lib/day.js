@@ -1,24 +1,29 @@
-// What the Day page (setkernel-live#48, the design in docs/design/v3/day) shows, worked out from the
-// public view and the replay buffer: the 24-hour lanes and their stages, the marks, the Now column's
-// words, the key, the table and the scrub readout. Pure: no DOM, so it runs under `node --test`;
-// public/lib/chart.js draws what this returns.
-import { CI_RECENT, ENGINEERS, POLE, REPLAY_WORK, columnOf, homeMidnight, isRequest } from "./state.js";
+// What the Day page (setkernel-live#48, the design in docs/design/v3/day; v5's "The team, right now",
+// setkernel-live#94) shows, worked out from the public view and the replay buffer: the 24-hour lanes
+// and their stages, the marks, the Now column's words, the key, the table and the scrub readout.
+// Pure: no DOM, so it runs under `node --test`; public/lib/chart.js draws what this returns.
+// One lane per engineer the feed sends, then CI: no director's lane, and no one's usage (no Claude
+// or chat counts), only what they did.
+import { CI_RECENT, ENGINEERS, REPLAY_WORK, columnOf, homeMidnight, isRequest } from "./state.js";
 import { STAGE_NAME, STARTED_FOR_S, column, seedLanes, stepLines } from "./line.js";
-import { ACTION_TEXT, OFFLINE_AFTER_MS, age, ciWhere, ciWord, clock, dayOf as dayFrom, deed, doing, isActive, isSilent, sentence } from "./words.js";
+import { ACTION_TEXT, OFFLINE_AFTER_MS, age, ciWhere, ciWord, clock, dayOf as dayFrom, deed, doing, isActive, isSilent } from "./words.js";
 
 export const SPAN = 86_400; // the chart is the last 24 hours
 export const BIN = 600; // in ten-minute columns
 export const BINS = SPAN / BIN;
-// Polaris's guardians (its three Claude sessions) have no rows: they are a count in Polaris's line.
-export const GUARDIANS = POLE.filter((n) => n !== "Polaris");
 // Only three marks carry the story; every other action is words (Now column, readout, table).
 export const KEY_MARKS = ["merged", "requested_changes"];
 const PULSES = ["claude", "chat", "helper"];
 
-// The rows, top to bottom, with a light gap ("sep") between the groups.
-export const ROWS = [{ id: "Polaris", kind: "pole" }, { kind: "sep" }, ...ENGINEERS.map((id) => ({ id, kind: "eng" })), { kind: "sep" }, { id: "CI", kind: "ci" }];
+// The lanes: the engineers the feed sends (a state, a lane or a count), in ENGINEERS' order; all
+// four before anything has arrived, so the first load has the chart's shape.
+export function lanesOf(s) {
+  const sent = ENGINEERS.filter((n) => s?.agents?.[n] || s?.line?.[n] || s?.byAgent?.[n] || s?.seen?.[n]);
+  return sent.length ? sent : [...ENGINEERS];
+}
+// The rows, top to bottom: a lane each, a light gap ("sep"), then CI.
+export const rowsOf = (D) => [...D.lanes.map((id) => ({ id, kind: "eng" })), { kind: "sep" }, { id: "CI", kind: "ci" }];
 
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // The stage a lane's job is in, from its lane alone (no agent state in the replay).
@@ -44,6 +49,7 @@ export function prep(s, replay, nowS) {
     if (i < 0 || i >= BINS) continue;
     for (const n of ENGINEERS) for (const k of PULSES) bins[n][k][i] += r[1 + columnOf(n, k)] || 0;
   }
+  const lanes = lanesOf(s);
   const work = (replay?.work ?? []).filter((w) => w.ts >= t0 && w.ts <= nowS);
   const ci = (s?.ci ?? []).filter((c) => c.ts >= t0 && c.ts <= nowS).slice().reverse(); // oldest first
 
@@ -88,17 +94,16 @@ export function prep(s, replay, nowS) {
     close(n, idle && open[n] && open[n].stage !== "review" && last > open[n].from ? Math.min(last + 60, stop) : stop);
   }
 
-  // Claude requests and chat posts together, per ten minutes: the activity band
-  const total = Object.fromEntries(ENGINEERS.map((n) => [n, bins[n].claude.map((c, i) => c + bins[n].chat[i])]));
+  // what the page shows: the lanes' own actions (the director's reviews still move a lane's stage, above)
   const D = {
-    s: s ?? {}, nowS, end, t0, lastS, bins, total, work, ci, spans,
-    maxAct: Math.max(1, ...ENGINEERS.flatMap((n) => total[n])),
+    s: s ?? {}, nowS, end, t0, lastS, bins, lanes, ci, spans,
+    work: work.filter((w) => lanes.includes(w.agent)),
     // where the data stops: older actions or CI runs were dropped by the caps
     workFrom: (replay?.work ?? []).length >= REPLAY_WORK ? work[0]?.ts ?? null : null,
     ciFrom: (s?.ci ?? []).length >= CI_RECENT && ci.length ? ci[0].ts : null,
     mid: homeMidnight(nowS),
   };
-  D.marks = Object.fromEntries(ENGINEERS.map((n) => [n, laneMarks(D, n)]));
+  D.marks = Object.fromEntries(lanes.map((n) => [n, laneMarks(D, n)]));
   return D;
 }
 
@@ -123,9 +128,6 @@ export function laneMarks(D, n, tz) {
   return [...merges, ...asks].sort((a, b) => a.ts - b.ts);
 }
 
-// Polaris's row is one idea: a quiet tick per merge.
-export const poleMerges = (D) => D.work.filter((w) => w.agent === "Polaris" && w.action === "merged_by");
-
 // Marks that would sit on top of each other go on separate levels (offsets from the line), so
 // a burst reads as a stack, not a blot. Time stays exact: only the height moves.
 export function levels(list, x, gap, offsets) {
@@ -138,18 +140,6 @@ export function levels(list, x, gap, offsets) {
   });
 }
 
-// The band for a lane: ten-minute totals smoothed over three.
-export function band(D, n) {
-  const t = D.total[n];
-  return t.map((_, i) => ((t[i - 1] ?? t[i]) + 2 * t[i] + (t[i + 1] ?? t[i])) / 4);
-}
-
-// Polaris's numbers today, in tally()'s form -> "3 requests · 20 merges · 3 reviews".
-export function poleTally(c) {
-  const parts = [[c?.requests, "request", "requests"], [c?.merges, "merge", "merges"], [c?.reviews, "review", "reviews"]].filter(([k]) => k > 0).map(([k, a, b]) => plural(k, a, b));
-  return parts.length ? parts.join(" · ") : "nothing yet today";
-}
-
 // The lanes of the engineers whose VM stopped reporting (setkernel-live#54): [{ name, lastRun, from,
 // to }], lastRun null when the time isn't known. The hatch runs from the last run (or the window's
 // start) to now; when the office has gone quiet, to its last word, where the office's own hatch
@@ -157,7 +147,7 @@ export function poleTally(c) {
 export function silentLanes(D) {
   if (!D.s.lastIngest) return [];
   const to = (D.nowS - D.lastS) * 1000 > OFFLINE_AFTER_MS ? D.lastS : D.nowS;
-  return ENGINEERS.filter((n) => isSilent(D.s.agents?.[n]))
+  return D.lanes.filter((n) => isSilent(D.s.agents?.[n]))
     .map((name) => { const lastRun = D.s.agents[name].lastRun ?? null; return { name, lastRun, from: Math.max(D.t0, lastRun ?? D.t0), to }; })
     .filter((l) => l.to > l.from);
 }
@@ -182,24 +172,6 @@ export function moment(D, row, i, tz) {
     return list.length ? list.map((c) => `${capital(ciWord(c))} in ${ciWhere(c)}`).slice(0, 2) : ["No runs"];
   }
   const mine = D.work.filter((w) => w.agent === row.id);
-  if (row.kind === "pole") {
-    // Polaris's last action; the guardians as one count (who did what is in the table, the hover
-    // and the scrub readout)
-    const guard = D.work.filter((w) => GUARDIANS.includes(w.agent));
-    if (i != null) {
-      const here = inBin(D, mine, i), g = inBin(D, guard, i);
-      return [
-        here.length ? `${capital(ACTION_TEXT[here[0].action])}${here.length > 1 ? `, and ${here.length - 1} more` : ""}` : "",
-        g.length ? `Guardians: ${g.map((w) => `${w.agent} ${ACTION_TEXT[w.action]}`).join(", ")}` : "",
-      ];
-    }
-    const last = mine.at(-1);
-    const per = GUARDIANS.map((n) => [n, guard.filter((w) => w.agent === n).length]).filter(([, k]) => k);
-    return [
-      last ? `${when(last.ts)} ${ACTION_TEXT[last.action]}` : "",
-      per.length ? `Guardians: ${plural(guard.length, "action", "actions")} · ${per.map(([n, k]) => `${n} ${k}`).join(" · ")}` : "Guardians: nothing in 24 hours",
-    ];
-  }
   const info = s.agents?.[row.id];
   const lastRun = isSilent(info) ? info.lastRun ?? null : null;
   if (i == null && isSilent(info)) {
@@ -231,10 +203,11 @@ export function moment(D, row, i, tz) {
   const st = stageAt(D, row.id, binTime(D, i) + BIN - 1);
   const b = D.bins[row.id];
   const here = inBin(D, mine, i);
-  const pulse = [b.claude[i] && plural(b.claude[i], "Claude request", "Claude requests"), b.chat[i] && plural(b.chat[i], "chat post", "chat posts")].filter(Boolean).join(", ");
+  // Claude requests and chat posts only say the lane was active then, never how many (usage)
+  const active = b.claude[i] > 0 || b.chat[i] > 0;
   // the ten minutes after the last run of a VM that is still down
   if (lastRun && binTime(D, i) >= lastRun) return Object.assign(["Not reporting", st ? STAGE_NAME[st] : ""], { silent: true });
-  return [here.length ? `${capital(ACTION_TEXT[here.at(-1).action])}${here.length > 1 ? `, and ${here.length - 1} more` : ""}` : pulse ? capital(pulse) : "No activity", st ? STAGE_NAME[st] : ""];
+  return [here.length ? `${capital(ACTION_TEXT[here.at(-1).action])}${here.length > 1 ? `, and ${here.length - 1} more` : ""}` : active ? "Active" : "No activity", st ? STAGE_NAME[st] : ""];
 }
 
 // The Now column's heading: "Now", "Last word, 15:53" when the office has gone quiet, or the
@@ -247,18 +220,17 @@ export function momentTitle(D, i, offline, tz) {
 
 // The stages drawn on this day, Started folded into Building (they share a style).
 export function stagesDrawn(D) {
-  const on = new Set(ENGINEERS.flatMap((n) => D.spans[n].map((sp) => (sp.stage === "started" ? "building" : sp.stage))));
+  const on = new Set(D.lanes.flatMap((n) => D.spans[n].map((sp) => (sp.stage === "started" ? "building" : sp.stage))));
   return ["building", "review", "fixing"].filter((st) => on.has(st));
 }
 
 // The key lists only what this day draws, so it never explains a mark that isn't there:
-// [{ kind: "band" | "stages" | "merged" | "requested_changes" | "ci-fail", words, stages? }].
+// [{ kind: "stages" | "merged" | "requested_changes" | "ci-fail" | "silent", words, stages? }].
 export function keyItems(D) {
   const out = [];
-  if (ENGINEERS.some((n) => D.total[n].some((k) => k > 0))) out.push({ kind: "band", words: "Claude and chat" });
   const stages = stagesDrawn(D);
   if (stages.length) out.push({ kind: "stages", stages, words: stages.map((st) => STAGE_NAME[st]).join(", ") });
-  const marks = new Set(ENGINEERS.flatMap((n) => D.marks[n].map((m) => m.action)));
+  const marks = new Set(D.lanes.flatMap((n) => D.marks[n].map((m) => m.action)));
   if (marks.has("merged")) out.push({ kind: "merged", words: "Merged" });
   if (marks.has("requested_changes")) out.push({ kind: "requested_changes", words: "Changes asked for" });
   if (D.ci.some((c) => c.result === "fail")) out.push({ kind: "ci-fail", words: "CI failed" });
@@ -266,7 +238,7 @@ export function keyItems(D) {
   return out;
 }
 
-// "The day as a table": every action and CI run, newest first, in deed()'s words; the three key
+// "The day as a table": every action on the lanes and CI run, newest first, in deed()'s words; the three key
 // marks keep their glyph (`mark`).
 export function tableRows(D) {
   return [
@@ -281,11 +253,10 @@ export function readout(D, i, tz) {
   if (i == null) return "Back to now.";
   const parts = [`${clock(binTime(D, i), tz)} to ${clock(binTime(D, i) + BIN, tz)}.`];
   if (!D.s.lastIngest) return `${parts[0]} Nothing has arrived yet.`;
-  for (const n of ENGINEERS) {
+  for (const n of D.lanes) {
     const [what, st] = moment(D, { id: n, kind: "eng" }, i, tz);
     if (what !== "No activity" || st) parts.push(`${n}: ${[st, what.charAt(0).toLowerCase() + what.slice(1)].filter(Boolean).join(", ")}.`);
   }
-  for (const w of inBin(D, D.work, i).filter((w) => !ENGINEERS.includes(w.agent))) parts.push(sentence(w));
   for (const c of inBin(D, D.ci, i)) parts.push(`CI ${ciWord(c)} in ${ciWhere(c)}.`);
   if (parts.length === 1) parts.push("Nothing happened.");
   return parts.join(" ");

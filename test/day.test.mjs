@@ -4,7 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ENGINEERS, cleanEvent } from "../src/logic.js";
-import { BIN, BINS, activeBins, chartWindow, keyItems, moment, momentTitle, poleTally, prep, readout, scrubKey, silentLanes, tableRows } from "../public/lib/day.js";
+import { BIN, BINS, activeBins, chartWindow, keyItems, lanesOf, moment, momentTitle, prep, readout, rowsOf, scrubKey, silentLanes, tableRows } from "../public/lib/day.js";
 import { GRID, WALL, fitWall, hourRules, labelFits, pageMode } from "../public/lib/layout.js";
 import { busyDay, downDay, quietDay, runDay } from "../public/lib/demo.js";
 
@@ -119,18 +119,21 @@ test("the Now column: a stage from before yesterday names its day, not \"yesterd
   assert.deepEqual(say("Rigel"), ["Idle", "Waiting for review since Mon 12 Oct 10:00"]);
 });
 
-test("the Now column: Polaris's last action and the guardians as one count; CI's last run", () => {
+test("the rows are the engineers the feed sends, then CI: no director's or guardians' lane (setkernel-live#94)", () => {
   const D = day([
     gh("Kochab", "opened_pr", adt(9, 0)), gh("Kochab", "merged", adt(9, 30)), gh("Pherkad", "opened_pr", adt(10, 0)),
     gh("Polaris", "merged_by", adt(9, 30)), gh("Polaris", "approved", adt(15, 58), "setkernel-live"),
     { t: "msg", kind: "ci", result: "fail", repo: "setkernel-live", ts: adt(16, 30) },
   ]);
-  assert.deepEqual(moment(D, { id: "Polaris", kind: "pole" }, null, TZ), ["15:58 approved a teammate's pull request", "Guardians: 3 actions · Kochab 2 · Pherkad 1"]);
+  assert.deepEqual(rowsOf(D).map((r) => r.id ?? r.kind), [...ENGINEERS, "sep", "CI"]);
   assert.deepEqual(moment(D, { id: "CI", kind: "ci" }, null, TZ), ["Failed, 16:30", "in setkernel-live"]);
-  const i = Math.floor((adt(9, 30) - D.t0) / BIN);
-  assert.deepEqual(moment(D, { id: "Polaris", kind: "pole" }, i, TZ), ["Merged a pull request", "Guardians: Kochab had a pull request merged"]);
-  assert.equal(poleTally(D.s.byAgent.Polaris), "1 merge · 1 review");
-  assert.equal(poleTally(undefined), "nothing yet today");
+  // their actions are on no lane, in no key and in no row of the table
+  assert.deepEqual(Object.keys(D.marks), ENGINEERS);
+  assert.deepEqual(tableRows(D).map((r) => r.who), ["CI"]);
+  assert.equal(readout(D, Math.floor((adt(9, 30) - D.t0) / BIN), TZ), "09:30 to 09:40. Nothing happened.");
+  // only the engineers the feed sends get a lane; before anything arrives, all four, empty
+  assert.deepEqual(lanesOf({ agents: { Lyra: { state: "IDLE" }, Polaris: { state: "WORKING" } }, seen: { Vega: 1 } }), ["Vega", "Lyra"]);
+  assert.deepEqual(lanesOf({}), ENGINEERS);
   // nothing has arrived: the column is empty
   assert.deepEqual(moment(prep({}, {}, NOW), { id: "Vega", kind: "eng" }, null, TZ), []);
 });
@@ -153,13 +156,13 @@ test("the key lists only what the day draws", () => {
   // the quiet day: no change was asked for, so no ✕ in the key
   const q = runDay(quietDay(NOW).batches);
   const Q = prep(q.state, q.replay, NOW);
-  assert.deepEqual(kinds(Q), ["band", "stages", "merged", "ci-fail"]);
-  assert.deepEqual(keyItems(Q)[1], { kind: "stages", stages: ["building", "review"], words: "Building, In review" });
-  // the busy day draws all five
+  assert.deepEqual(kinds(Q), ["stages", "merged", "ci-fail"]);
+  assert.deepEqual(keyItems(Q)[0], { kind: "stages", stages: ["building", "review"], words: "Building, In review" });
+  // the busy day draws all four
   const b = runDay(busyDay(NOW).batches);
   const B = prep(b.state, b.replay, NOW);
-  assert.deepEqual(kinds(B), ["band", "stages", "merged", "requested_changes", "ci-fail"]);
-  assert.equal(keyItems(B)[1].words, "Building, In review, Fixing");
+  assert.deepEqual(kinds(B), ["stages", "merged", "requested_changes", "ci-fail"]);
+  assert.equal(keyItems(B)[0].words, "Building, In review, Fixing");
   // a pass alone draws a quiet tick, which has no key entry
   const P = day([{ t: "msg", kind: "ci", result: "pass", ts: adt(12, 0) }]);
   assert.deepEqual(kinds(P), []);
@@ -261,7 +264,7 @@ test("not reporting, scrubbed: the ten-minute columns after the last run say so,
   assert.equal(at(14, 10).silent, true);
   assert.deepEqual([...at(16, 30)], ["Not reporting", "In review"]);
   assert.deepEqual([...at(14, 0)], ["No activity", "In review"], "the column holding the last run is as it was");
-  assert.deepEqual([...at(13, 50)], ["1 Claude request", "In review"]);
+  assert.deepEqual([...at(13, 50)], ["Active", "In review"], "active, never how many requests (setkernel-live#94)");
   assert.equal(readout(D, col(15, 0), TZ), "15:00 to 15:10. Lyra: Building, started on an issue. Orion: In review, not reporting.");
   // no time: the columns are as they were
   assert.deepEqual([...moment(silentDay(null), { id: "Orion", kind: "eng" }, col(15, 0), TZ)], ["No activity", "In review"]);

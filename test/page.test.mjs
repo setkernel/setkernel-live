@@ -42,7 +42,7 @@ test("index.html and style.css fetch nothing from another host", () => {
   for (const f of scripts()) assert.doesNotMatch(read(f), /fetch\(\s*["'`]https?:/, `${f} fetches only from this origin`);
 });
 
-test("fonts: Manrope 400 and 600 and IBM Plex Mono 400, self-hosted woff2 with their licences, nothing unused", () => {
+test("fonts: Manrope 400, 600 and 800 and IBM Plex Mono 400 and 500, self-hosted woff2 with their licences, nothing unused", () => {
   const css = read("style.css");
   const faces = [...css.matchAll(/@font-face\s*{([^}]*)}/g)].map((m) => m[1]);
   const used = new Set();
@@ -55,7 +55,10 @@ test("fonts: Manrope 400 and 600 and IBM Plex Mono 400, self-hosted woff2 with t
     assert.equal(readFileSync(file).subarray(0, 4).toString("latin1"), "wOF2", url);
     used.add(url.slice("/fonts/".length));
   }
-  assert.deepEqual([...used].sort(), ["ibm-plex-mono-latin-400-normal.woff2", "manrope-latin-400-normal.woff2", "manrope-latin-600-normal.woff2"]);
+  assert.deepEqual([...used].sort(), [
+    "ibm-plex-mono-latin-400-normal.woff2", "ibm-plex-mono-latin-500-normal.woff2",
+    "manrope-latin-400-normal.woff2", "manrope-latin-600-normal.woff2", "manrope-latin-800-normal.woff2",
+  ]);
   const files = readdirSync(new URL("fonts/", pub));
   assert.deepEqual(files.filter((f) => f.endsWith(".woff2")).sort(), [...used].sort(), "no unused font files");
   for (const licence of ["OFL-Manrope.txt", "OFL-IBM-Plex-Mono.txt"]) {
@@ -64,7 +67,7 @@ test("fonts: Manrope 400 and 600 and IBM Plex Mono 400, self-hosted woff2 with t
   // the preloads are the faces the page uses
   for (const m of read("index.html").matchAll(/<link rel="preload" href="\/fonts\/([^"]+)"/g)) assert.ok(used.has(m[1]), m[1]);
   // no weight the page has no face for
-  for (const m of css.matchAll(/font(?:-weight)?:\s*(\d00)\b/g)) assert.ok(["400", "600"].includes(m[1]), m[0]);
+  for (const m of css.matchAll(/font(?:-weight)?:\s*(\d00)\b/g)) assert.ok(["400", "500", "600", "800"].includes(m[1]), m[0]);
 });
 
 // ---- fonts everywhere (setkernel/hq docs/repo-standard.md, "Fonts"): the page and the design
@@ -106,7 +109,7 @@ test("the design mockups embed the page's own font files, whose licences sit bes
   }
 });
 
-// ---- contrast (WCAG): every text colour on every ground it is drawn on, on the page and the wall
+// ---- contrast (WCAG): every text colour on every ground it is drawn on, light, dark and on the wall
 const css = read("style.css");
 const block = (selector) => {
   const at = css.indexOf(`\n${selector} {`);
@@ -115,6 +118,8 @@ const block = (selector) => {
 };
 const hexes = (text) => Object.fromEntries([...text.matchAll(/--([\w-]+):\s*(#[0-9a-f]{6})/gi)].map((m) => [m[1], m[2]]));
 const page = hexes(block(":root"));
+const darkAt = css.indexOf("@media (prefers-color-scheme: dark)");
+const dark = { ...page, ...hexes(css.slice(darkAt, css.indexOf("\n}\n", darkAt))) };
 const wall = { ...page, ...hexes(block("html.wall")) };
 const luminance = (hex) => {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
@@ -126,40 +131,45 @@ const contrast = (vars, a, b) => {
   return (hi + 0.05) / (lo + 0.05);
 };
 
-// Text sits on the page ground (--bg) and on the Now column's and Now list's (--surface).
+// Text sits on the page ground (--bg), on the Day frame's and the cards' (--panel) and on the Now
+// column's, the Now list's and the banners' (--surface).
 // Every new text colour goes in TEXT; marks and lines that carry data go in MARKS.
 // --signal is text too: "Not reporting" in the Now column and the Now list (setkernel-live#54).
 const TEXT = ["ink", "ink-2", "ink-3", "signal"];
-const MARKS = ["ink", "ink-2", "ink-3", "signal", "bar"];
-for (const [name, vars] of [["Page", page], ["Wall", wall]]) {
+const MARKS = ["ink", "ink-2", "ink-3", "signal", "bar", "ok"];
+for (const [name, vars] of [["Page", page], ["Dark", dark], ["Wall", wall]]) {
   test(`${name}: every text colour meets WCAG AA on both grounds, AAA for names and body text`, () => {
     const check = (fg, bg, min) => {
       const ratio = contrast(vars, fg, bg);
       assert.ok(ratio >= min, `${name}: --${fg} on --${bg} is ${ratio.toFixed(2)}:1, under ${min}:1`);
     };
-    for (const bg of ["bg", "surface"]) {
+    for (const bg of ["bg", "surface", "panel"]) {
       for (const fg of ["ink", "ink-2"]) check(fg, bg, 7);
       for (const fg of TEXT) check(fg, bg, 4.5);
     }
-    // the scrub cursor's time: the ground's colour on the focus colour
-    check("bg", "focus", 4.5);
-    // the stage lines, the marks, the ticks and the band's edge: at least 3:1 (WCAG 1.4.11) on the chart's ground
-    for (const fg of MARKS) check(fg, "bg", 3);
-    check("focus", "bg", 3);
+    // the scrub cursor's time: the chart's ground colour on the focus colour
+    check("panel", "focus", 4.5);
+    // the stage lines, the marks and the ticks: at least 3:1 (WCAG 1.4.11) on the chart's ground and the page's
+    for (const bg of ["bg", "panel"]) {
+      for (const fg of MARKS) check(fg, bg, 3);
+      check("focus", bg, 3);
+    }
   });
 }
 
 test("every text colour in style.css is one the contrast test checks", () => {
   const colours = new Set();
   for (const m of css.matchAll(/(?:^|[\s;{])(?:color|fill):\s*var\(--([\w-]+)\)/g)) colours.add(m[1]);
-  const fills = new Set(["surface", "bg", "band", "focus"]); // grounds and shapes, not text: checked above as grounds or marks
+  const fills = new Set(["surface", "bg", "panel", "focus"]); // grounds and shapes, not text: checked above as grounds or marks
   for (const c of colours) assert.ok(TEXT.includes(c) || MARKS.includes(c) || fills.has(c), `--${c} is used as a colour but not checked`);
 });
 
-test("the wall has one fixed dark theme; the page has one theme and no toggle", () => {
+test("the page follows the system's light or dark, the wall has one fixed dark theme, and there is no toggle", () => {
   assert.ok(luminance(wall.bg) < 0.02, "the wall is dark");
   assert.ok(luminance(page.bg) > 0.85, "the page is light");
-  assert.doesNotMatch(css, /prefers-color-scheme/, "neither follows the system's light or dark");
+  assert.ok(luminance(dark.bg) < 0.02, "and dark when the system is");
+  assert.equal(css.match(/prefers-color-scheme/g).length, 1, "one dark palette");
+  assert.match(css, /@media \(prefers-color-scheme: dark\) \{\s*:root:not\(\.wall\) \{/, "which the wall never takes");
   assert.doesNotMatch(read("index.html"), /data-pick|aria-label="Theme"/, "no Day/Night toggle");
   for (const f of scripts()) assert.doesNotMatch(read(f), /localStorage|sessionStorage/, `${f} stores nothing`);
 });
@@ -181,8 +191,12 @@ test("no tiny type: nothing in style.css is set under 12px", () => {
   let checked = 0;
   const vars = Object.fromEntries([...css.matchAll(/--(f\d):\s*(\d+)px/g)].map((m) => [m[1], Number(m[2])]));
   assert.deepEqual(vars, { f1: 12, f2: 14, f3: 16, f4: 20, f5: 24, f6: 32 }, "the type scale");
+  // the root is never under 16 px, so a rem (and an em inside it) is at least 16 px
+  assert.match(css, /\nhtml \{ font-size: clamp\(16px,/);
+  assert.match(css, /\nhtml\.wall \{ font-size: 16px; \}/);
   for (const [decl] of css.matchAll(/\bfont(?:-size)?:[^;}]*/g)) {
-    const px = decl.match(/(\d*\.?\d+)px\b/)?.[1] ?? vars[decl.match(/var\(--(f\d)\)/)?.[1]];
+    const rem = decl.match(/(\d*\.?\d+)r?em\b/)?.[1];
+    const px = decl.match(/(\d*\.?\d+)px\b/)?.[1] ?? vars[decl.match(/var\(--(f\d)\)/)?.[1]] ?? (rem && Number(rem) * 16);
     if (px === undefined) continue;
     assert.ok(Number(px) >= 12, `${decl} is ${px}px`);
     checked++;

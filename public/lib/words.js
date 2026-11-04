@@ -104,9 +104,10 @@ export function doing(info) {
   return info.repo ? `${what} in ${info.repo}` : what;
 }
 
-// Today's numbers for one agent -> "2 PRs · 4 reviews · 130 Claude", leaving out zeros.
+// Today's numbers for one agent -> "2 PRs · 4 reviews", leaving out zeros. Only what they did:
+// never their Claude requests or chat posts, which are usage (setkernel-live#94).
 export function tally(c) {
-  const parts = [[c?.prs, "PR", "PRs"], [c?.reviews, "review", "reviews"], [c?.claude, "Claude", "Claude"]].filter(([n]) => n > 0).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
+  const parts = [[c?.prs, "PR", "PRs"], [c?.reviews, "review", "reviews"]].filter(([n]) => n > 0).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
   return parts.length ? parts.join(" · ") : "nothing yet today";
 }
 

@@ -129,7 +129,7 @@ test("labels, tallies and feed sentences", () => {
   assert.deepEqual(stateWords({ state: "PAUSED" }), { state: "Paused", words: "paused", repo: "" });
   assert.deepEqual(stateWords(undefined), { state: "Idle", words: "idle", repo: "" });
   assert.equal(deed({ agent: "Vega", action: "opened_pr", repo: "hq" }), "opened a pull request in hq");
-  assert.equal(tally({ prs: 2, reviews: 4, claude: 130, started: 3, helpers: 1 }), "2 PRs · 4 reviews · 130 Claude");
+  assert.equal(tally({ prs: 2, reviews: 4, claude: 130, started: 3, helpers: 1 }), "2 PRs · 4 reviews", "never a person's Claude use (setkernel-live#94)");
   assert.equal(tally({ prs: 1, reviews: 1, started: 1 }), "1 PR · 1 review");
   assert.equal(tally(undefined), "nothing yet today");
   assert.equal(sentence({ agent: "Orion", action: "decision_pr" }), "Orion wrote up a decision in a private project.");

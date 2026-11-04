@@ -2,9 +2,9 @@
 // labels and the wall's scale. Pure, so it is tested; public/lib/chart.js and app.js use it.
 
 // One grid for every layout: widths, gaps and row heights in multiples of 8 (4 for the half step).
-// gutL is the name gutter, gutR the Now column; the rows are Polaris, a lane, CI and the gap
-// between groups. The wall uses the same numbers: fitWall scales the whole canvas.
-export const GRID = { gutL: 232, gutR: 376, gap: 24, r: 5, axis: 32, pole: 64, eng: 88, ci: 40, sep: 16 };
+// gutL is the name gutter, gutR the Now column; the rows are a lane per engineer, CI and the gap
+// between them. The wall uses the same numbers: fitWall scales the whole canvas.
+export const GRID = { gutL: 232, gutR: 376, gap: 24, r: 5, axis: 32, eng: 88, ci: 40, sep: 16 };
 
 // The wall is the page drawn once on a fixed 16:9 canvas and scaled whole to the screen.
 export const WALL = { w: 1440, h: 810 };
