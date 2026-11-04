@@ -1,15 +1,18 @@
-// live.setkernel.com, v3 "Day" (setkernel-live#48; the design is docs/design/v3/day). One sentence on
-// top says who is doing what; under it, the last 24 hours, one lane per engineer, with the Now
-// column at the right edge. Live data comes from /api/state and /api/replay, then the WebSocket
-// (/ws); ?demo runs a sample day through the same reducers as the Durable Object. Everything shown
-// is built with textContent and attributes, never innerHTML, so nothing in a batch can inject markup.
+// live.setkernel.com, v5 (setkernel-live#94): Showcase's page around v3's "Day" (setkernel-live#48;
+// docs/design/v3/day). One sentence says who is doing what; under it, the last 24 hours, a lane for
+// each engineer the feed sends, with the Now column at the right edge. Live data comes from /api/state
+// and /api/replay, then the WebSocket (/ws); ?demo runs a sample day through the same reducers as the
+// Durable Object. Demo mode (the dialog) walks one real public change in seven steps (lib/walk.js).
+// Everything shown is built with textContent and attributes, never innerHTML, so nothing in a batch
+// can inject markup.
 import { ENGINEERS, applyBatch, emptyReplay, homeDay, recordReplay, view } from "/lib/state.js";
-import { OFFLINE_AFTER_MS, createAnnouncer, fitHeadline, freshness, headline, plain, todaySince, zoneName } from "/lib/words.js";
+import { OFFLINE_AFTER_MS, clock, createAnnouncer, fitHeadline, freshness, headline, isSilent, plain, todaySince, zoneName } from "/lib/words.js";
 import { reviewers } from "/lib/line.js";
-import { BIN, BINS, keyItems, prep, readout, scrubKey, tableRows } from "/lib/day.js";
+import { BIN, BINS, keyItems, lanesOf, prep, readout, scrubKey, tableRows } from "/lib/day.js";
 import { fitWall, pageMode } from "/lib/layout.js";
-import { drawNowList, drawTall, drawWide, fillLegend, fillTable } from "/lib/chart.js";
+import { drawNowList, drawTall, drawWide, fillLegend, fillTable, unit } from "/lib/chart.js";
 import { busyDay, downDay, quietDay, runDay } from "/lib/demo.js";
+import { mountStepper, steps } from "/lib/walk.js";
 
 const $ = (id) => document.getElementById(id);
 const root = document.documentElement;
@@ -28,8 +31,11 @@ let D = null, plot = null, scrub = null, mode = null, drawing = false, tableKey 
 const offline = () => Boolean(current.lastIngest) && serverNow() - current.lastIngest > OFFLINE_AFTER_MS;
 
 function fillWords() {
-  const targets = Object.fromEntries(Object.entries(reviewers(current.agents, current.line, ENGINEERS)).map(([author, reviewer]) => [reviewer, author]));
-  const hl = headline({ ...current, now: serverNow(), timeZone: TZ, names: ENGINEERS, targets });
+  // only the engineers the feed sends: no other lane, and no other name in the words
+  const lanes = lanesOf(current);
+  const targets = Object.fromEntries(Object.entries(reviewers(current.agents, current.line, lanes)).map(([author, reviewer]) => [reviewer, author]));
+  const feed = (current.feed ?? []).filter((e) => lanes.includes(e?.agent));
+  const hl = headline({ ...current, feed, now: serverNow(), timeZone: TZ, names: lanes, targets });
   root.classList.remove("mood-live", "mood-quiet", "mood-offline", "mood-waiting");
   root.classList.add(`mood-${hl.mood}`);
   const h1 = $("headline");
@@ -52,19 +58,55 @@ function fillWords() {
   // the Halifax day (hq#177, question 5), on the visitor's clock
   const now = serverNow();
   $("chart-sub").textContent = `Times in ${zoneName(now, TZ)}. Today's counts ${todaySince(now, TZ)}.`;
+  showBanner(hl.mood);
   showFresh(hl.mood);
+}
+
+const glyph = (id, g) => $(id).setAttribute("href", `#${g}`);
+
+// The page's own state, above the headline: nothing when the office is at work.
+const BANNERS = {
+  offline: () => ["g-off", false, `Updates stopped at ${clock(current.lastIngest, TZ)}`, "Everything below is the last picture the page had, kept as it was."],
+  waiting: () => ["g-wait", true, "Waiting for the first update", "Nothing has arrived yet. Numbers show a dash until they are real, not a zero."],
+  quiet: () => ["g-info", true, "A quiet spell: nobody is working right now", "The lanes show the day so far. New work appears here by itself."],
+};
+function showBanner(mood) {
+  const b = $("banner");
+  b.hidden = !BANNERS[mood];
+  if (b.hidden) return;
+  const [g, calm, head, text] = BANNERS[mood]();
+  glyph("banner-g", g);
+  b.classList.toggle("calm", calm);
+  $("banner-h").textContent = head;
+  $("banner-t").textContent = text;
 }
 
 // "About a minute behind" in place of LIVE (hq#177, question 4): events leave the office 60 s late.
 // Offline says only how long ago; waiting, and the demo, say nothing of the office.
-function showFresh(mood = root.classList.contains("mood-offline") ? "offline" : "live") {
+function showFresh(mood = root.classList.contains("mood-offline") ? "offline" : root.classList.contains("mood-waiting") ? "waiting" : "live") {
   const fresh = DEMO ? "" : freshness(current.lastIngest, serverNow());
   $("fresh").textContent = !fresh ? "" : mood === "offline" ? fresh : `About a minute behind · ${fresh}`;
+  glyph("fresh-g", DEMO ? "g-info" : mood === "offline" ? "g-off" : mood === "waiting" ? "g-wait" : "g-live");
+  $("fresh-g").parentNode.toggleAttribute("hidden", !DEMO && !fresh);
+  showConn(mood, fresh);
+}
+
+// The chip in the top bar: the page's connection in a few words, a glyph beside them, never colour alone.
+function showConn(mood, fresh) {
+  const down = lanesOf(current).filter((n) => isSilent(current.agents?.[n])).length;
+  const [g, bad, words] = DEMO ? ["g-info", false, "Demo: sample data"]
+    : mood === "waiting" ? ["g-wait", false, "Waiting for the first update"]
+    : mood === "offline" ? ["g-off", true, `Offline · last update ${clock(current.lastIngest, TZ)}`]
+    : down ? ["g-silent", true, `Live · ${down === 1 ? "one engineer" : `${down} engineers`} not reporting`]
+    : ["g-live", false, `Live · ${fresh}`];
+  glyph("conn-g", g);
+  $("conn").classList.toggle("bad", bad);
+  $("conn-t").textContent = words;
 }
 
 function render() {
   if (!$("plot").clientWidth) return; // not laid out (yet): nothing to measure the chart by
-  mode = pageMode(innerWidth, WALL);
+  mode = pageMode(innerWidth / unit(), WALL); // in the chart's units: the root font grows with the screen
   root.dataset.mode = mode;
   const nowS = Math.floor(serverNow() / 1000);
   const oldT0 = D?.t0;
@@ -156,7 +198,8 @@ function apply(msg) {
   if (msg.t === "batch" && Array.isArray(msg.events)) {
     // the page keeps its own copy of the replay buffer up to date, with the same reducer
     replay = recordReplay(replay, { events: msg.events }, serverNow());
-    announcer.add(msg.events);
+    const lanes = lanesOf(current);
+    announcer.add(msg.events.filter((e) => lanes.includes(e?.agent)));
   }
   render();
 }
@@ -231,6 +274,18 @@ function startDemo() {
     apply({ t: "batch", events: batch.events, ...view(state, replay, now) });
   }, 2000);
 }
+
+// ---- Demo mode: a full-screen dialog, drawn the first time it opens; focus goes back to its opener
+let stepper = null, opener = null;
+function openDemo(ev) {
+  stepper ??= mountStepper($("steps"), steps(TZ));
+  opener = ev.currentTarget;
+  $("demo").showModal();
+}
+$("demo-open").addEventListener("click", openDemo);
+$("how-open").addEventListener("click", openDemo);
+$("demo-close").addEventListener("click", () => $("demo").close());
+$("demo").addEventListener("close", () => (opener ?? $("demo-open")).focus());
 
 // keep "updated N s ago" ticking, and the mood, the window and "Today since" moving when nothing arrives
 setInterval(() => { if (!document.hidden) showFresh(); }, 1000);

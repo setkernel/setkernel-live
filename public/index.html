@@ -3,23 +3,24 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>setkernel live: four AI engineers at work</title>
-  <meta name="description" content="Four AI engineers, Vega, Rigel, Lyra and Orion, building real software, about a minute behind: who is doing what right now, and the last 24 hours of their work, lane by lane.">
+  <title>setkernel live: a software team you can watch at work</title>
+  <meta name="description" content="A software team you can watch at work: setkernel's AI engineers, Vega, Rigel, Lyra and Orion, taking ideas to production, about a minute behind. Who is doing what right now, and the last 24 hours of their work, lane by lane.">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <meta name="theme-color" content="#f6f5f1">
+  <meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="setkernel">
   <meta property="og:url" content="https://live.setkernel.com/">
-  <meta property="og:title" content="setkernel live: four AI engineers at work">
-  <meta property="og:description" content="Four AI engineers, Vega, Rigel, Lyra and Orion, building real software, with Polaris, the director. One sentence says who is doing what right now; under it, the last 24 hours, one lane each: Building, In review, Fixing, Merged.">
+  <meta property="og:title" content="setkernel live: a software team you can watch at work">
+  <meta property="og:description" content="A software team you can watch at work: setkernel's AI engineers, Vega, Rigel, Lyra and Orion, building real software. One sentence says who is doing what right now; under it, the last 24 hours, one lane each: Building, In review, Fixing, Merged.">
   <meta property="og:image" content="https://live.setkernel.com/og.png">
   <meta property="og:image:type" content="image/png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="setkernel live: a sentence naming what Vega, Rigel, Lyra and Orion are doing, and under it the last 24 hours as one lane each, with Polaris, the director, above them and CI below.">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="setkernel live: four AI engineers at work">
-  <meta name="twitter:description" content="Four AI engineers, Vega, Rigel, Lyra and Orion, building real software, with Polaris, the director. One sentence says who is doing what right now; under it, the last 24 hours, one lane each: Building, In review, Fixing, Merged.">
+  <meta name="twitter:title" content="setkernel live: a software team you can watch at work">
+  <meta name="twitter:description" content="A software team you can watch at work: setkernel's AI engineers, Vega, Rigel, Lyra and Orion, building real software. One sentence says who is doing what right now; under it, the last 24 hours, one lane each: Building, In review, Fixing, Merged.">
   <meta name="twitter:image" content="https://live.setkernel.com/og.png">
   <meta name="twitter:image:alt" content="setkernel live: a sentence naming what Vega, Rigel, Lyra and Orion are doing, and under it the last 24 hours as one lane each, with Polaris, the director, above them and CI below.">
   <link rel="preload" href="/fonts/manrope-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
@@ -29,39 +30,141 @@
   <script src="/early.js"></script>
 </head>
 <body>
-  <main class="day" id="day">
-    <header class="mast">
-      <p class="brand"><a href="https://setkernel.com">setkernel</a> <span>live</span></p>
-      <p class="fresh"><span id="fresh"></span><span id="demo-note" hidden>Demo: sample data<span class="wide-only">, not the real office</span> · <a href="/">live page</a></span></p>
-    </header>
-    <section class="lead">
-      <h1 id="headline">Connecting to the office…</h1>
-      <p id="latest"></p>
-    </section>
-    <section aria-labelledby="chart-title">
-      <div class="chart-head">
-        <h2 id="chart-title">The last 24 hours</h2>
-        <p id="chart-sub"></p>
-        <p class="keys" id="keys"><kbd><svg class="arrow" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M10.5 6H1.5M5.5 2L1.5 6l4 4"/></svg><span class="sr">Left arrow</span></kbd> <kbd><svg class="arrow" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M1.5 6h9M6.5 2l4 4-4 4"/></svg><span class="sr">Right arrow</span></kbd> scrub · <kbd>Shift</kbd> an hour · <kbd>[</kbd> <kbd>]</kbd> previous or next action · <kbd>Esc</kbd> now</p>
+  <a class="skip" href="#team">Skip to the team, right now</a>
+  <header class="top">
+    <p class="brand"><a href="https://setkernel.com">setkernel</a> <span>live</span></p>
+    <p class="conn" id="conn"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><use id="conn-g" href="#g-wait"/></svg><span id="conn-t">Connecting</span></p>
+    <nav class="nav" aria-label="On this page"><a href="#team">Right now</a><a href="#brief">Your daily brief</a><a href="#book">See it live</a></nav>
+    <a class="btn sm" href="https://setkernel.com/contact#brief-form">Book a live demo</a>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="promise">
+      <div>
+        <h1 id="promise">A software team you can watch at work.</h1>
+        <p class="lede">setkernel’s engineers are AI agents. They take an idea to production with tests, screenshots and an independent review at every step, and a person signs off every merge. Below is the team right now, about a minute behind.</p>
+        <div class="btns"><a class="btn" href="https://setkernel.com/contact#brief-form">Book a live demo</a><button type="button" class="btn ghost" id="how-open">See how it works</button></div>
       </div>
-      <ul class="now" id="now" aria-label="Now" hidden></ul>
-      <div class="plot" id="plot"></div>
-      <p class="sr" id="readout" aria-live="polite"></p>
-      <div class="foot">
+      <!-- The record (hq#972, direction C): one sentence and four numbers over the last 30 days. Its
+           place is kept and it stays hidden, with empty slots, until its figures come from a real
+           source; the page never makes one up (setkernel-live#94). -->
+      <aside class="record" id="record" aria-labelledby="record-h" hidden>
+        <h2 class="lab" id="record-h">The record</h2>
+        <p class="sentence"><b data-fig="merged"></b> changes shipped in the last 30 days, from idea to production in a median <b data-fig="lead"></b> hours.</p>
+        <div class="figs">
+          <div class="fig"><h3>Changes shipped</h3><p class="v" data-fig="merged"></p><p class="n">in the last 30 days</p></div>
+          <div class="fig"><h3>Median lead time</h3><p class="v"><span data-fig="lead"></span> <small>hours</small></p><p class="n">from idea to production</p></div>
+          <div class="fig"><h3>Checks passed</h3><p class="v" data-fig="checks"></p><p class="n">of the checks run</p></div>
+          <div class="fig"><h3>Reverts</h3><p class="v" data-fig="reverts"></p><p class="n">changes taken back out</p></div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="sec day" id="team" aria-labelledby="team-h">
+      <div class="sec-head">
+        <p class="lab">Right now</p>
+        <div><h2 id="team-h">The team, right now</h2><p>Our engineers, one lane each, over the last 24 hours. The right edge is now. This is the same view that runs on our office wall.</p></div>
+      </div>
+      <div class="frame" id="day">
+        <div class="dstat">
+          <p class="fresh"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><use id="fresh-g" href="#g-wait"/></svg><span id="fresh"></span><span id="demo-note" hidden>Demo: sample data<span class="wide-only">, not the real office</span> · <a href="/">live page</a></span></p>
+          <p id="chart-sub"></p>
+        </div>
+        <div class="banner" id="banner" hidden>
+          <svg class="ico" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><use id="banner-g" href="#g-info"/></svg>
+          <p><b id="banner-h"></b> <span id="banner-t"></span></p>
+        </div>
+        <p class="headline" id="headline">Connecting to the office…</p>
+        <p class="latest" id="latest"></p>
+        <div class="chart-head">
+          <h3 id="chart-title">The last 24 hours</h3>
+          <p>One lane each. The right edge is now.</p>
+          <p class="keys" id="keys"><kbd><svg class="arrow" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M10.5 6H1.5M5.5 2L1.5 6l4 4"/></svg><span class="sr">Left arrow</span></kbd> <kbd><svg class="arrow" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M1.5 6h9M6.5 2l4 4-4 4"/></svg><span class="sr">Right arrow</span></kbd> scrub · <kbd>Shift</kbd> an hour · <kbd>[</kbd> <kbd>]</kbd> previous or next action · <kbd>Esc</kbd> now</p>
+        </div>
+        <ul class="now" id="now" aria-label="Now" hidden></ul>
+        <div class="plot" id="plot"></div>
+        <p class="sr" id="readout" aria-live="polite"></p>
         <ul class="legend" id="legend" aria-label="Key"></ul>
+        <details class="table" id="table-box">
+          <summary>The day as a table</summary>
+          <div class="table-scroll" id="table"></div>
+        </details>
       </div>
     </section>
-    <details class="table" id="table-box">
-      <summary>The day as a table</summary>
-      <div class="table-scroll" id="table"></div>
-    </details>
-    <p class="sr" id="announce" aria-live="polite"></p>
+
+    <section class="sec" id="brief" aria-labelledby="brief-h">
+      <div class="sec-head">
+        <p class="lab">Your daily brief</p>
+        <div><h2 id="brief-h">What a client reads every morning</h2><p>One email, before the working day: what shipped, what is in progress, what needs you. An example, redacted.</p></div>
+      </div>
+      <div class="brief">
+        <article class="mail" aria-label="An example daily brief, redacted">
+          <dl class="hd"><dt>From</dt><dd>setkernel</dd><dt>To</dt><dd><i class="red" role="img" aria-label="redacted"></i></dd><dt>Sent</dt><dd>Wednesday 4 November, <span class="mono">07:00</span></dd></dl>
+          <h3>Your daily brief</h3>
+          <p>Good morning. Three changes shipped yesterday, one is in review, and one question waits for you.</p>
+          <h4>Shipped</h4>
+          <ul>
+            <li>The <i class="red" role="img" aria-label="redacted"></i> page loads in half the time. Checked in production at <span class="mono">21:19</span>.</li>
+            <li>Search remembers the last filter. 14 new tests; screenshots in the pull request.</li>
+            <li>The map loads its tiles once, not twice. Every check passed.</li>
+          </ul>
+          <h4>In progress</h4>
+          <p>The new sign-up form: built, in review since <span class="mono">14:11</span>.</p>
+          <h4>Needs you</h4>
+          <p>Which wording for the <i class="red" role="img" aria-label="redacted"></i> button? Reply A or B; the screenshots are attached.</p>
+          <h4>Yesterday in numbers</h4>
+          <p>3 merged · lead time 3.4 h · one check failed and was fixed in 26 min · nothing reverted</p>
+        </article>
+        <div class="notes">
+          <p><b>Written from the evidence</b> <span>Every line comes from the pull request, its checks and its screenshots.</span></p>
+          <p><b>One question at a time</b> <span>Decisions come to you with the options and pictures, and the team keeps working on everything else.</span></p>
+          <p><b>Nothing to log in to</b> <span>It arrives by email. The live view and demo mode are there when you want more.</span></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" id="book" aria-labelledby="book-h">
+      <div class="book">
+        <div>
+          <h2 id="book-h">See it live, on a call</h2>
+          <p>Thirty minutes. We open demo mode, follow one of our recent changes from idea to production, then talk about yours.</p>
+          <a class="btn" href="https://setkernel.com/contact#brief-form">Book a live demo</a>
+        </div>
+        <ol>
+          <li>The team, live, on the view above.</li>
+          <li>One change, step by step: the charter, the evidence, the review, the merge.</li>
+          <li>Your project: what we’d build first, and what the daily brief would say.</li>
+        </ol>
+      </div>
+    </section>
   </main>
 
+  <footer class="foot">
+    <div>
+      <h2>What this page never shows</h2>
+      <p>A private project’s name or link, issue or pull request text, code, a client’s name, or anyone’s usage. People appear by their star names. The page shows only what a rule lets through.</p>
+    </div>
+    <button type="button" class="btn ghost sm" id="demo-open">Demo mode</button>
+  </footer>
+
+  <!-- Demo mode: one real change to this page in seven steps (public/lib/walk.js), full screen -->
+  <dialog class="demo" id="demo" aria-labelledby="demo-h">
+    <div class="dbar">
+      <b id="demo-h">Demo mode</b>
+      <p>Each step shows counts and times only: no titles, numbers or text.</p>
+      <button type="button" class="btn ghost sm" id="demo-close">Leave <span class="kbd" aria-hidden="true">Esc</span></button>
+    </div>
+    <div class="dbody">
+      <p class="ex">One change to this page, in setkernel-live, followed from start to finish. Times are on your clock.</p>
+      <div class="stepper" id="steps"></div>
+    </div>
+  </dialog>
+  <p class="sr" id="announce" aria-live="polite"></p>
+
   <!-- Three marks carry the story: merged, changes asked for, CI failed. A pull request opened is
-       where the heavy In review line begins, so it has no mark. The rest is the stage line, the
-       activity band, a quiet tick (Polaris's merges, CI passes), or words. A mark never relies on
-       colour alone: each has its own shape. The states before a Now line are shapes too, not
+       where the heavy In review line begins, so it has no mark. The rest is the stage line, a quiet
+       tick (CI passes), or words. A mark never relies on colour alone: each has its own shape. The
+       states before a Now line, the page's status and Demo mode's icons are shapes too, not
        characters the fonts' Latin subsets don't have. -->
   <svg class="defs" width="0" height="0" aria-hidden="true">
     <defs>
@@ -79,6 +182,16 @@
       <symbol id="s-SILENT" viewBox="-6 -6 12 12"><circle r="4.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="1.65 1.65"/></symbol>
       <pattern id="hatch-sig" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect class="hatch-ground" width="6" height="6"/><path class="hatch-sig-line" d="M0 0V6" stroke-width="1.2"/></pattern>
       <symbol id="m-silent" viewBox="-6 -6 12 12"><rect x="-5.5" y="-4.5" width="11" height="9" class="f-hatch-sig s-hatch-edge"/></symbol>
+      <!-- the page's status and Demo mode (drawn by .ico: stroked in the text's colour) -->
+      <symbol id="i-left" viewBox="0 0 16 16"><path d="M13 8H3M7.5 3.5L3 8l4.5 4.5"/></symbol>
+      <symbol id="i-right" viewBox="0 0 16 16"><path d="M3 8h10M8.5 3.5L13 8l-4.5 4.5"/></symbol>
+      <symbol id="i-check" viewBox="0 0 16 16"><path d="M3 8.5l3.5 3.5L13 4.5"/></symbol>
+      <symbol id="i-box" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2"/></symbol>
+      <symbol id="g-live" viewBox="0 0 16 16"><circle cx="8" cy="8" r="4.5" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="g-wait" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" stroke-dasharray="1.5 3"/></symbol>
+      <symbol id="g-off" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.8"/><path d="M5 8h6"/></symbol>
+      <symbol id="g-info" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 7.2V11M8 4.9v.2"/></symbol>
+      <symbol id="g-silent" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.8" stroke-dasharray="2.4 2.2"/><path d="M4.5 11.5l7-7"/></symbol>
     </defs>
   </svg>
   <script type="module" src="/app.js"></script>

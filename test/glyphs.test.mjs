@@ -79,7 +79,7 @@ const faces = [...read("style.css").matchAll(/@font-face\s*{([^}]*)}/g)].map(([,
 });
 
 test("each @font-face declares the unicode-range its file has", () => {
-  assert.equal(faces.length, 3, "Manrope 400 and 600, IBM Plex Mono 400");
+  assert.equal(faces.length, 5, "Manrope 400, 600 and 800, IBM Plex Mono 400 and 500");
   for (const { name, url, declared, has } of faces) {
     assert.ok(declared, `${name} (${url}) declares no unicode-range, so it claims every character`);
     const printable = (set) => [...set].filter((cp) => cp >= 0x20).sort((a, b) => a - b).map(hex);
