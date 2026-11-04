@@ -242,10 +242,16 @@ Everything under `/usage` (the page Raghav reads it on, setkernel-live#71, and i
 `wrangler.jsonc` runs the Worker first for `/usage` and `/usage/*` (without it the assets are served
 before the Worker sees the request). `/usage/data` names the newest hour stored, in any month, in a
 `Usage-Newest-Hour` header (absent while nothing is stored); the body keeps its shape.
-`public/usage/table.js` turns a month into the page's rows: fresh tokens are input + output + cache
-writes, and a day or seat with no data is a dash, not zero. `public/usage/index.html`, `usage.css`
-and `page.js` draw it (setkernel-live#78): `?month=YYYY-MM` picks the month, the newest hour is
-the header's, and a 403, 503 or expired login shows a message. Its shots are in `docs/design/usage/`.
+`public/usage/table.js` turns a month into the page's totals, seats, rows and trends: fresh tokens
+are input + output + cache writes, and a day or seat with no data is a dash, not zero. The seats are
+the ones the data names. `public/usage/limits.js` reads each seat's 5-hour and weekly windows from a
+`limits` object in the answer, with the wall's rules (alerts at 80% and 70%, a limit hit at 100% or on
+a rejected request, a reading from before its window reset is stale). `/usage/data` doesn't send
+`limits` yet, so the page says it can't check them and shows no figure. `public/usage/index.html`,
+`usage.css` (its own palette and the fonts in `public/usage/fonts/`) and `page.js` draw it
+(setkernel-live#78, v5 in #86): `?month=YYYY-MM` picks the month, the page also reads the two months
+before it for the 30-day trend, the newest hour is the header's, and a 403, 503 or expired login shows a
+message. `docs/design/usage/shoot.mjs` takes its shots, beside it, with the ones from before v5 in `before/`.
 
 ## When updates stop
 
