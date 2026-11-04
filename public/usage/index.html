@@ -6,26 +6,49 @@
   <meta name="robots" content="noindex">
   <title>Usage per seat · setkernel live</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/usage/usage.css">
   <script type="module" src="/usage/page.js"></script>
 </head>
 <body>
-  <main class="day">
-    <header class="mast">
+  <header class="mast">
+    <div class="wrap">
       <p class="brand"><a href="https://setkernel.com">setkernel</a> <span>live · usage</span></p>
-      <p class="fresh"><span id="asof">Loading</span><span class="wide"> · Only Raghav can open this page</span></p>
-    </header>
-    <section class="lead">
-      <h1 id="title">Tokens per seat</h1>
-      <p>Fresh tokens are input, output and cache writes. Days run midnight to midnight, Halifax time.</p>
+      <p class="fresh" id="fresh"><span id="asof">Loading</span><span class="priv"> · Only Raghav can open this page</span></p>
+    </div>
+  </header>
+  <main class="wrap">
+    <section class="intro">
+      <h1 id="title">Usage per seat</h1>
+      <nav class="months" id="months" aria-label="Month"></nav>
     </section>
-    <nav class="months" id="months" aria-label="Month"></nav>
     <p class="status" id="status" role="status">Loading this month's usage…</p>
-    <ul class="sum" id="sum" hidden></ul>
-    <p class="hint" id="hint" hidden>Hover a number for its exact tokens, cache reads and dollars. On a phone, tap it.</p>
-    <div class="scroll" id="scroll" hidden><table id="usage"></table></div>
-    <p class="note">Dollars are what the same tokens would cost at API prices. The seats are on subscriptions, so this is a size guide, not a bill. Polaris covers Raghav's own sessions. A dash means no data, not zero.</p>
+    <section class="need" id="need" aria-labelledby="need-h" hidden>
+      <h2 id="need-h">Needs a look</h2>
+      <ul id="needs"></ul>
+    </section>
+    <ul class="tiles" id="sum" aria-label="The month's totals" hidden></ul>
+    <section id="seats" aria-labelledby="seats-h" hidden>
+      <div class="sec-row">
+        <h2 class="sec" id="seats-h">Seats</h2>
+        <div class="seg">Trend <div role="group" aria-label="Trend over"><button type="button" id="span7" aria-pressed="true">7 days</button><button type="button" id="span30" aria-pressed="false">30 days</button></div></div>
+      </div>
+      <p class="since" id="since"></p>
+      <div class="rows" id="rows"></div>
+    </section>
+    <section id="days" aria-labelledby="days-h" hidden>
+      <div class="sec-row">
+        <h2 class="sec" id="days-h">Day by day</h2>
+        <p class="legend" id="legend">Fewer <span class="ramp"><i class="t1"></i><i class="t2"></i><i class="t3"></i><i class="t4"></i><i class="t5"></i><i class="t6"></i><i class="t7"></i><i class="t8"></i></span> more fresh tokens in a seat's day</p>
+      </div>
+      <p class="hint" id="hint">Hover a number for its exact tokens, cache reads and dollars; on a touch screen, tap it.</p>
+      <div class="frame tbl" id="scroll"><div id="top"></div><table class="ledger" id="usage"></table></div>
+      <p class="dayhead">Open a day for each seat's tokens and dollars.</p>
+      <ul class="days" id="daylist"></ul>
+    </section>
+    <footer class="note">
+      <p>Fresh tokens are input, output and cache writes; cache reads are counted apart. Days run midnight to midnight, Halifax time.</p>
+      <p>Dollars are what the same tokens would cost at API prices. The seats are on subscriptions, so this is a size guide, not a bill. A dash means no data, not zero.</p>
+    </footer>
   </main>
   <div class="tip" id="tip" role="tooltip" hidden></div>
 </body>
