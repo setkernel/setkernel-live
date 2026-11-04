@@ -228,11 +228,23 @@ Hours older than 400 days are deleted on each push.
   cloud, codex; the counts are whole numbers from 0. One bad bucket makes the whole push 400.
   A bucket pushed again replaces the stored one, so a pusher can resend an hour's running totals.
   The answer is `{ stored, days }`: what is now stored for the hours pushed, per Halifax day and seat.
+- `POST /ingest/limits` (setkernel-live#88) takes each seat's newest 5-hour and weekly limit readings,
+  behind the same Access app and `INGEST_AUD` check: `{ "vega": { "five_hour": { "utilization": 0.84,
+  "resets_at": "…", "observed_at": "…" }, "seven_day": { … }, "event": { "status": "rejected",
+  "rate_limit_type": "five_hour", "resets_at": "…", "received_at": "…" } } }`. The seats are vega, rigel,
+  lyra, orion and polaris (Codex has no Claude limits); `utilization` is a fraction from 0; times are
+  ISO 8601 with a zone (`resets_at` may be null: unknown); `status` is allowed, allowed_warning or
+  rejected; any part may be null or left out, and changes nothing then. Other fields are dropped; a bad
+  seat, value or time makes the whole push 400. The store (`seat_limits`, one row per seat and part)
+  keeps a part only if it is as new as or newer than the one it has, and answers `{ limits }`: every
+  seat's as now stored.
 - `GET /usage/data?month=YYYY-MM` needs a token for its own Access app, checked against
   `USAGE_AUD` (the "live usage" Access app, setkernel-cloudflare#119; its tag is in `wrangler.jsonc`).
   With no login Access answers 302 to its login page; if `USAGE_AUD` were ever empty the Worker would
   answer 503 to everyone. It returns `{ month, days: { "2026-10-14": { seat: sums } }, totals: { seat: sums } }`
-  with `Cache-Control: no-store`. Days are Halifax days (`homeDay`), so an hour's usage counts on
+  with `Cache-Control: no-store`, and for the current Halifax month, once any reading is stored, `limits`:
+  `{ seat: { five_hour, seven_day, event } }`, each part null until it has a reading. A past month has
+  none: limits are read live. Days are Halifax days (`homeDay`), so an hour's usage counts on
   the day it was in Halifax: 03:00 UTC is 23:00 the day before in winter.
 
 The read is open behind Access: the app for `live.setkernel.com/usage` exists (setkernel-cloudflare#119).
@@ -246,8 +258,8 @@ before the Worker sees the request). `/usage/data` names the newest hour stored,
 are input + output + cache writes, and a day or seat with no data is a dash, not zero. The seats are
 the ones the data names. `public/usage/limits.js` reads each seat's 5-hour and weekly windows from a
 `limits` object in the answer, with the wall's rules (alerts at 80% and 70%, a limit hit at 100% or on
-a rejected request, a reading from before its window reset is stale). `/usage/data` doesn't send
-`limits` yet, so the page says it can't check them and shows no figure. `public/usage/index.html`,
+a rejected request, a reading from before its window reset is stale). Until a reading is stored,
+`/usage/data` sends no `limits`, so the page says it can't check them and shows no figure. `public/usage/index.html`,
 `usage.css` (its own palette and the fonts in `public/usage/fonts/`) and `page.js` draw it
 (setkernel-live#78, v5 in #86): `?month=YYYY-MM` picks the month, the page also reads the two months
 before it for the 30-day trend, the newest hour is the header's, and a 403, 503 or expired login shows a

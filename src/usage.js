@@ -36,6 +36,58 @@ export function cleanUsage(body) {
   return out;
 }
 
+// Each seat's 5-hour and weekly limit windows (setkernel-live#88): the newest reading per seat, pushed
+// to POST /ingest/limits and read back as `limits` from GET /usage/data, in the shape
+// public/usage/limits.js reads. Codex has no Claude limits, and "other" is no seat, so neither has any.
+export const LIMIT_SEATS = SEATS.filter((s) => s !== "codex" && s !== "other");
+export const WINDOWS = ["five_hour", "seven_day"];
+export const STATUSES = ["allowed", "allowed_warning", "rejected"];
+const ISO = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|[+-](\d{2}):(\d{2}))$/;
+
+// An ISO 8601 time with a zone, "2026-11-04T12:00:00Z" or "...12:00:00.123456+00:00" -> the same
+// instant as toISOString() gives it, or null unless it is a real date and time.
+export function isoTime(t) {
+  const m = typeof t === "string" && t.length <= 40 ? ISO.exec(t) : null;
+  if (!m) return null;
+  const [y, mo, d, h, mi, s, oh, om] = m.slice(1).map((x) => Number(x ?? 0));
+  if (mo < 1 || mo > 12 || d < 1 || d > new Date(Date.UTC(y, mo, 0)).getUTCDate() || h > 23 || mi > 59 || s > 59 || oh > 23 || om > 59) return null;
+  const ms = Date.parse(t);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+const plain = (o) => !!o && typeof o === "object" && !Array.isArray(o);
+// A reset time may be unknown: null or absent is null, a bad one is undefined.
+const resetsAt = (t) => (t == null ? null : (isoTime(t) ?? undefined));
+// A window or an event with only the fields the page reads; null if null or absent; undefined if bad.
+function cleanWindow(w) {
+  if (w == null) return null;
+  if (!plain(w) || typeof w.utilization !== "number" || !Number.isFinite(w.utilization) || w.utilization < 0) return undefined;
+  const resets_at = resetsAt(w.resets_at), observed_at = isoTime(w.observed_at);
+  return resets_at === undefined || !observed_at ? undefined : { utilization: w.utilization, resets_at, observed_at };
+}
+function cleanEvent(e) {
+  if (e == null) return null;
+  if (!plain(e) || !STATUSES.includes(e.status) || !WINDOWS.includes(e.rate_limit_type)) return undefined;
+  const resets_at = resetsAt(e.resets_at), received_at = isoTime(e.received_at);
+  return resets_at === undefined || !received_at ? undefined : { status: e.status, rate_limit_type: e.rate_limit_type, resets_at, received_at };
+}
+
+// { <seat>: { five_hour, seven_day, event } } -> the same with only LIMIT_SEATS, each window's
+// utilization (a fraction, 0.84), resets_at and observed_at, and the event's status, rate_limit_type,
+// resets_at and received_at, times as toISOString() gives them and a missing part null; or null if any
+// seat, window or event is not allowed. Fields it doesn't name are dropped.
+export function cleanLimits(body) {
+  if (!plain(body)) return null;
+  const out = {};
+  for (const [seat, s] of Object.entries(body)) {
+    if (!LIMIT_SEATS.includes(seat) || !plain(s)) return null;
+    const five_hour = cleanWindow(s.five_hour), seven_day = cleanWindow(s.seven_day), event = cleanEvent(s.event);
+    if (five_hour === undefined || seven_day === undefined || event === undefined) return null;
+    out[seat] = { five_hour, seven_day, event };
+  }
+  return out;
+}
+
 // "2026-10" -> the UTC hours to read, [from, to), a day wider on each side than the month, since a
 // Halifax day starts at 03:00 or 04:00 UTC; or null for anything else. sumByDay keeps the month.
 export function monthRange(month) {

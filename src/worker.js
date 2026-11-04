@@ -7,19 +7,20 @@
 //   POST /github/webhook  GitHub Actions, pull request, review, issue and comment events from the org webhook (public; HMAC-signed)
 //   GET  /github/queue    those events, cut down, for sk-obs01 to pull (its own Access token, checked again)
 //   POST /ingest/usage    hourly token usage per seat (the ingest's Access token, checked again; setkernel-live#66)
-//   GET  /usage/data      that usage summed per Halifax day for ?month=YYYY-MM (its own Access app; 503 until it exists)
+//   POST /ingest/limits   each seat's newest 5-hour and weekly limit readings (the same token as /ingest/usage; setkernel-live#88)
+//   GET  /usage/data      that usage summed per Halifax day for ?month=YYYY-MM, and on the current month the limits (its own Access app)
 //   GET  /usage/          the page that reads it (public/usage/), behind the same Access app and token check
 // One Durable Object ("live") holds the picture, a capped 24-hour replay buffer and the GitHub queue,
 // and fans batches out to every open WebSocket.
 // A Cron Trigger asks it every 5 minutes whether updates have stopped, and it tells Buzz #infra.
-// A second, private Durable Object ("usage") holds the usage, in SQLite; the Hub never sees it.
+// A second, private Durable Object ("usage") holds the usage and the limits, in SQLite; the Hub never sees them.
 import { DurableObject } from "cloudflare:workers";
 import { applyBatch, cleanBatch, emptyReplay, emptyState, homeDay, recordReplay, replaySince, view } from "./logic.js";
 import { jwksFetcher, verifyAccessJwt } from "./access.js";
 import { EVENTS, cleanDelivery, cleanWebhook, emptyQueue, fetchHub, parseCursor, pushEvent, readCapped, readQueue, verifySignature } from "./github.js";
 import { delivered, emptyWatch, tick } from "./watch.js";
 import { postMessage } from "./buzz.js";
-import { COUNTS, cleanUsage, keepFrom, monthRange, sumByDay } from "./usage.js";
+import { COUNTS, cleanLimits, cleanUsage, keepFrom, monthRange, sumByDay } from "./usage.js";
 
 const getKeys = jwksFetcher();
 const MAX_BODY = 256 * 1024;
@@ -64,6 +65,22 @@ export default {
       if (!buckets) return new Response("Not usage", { status: 400 });
       return Response.json(await usage(env).push(buckets, Date.now()), { headers: { "Cache-Control": "no-store" } });
     }
+    if (pathname === "/ingest/limits") {
+      if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+      if (!env.INGEST_AUD) return new Response("Ingest is not configured", { status: 503 });
+      const ok = await verifyAccessJwt(request.headers.get("Cf-Access-Jwt-Assertion"), { aud: env.INGEST_AUD, getKeys });
+      if (!ok) return new Response("Forbidden", { status: 403 });
+      const body = await request.text();
+      if (body.length > MAX_BODY) return new Response("Too large", { status: 413 });
+      let limits;
+      try {
+        limits = cleanLimits(JSON.parse(body));
+      } catch {
+        return new Response("Bad JSON", { status: 400 });
+      }
+      if (!limits) return new Response("Not limits", { status: 400 });
+      return Response.json(await usage(env).pushLimits(limits), { headers: { "Cache-Control": "no-store" } });
+    }
     if (pathname === "/usage/data") {
       if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
       if (!env.USAGE_AUD) return new Response("Usage is not configured", { status: 503 });
@@ -72,7 +89,7 @@ export default {
       const month = new URL(request.url).searchParams.get("month");
       if (!monthRange(month)) return new Response("Bad month, want YYYY-MM", { status: 400 });
       // the newest hour stored goes in a header, so the body keeps the shape #69 shipped
-      const { newest, ...body } = await usage(env).month(month);
+      const { newest, ...body } = await usage(env).month(month, Date.now());
       return Response.json(body, { headers: { "Cache-Control": "no-store", ...(newest && { "Usage-Newest-Hour": newest }) } });
     }
     if (pathname === "/usage" || pathname.startsWith("/usage/")) {
@@ -131,15 +148,42 @@ async function githubWebhook(request, env, hub) {
 
 const usage = (env) => env.USAGE.get(env.USAGE.idFromName("usage"));
 
-// Hourly usage per seat, model and surface (setkernel-live#66). Only the Worker calls it, over RPC,
-// with buckets cleanUsage has already checked. A bucket pushed again replaces the stored one, so a
-// pusher can resend an hour's running totals.
+// Hourly usage per seat, model and surface (setkernel-live#66), and each seat's newest limit readings
+// (setkernel-live#88). Only the Worker calls it, over RPC, with what cleanUsage or cleanLimits has
+// already checked. A bucket pushed again replaces the stored one, so a pusher can resend an hour's
+// running totals; a limit reading replaces the stored one only if it is as new or newer.
 export class Usage extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
     this.sql.exec(`CREATE TABLE IF NOT EXISTS buckets (hour TEXT NOT NULL, seat TEXT NOT NULL, model TEXT NOT NULL,
       surface TEXT NOT NULL, ${COUNTS.map((k) => `${k} INTEGER NOT NULL`).join(", ")}, PRIMARY KEY (hour, seat, model, surface))`);
+    // One row per seat and part (five_hour, seven_day, event): `at` is its observed_at or received_at,
+    // `value` the cleaned part as JSON. A seat has at most three rows, so nothing needs pruning.
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS seat_limits (seat TEXT NOT NULL, part TEXT NOT NULL, at TEXT NOT NULL,
+      value TEXT NOT NULL, PRIMARY KEY (seat, part))`);
+  }
+
+  // { seat: { five_hour, seven_day, event } } as stored, each part null until a reading of it arrives.
+  #limits() {
+    const out = {};
+    for (const { seat, part, value } of this.sql.exec("SELECT seat, part, value FROM seat_limits ORDER BY seat, part")) {
+      (out[seat] ??= { five_hour: null, seven_day: null, event: null })[part] = JSON.parse(value);
+    }
+    return out;
+  }
+
+  // Keeps each part pushed unless the stored one is newer (times are toISOString's, so they sort as
+  // text), and answers with every seat's limits as now stored. A part pushed as null changes nothing.
+  pushLimits(limits) {
+    const upsert = `INSERT INTO seat_limits (seat, part, at, value) VALUES (?, ?, ?, ?)
+      ON CONFLICT (seat, part) DO UPDATE SET at = excluded.at, value = excluded.value WHERE excluded.at >= seat_limits.at`;
+    this.ctx.storage.transactionSync(() => {
+      for (const [seat, parts] of Object.entries(limits)) {
+        for (const [part, v] of Object.entries(parts)) if (v) this.sql.exec(upsert, seat, part, v.observed_at ?? v.received_at, JSON.stringify(v));
+      }
+    });
+    return { limits: this.#limits() };
   }
 
   // Each hour summed per seat over its models and surfaces, oldest first.
@@ -162,11 +206,14 @@ export class Usage extends DurableObject {
   }
 
   // The month's Halifax days, each seat's sums per day, each seat's totals for the month, and the
-  // newest hour stored in any month (null if none).
-  month(month) {
+  // newest hour stored in any month (null if none). The current Halifax month at `now` also carries
+  // the limits, once any reading is stored: they are read live, so a past month has none, and while
+  // there are none the page says it can't check them.
+  month(month, now) {
     const { from, to } = monthRange(month);
     const newest = this.sql.exec("SELECT MAX(hour) AS h FROM buckets").one().h;
-    return { month, ...sumByDay(this.#rows("hour >= ? AND hour < ?", from, to), month), newest };
+    const limits = homeDay(now).startsWith(`${month}-`) ? this.#limits() : {};
+    return { month, ...sumByDay(this.#rows("hour >= ? AND hour < ?", from, to), month), ...(Object.keys(limits).length && { limits }), newest };
   }
 }
 

@@ -1,6 +1,7 @@
 // The Usage Durable Object and its two routes in workerd (setkernel-live#66): /ingest/usage on the
 // ingest's Access app, /usage/data on its own (503 if USAGE_AUD is empty), sums per Halifax
 // day, and nothing of it on the public routes.
+// /ingest/limits (#88) on the ingest's app too, its readings as /usage/data's limits on the current month only.
 // Run: npm run test:worker
 import { env, exports } from "cloudflare:workers";
 import { evictDurableObject, runInDurableObject } from "cloudflare:test";
@@ -8,6 +9,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import worker from "../../src/worker.js";
 import { CERTS, ISSUER } from "../../src/access.js";
 import { COUNTS, hourOf as hour } from "../../src/usage.js";
+import { homeDay } from "../../public/lib/state.js";
 
 const BASE = "https://live.setkernel.com";
 const OTHER_AUD = "c".repeat(64); // another Access app's tag
@@ -49,6 +51,11 @@ async function push(body, { token } = {}) {
   if (token !== null) headers["Cf-Access-Jwt-Assertion"] = token ?? (await sign(env.INGEST_AUD));
   return answer(await exports.default.fetch(`${BASE}/ingest/usage`, { method: "POST", headers, body: typeof body === "string" ? body : JSON.stringify(body) }));
 }
+async function pushLimits(body, { token } = {}) {
+  const headers = {};
+  if (token !== null) headers["Cf-Access-Jwt-Assertion"] = token ?? (await sign(env.INGEST_AUD));
+  return answer(await exports.default.fetch(`${BASE}/ingest/limits`, { method: "POST", headers, body: typeof body === "string" ? body : JSON.stringify(body) }));
+}
 // GET /usage/data with the shipped USAGE_AUD, unless `aud` says otherwise.
 async function read(month, { token, aud = USAGE_AUD } = {}) {
   const headers = {};
@@ -57,6 +64,8 @@ async function read(month, { token, aud = USAGE_AUD } = {}) {
 }
 // What the store holds, per hour, seat and model.
 const stored = () => runInDurableObject(store(), (_, ctx) => ctx.storage.sql.exec("SELECT hour, seat, model, input, requests FROM buckets ORDER BY hour, seat, model").toArray());
+
+const storedLimits = () => runInDurableObject(store(), (_, ctx) => ctx.storage.sql.exec("SELECT seat, part, at FROM seat_limits ORDER BY seat, part").toArray());
 
 const bucket = (hour, seat, n, extra = {}) => ({ hour, seat, model: "claude-opus-5-5", surface: "vm", ...Object.fromEntries(COUNTS.map((k, i) => [k, n * (i + 1)])), ...extra });
 const counts = (n) => Object.fromEntries(COUNTS.map((k, i) => [k, n * (i + 1)]));
@@ -158,6 +167,71 @@ describe("usage", () => {
     for (const method of ["GET", "PUT", "DELETE"]) expect((await answer(await exports.default.fetch(`${BASE}/ingest/usage`, { method }))).status, method).toBe(405);
     const req = new Request(`${BASE}/ingest/usage`, { method: "POST", headers: { "Cf-Access-Jwt-Assertion": await sign(env.INGEST_AUD) }, body: "{}" });
     expect((await answer(await worker.fetch(req, { ...env, INGEST_AUD: "" }))).status).toBe(503);
+  });
+
+  // limits: each seat's newest reading, as public/usage/limits.js reads them (setkernel-live#88)
+  const T0 = Date.now();
+  const iso = (ago) => new Date(T0 - ago).toISOString();
+  const win = (utilization, ago, extra = {}) => ({ utilization, resets_at: iso(ago - 3 * 3_600_000), observed_at: iso(ago), ...extra });
+  const rejected = (ago) => ({ status: "rejected", rate_limit_type: "five_hour", resets_at: iso(ago - 3_600_000), received_at: iso(ago) });
+  const thisMonth = () => homeDay(Date.now()).slice(0, 7);
+  const lastMonth = () => new Date(Date.parse(`${thisMonth()}-01T12:00:00Z`) - 5 * 86_400_000).toISOString().slice(0, 7);
+
+  it("stores each seat's newest limit readings and serves them as limits on the current Halifax month only", async () => {
+    expect((await read(thisMonth())).json).not.toHaveProperty("limits"); // none yet: the page says it can't check them
+    const first = { rigel: { five_hour: win(0.84, 60_000), seven_day: win(0.52, 60_000, { resets_at: null }), event: null }, lyra: { five_hour: win(0.31, 120_000), note: "dropped" } };
+    const pushed = await pushLimits(first);
+    expect(pushed.status).toBe(200);
+    expect(pushed.cache).toBe("no-store");
+    const want = { rigel: { five_hour: win(0.84, 60_000), seven_day: win(0.52, 60_000, { resets_at: null }), event: null }, lyra: { five_hour: win(0.31, 120_000), seven_day: null, event: null } };
+    expect(pushed.json).toEqual({ limits: want });
+
+    // an older reading changes nothing, a newer one replaces only its own part, and null erases nothing
+    await pushLimits({ rigel: { five_hour: win(0.10, 3_600_000), seven_day: null, event: rejected(30_000) }, lyra: { seven_day: win(0.73, 90_000) } });
+    const got = await read(thisMonth());
+    expect(got.status).toBe(200);
+    expect(got.json.limits).toEqual({ rigel: { ...want.rigel, event: rejected(30_000) }, lyra: { ...want.lyra, seven_day: win(0.73, 90_000) } });
+    await pushLimits({ rigel: { five_hour: win(1, 10_000) } });
+    expect((await read(thisMonth())).json.limits.rigel.five_hour).toEqual(win(1, 10_000));
+    expect(await storedLimits()).toHaveLength(5);
+
+    // read live, so a past month carries none
+    const past = await read(lastMonth());
+    expect(past.status).toBe(200);
+    expect(past.json).toEqual({ month: lastMonth(), days: {}, totals: {} });
+  });
+
+  it("refuses a bad limits push with 400 and stores none of it", async () => {
+    const good = { five_hour: win(0.5, 60_000) };
+    for (const body of ["{", "[]", "null", { codex: good }, { vega: good, raghav: good }, { vega: { five_hour: win(-1, 60_000) } }, { vega: { five_hour: win(0.5, 60_000, { observed_at: "yesterday" }) } }, { vega: { event: { ...rejected(1000), rate_limit_type: "overage" } } }]) {
+      expect((await pushLimits(body)).status, JSON.stringify(body)).toBe(400);
+    }
+    expect((await pushLimits("x".repeat(256 * 1024 + 1))).status).toBe(413);
+    expect(await storedLimits()).toEqual([]);
+  });
+
+  it("answers /ingest/limits 403 for no token, a forged one or another app's, 405 for anything but POST, 503 while INGEST_AUD is empty", async () => {
+    const body = { vega: { five_hour: win(0.5, 60_000) } };
+    for (const token of [null, "", "not.a.jwt", await sign(OTHER_AUD), await sign(USAGE_AUD), await sign(env.INGEST_AUD, { iss: "https://evil.cloudflareaccess.com" }), await sign(env.INGEST_AUD, { exp: 1 })]) {
+      expect((await pushLimits(body, { token })).status).toBe(403);
+    }
+    for (const method of ["GET", "PUT", "DELETE"]) expect((await answer(await exports.default.fetch(`${BASE}/ingest/limits`, { method }))).status, method).toBe(405);
+    const req = new Request(`${BASE}/ingest/limits`, { method: "POST", headers: { "Cf-Access-Jwt-Assertion": await sign(env.INGEST_AUD) }, body: JSON.stringify(body) });
+    expect((await answer(await worker.fetch(req, { ...env, INGEST_AUD: "" }))).status).toBe(503);
+    expect(await storedLimits()).toEqual([]);
+  });
+
+  it("shows no limits on /api/state, /api/replay or the /ws first frame", async () => {
+    await pushLimits({ rigel: { five_hour: win(0.8765, 60_000), seven_day: win(0.4321, 60_000), event: rejected(30_000) } });
+    const ws = (await exports.default.fetch(`${BASE}/ws`, { headers: { Upgrade: "websocket" } })).webSocket;
+    const first = new Promise((resolve) => ws.addEventListener("message", (m) => resolve(m.data)));
+    ws.accept();
+    const seen = [(await answer(await exports.default.fetch(`${BASE}/api/state`))).text, (await answer(await exports.default.fetch(`${BASE}/api/replay?h=24`))).text, await first];
+    ws.close(1000, "done");
+    await evictDurableObject(hub(), { webSockets: "close" });
+    for (const text of seen) {
+      for (const word of ["limits", "five_hour", "seven_day", "utilization", "0.8765", "0.4321", "rejected", "rate_limit_type", "resets_at", "observed_at", "rigel"]) expect(text).not.toContain(word);
+    }
   });
 
   it("shows none of it on /api/state, /api/replay or the /ws first frame", async () => {

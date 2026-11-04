@@ -88,7 +88,7 @@ const STATES = [
   ["normal", "", "2026-10-28T17", 15, NORMAL],
   ["limit", "", "2026-10-28T17", 15, LIMIT],
   ["stale", "", "2026-10-28T13", 11, STALE],
-  ["unread", "", "2026-10-28T17", 15, null], // /usage/data without limits: what the Worker answers today
+  ["unread", "", "2026-10-28T17", 15, null], // /usage/data without limits: what the Worker answers until a reading is stored
   ["past", "?month=2026-09", "2026-10-28T17", 15, NORMAL],
   ["loading", "", null, 0, "hang"],
   ["refused", "", null, 0, 403],

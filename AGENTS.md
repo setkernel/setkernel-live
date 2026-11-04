@@ -34,12 +34,13 @@ Public repo: everything here is visible to anyone.
 a laptop.
 
 ## Layout
-- `src/worker.js`: routes (`/ws`, `/api/state`, `/api/replay`, `/ingest`, `/ingest/usage`, `/usage/data`, `/usage/`, `/github/webhook`, `/github/queue`) and the `Hub` and `Usage` Durable Objects.
+- `src/worker.js`: routes (`/ws`, `/api/state`, `/api/replay`, `/ingest`, `/ingest/usage`, `/ingest/limits`, `/usage/data`, `/usage/`, `/github/webhook`, `/github/queue`) and the `Hub` and `Usage` Durable Objects.
 - `src/logic.js`: the allowlist (pure, tested); re-exports the state from `public/lib/state.js`.
 - `src/access.js`: checks the Cloudflare Access token on `/ingest` and `/github/queue` (pure, tested).
 - `src/github.js`: the GitHub Actions webhook check, the fields it keeps, and the pull queue (pure, tested).
-- `src/usage.js`: what `/ingest/usage` accepts and how `/usage/data` sums it per Halifax day (pure, tested);
-  the `Usage` Durable Object (SQLite, migration `v2`) is in `src/worker.js`. Private: never route it to the Hub.
+- `src/usage.js`: what `/ingest/usage` and `/ingest/limits` accept (`cleanUsage`, `cleanLimits`) and how
+  `/usage/data` sums usage per Halifax day (pure, tested); the `Usage` Durable Object (SQLite, migration `v2`;
+  `seat_limits` is created in code) is in `src/worker.js`. Private: never route it to the Hub.
 - `src/watch.js`: when to post "updates stopped" and "updates resumed" to Buzz (pure, tested).
 - `src/buzz.js`: signs and posts a Buzz message as the Worker's own identity (tested).
 - `src/evidence.js`: the v4 showcase's publisher (setkernel-live#52), a public pull request's evidence and
