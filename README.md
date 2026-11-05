@@ -62,11 +62,16 @@ wall service ── filtered events ──▶  /ingest (Access: service token on
 
 ## Deploy
 
-The Deploy workflow (`.github/workflows/deploy.yml`) runs on every push to `main`, so a merge
-deploys. It runs `npm run validate`, deploys, runs the smoke check and, if that fails, rolls back.
-Pushes that change only `*.md` files or `docs/` don't deploy. Runs never overlap; a waiting run is replaced by a newer one. To redeploy
-`main` without a change, start the workflow by hand (workflow_dispatch). Never deploy from a laptop. `/api/state` carries `version`, the `VERSION` var from `wrangler.jsonc`:
-`dev` unless the deploy sets the commit with `wrangler deploy --var VERSION:<commit>`.
+The Deploy workflow (`.github/workflows/deploy.yml`) runs on every push to `main`, docs-only ones
+too, so a merge deploys. It follows the org's deploy contract (setkernel/hq
+`templates/repo/.github/workflows/deploy.yml`, checked by hq `tools/check-deploy-contract.py`): jobs
+`check` (`npm run validate`), `deploy`, `smoke`, `rollback`, `smoke-again` and `report`. Only
+`deploy` and `rollback` can get the deploy token; the checks and the smoke run without it. Runs
+never overlap (`concurrency: deploy-setkernel-live`); a waiting run is replaced by a newer one. To
+redeploy `main` without a change, start the workflow by hand (workflow_dispatch). Never deploy from
+a laptop. Each deploy is one Worker version with the message `deploy <commit>`, carrying the two
+Worker secrets from Infisical. `/api/state` carries `version`, the `VERSION` var from
+`wrangler.jsonc`: `dev` unless the deploy sets the commit with `wrangler deploy --var VERSION:<commit>`.
 
 `node scripts/smoke.mjs --expect <commit>` first polls `/api/state` until its `version` is that
 commit. The field comes from the Durable Object's own code, and for a few minutes after a deploy
@@ -78,10 +83,15 @@ each route once: `/` 200, `/api/state` 200 with every key the page uses, `/api/r
 status codes, that host, key names and the version, never a response body, and exits 1 on failure (2 on bad
 arguments).
 
-If the smoke fails, the workflow runs `wrangler rollback` to the previous version (message
-"smoke check failed for <commit>") and opens an issue titled "Deploy smoke check failed for
-<short commit>", labelled `agent-ready`, with the run link and the last 60 lines of the smoke
-output. The issue exists because the rollback happened: fix the change and merge it again.
+Before it deploys, `deploy` records the version serving all traffic and the commit its
+`deploy <commit>` message names. If the smoke fails, `rollback` runs `wrangler rollback` to that
+version (message "rollback from <short commit>"), and `smoke-again` runs the smoke with
+`--expect` that commit. Any failed job, the checks included, opens one issue titled "Deploy failed
+for <short commit>", labelled `agent-ready`, with each job's result and the run link; the smoke
+output is in the run's log. It also gets `owner` when the rollback failed, no version was live, or
+the version rolled back to failed its smoke too (or names no commit, as a version from before
+setkernel-live#83 does): then nothing rolls back again. main is unchanged either way: fix the
+change and merge it again.
 
 ### Reading a failed smoke
 
@@ -94,7 +104,7 @@ Read the output from the top:
 - `FAIL GET /api/state: 200, version X, want Y`: the version changed after the wait had seen
   the right one. Either the Durable Object is still switching between old and new code, or someone
   rolled back or deployed by hand. The Deployments list shows which. A later Deploy run can't
-  overlap this one (`concurrency: deploy-production`).
+  overlap this one (`concurrency: deploy-setkernel-live`).
 - `FAIL GET /api/state: 200, missing keys: …`: the page's data changed shape; `view()` in
   `public/lib/state.js` and `STATE_KEYS` in `scripts/smoke.mjs` must agree (the worker tests check).
 - `FAIL GET /usage/data: 200, want …`: the route answered without a login, so its Access app is

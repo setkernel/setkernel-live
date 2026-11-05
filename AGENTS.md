@@ -26,10 +26,15 @@ Public repo: everything here is visible to anyone.
 ```
 
 ## Deploy
-`.github/workflows/deploy.yml`, runs on every push to `main` (not for `*.md` or `docs/` only) and by hand
-(workflow_dispatch); a failed smoke check rolls back and opens an `agent-ready` issue. It reads
-`CLOUDFLARE_API_TOKEN` from Infisical (project `setkernel-live`, prod) through the OIDC identity
-`setkernel-live-deploy`, which accepts only that workflow on `main`. The token itself is
+`.github/workflows/deploy.yml`, runs on every push to `main` (docs-only ones too) and by hand
+(workflow_dispatch). It is setkernel/hq's deploy contract template (`templates/repo/.github/workflows/deploy.yml`
+at 6e8fdbd) and must keep passing hq `tools/check-deploy-contract.py --repo setkernel-live`: a failed
+smoke rolls back to the version live before, smokes that, and opens an `agent-ready` issue (`owner` too
+if the rollback or its smoke fails). Where it differs from the template, the header says why (`npm run
+validate`, the identity and folder, `VERSION` and the Worker secrets in the deploy's one version). It
+reads `CLOUDFLARE_API_TOKEN`, `GITHUB_WEBHOOK_SECRET` and `BUZZ_PRIVATE_KEY` from Infisical (project
+`setkernel-live`, prod, `/`) through the OIDC identity `setkernel-live-deploy`, which accepts only that
+workflow on `main`, in the `deploy` and `rollback` jobs only. The token itself is
 `setkernel-live-deploy` in setkernel-cloudflare `stacks/services/api_tokens.tf`. Never deploy from
 a laptop.
 

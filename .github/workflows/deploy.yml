@@ -1,48 +1,79 @@
 name: Deploy
 
+# The org's deploy-on-merge contract (setkernel/hq#801, setkernel-live#83), from setkernel/hq
+# templates/repo/.github/workflows/deploy.yml at 6e8fdbd; setkernel/hq tools/check-deploy-contract.py
+# checks it each week. Every push to main deploys main's head (docs-only pushes too), the smoke check
+# runs against what was deployed, a failed smoke rolls back to the version that was live before and
+# smokes that, and a failed run opens an agent-ready issue with the run's URL.
+# - One concurrency group, never cancelled: a newer push replaces the pending run, so the newest main
+#   always deploys and no deploy stops half way.
+# - Only `deploy` and `rollback` can get the deploy token (id-token: write), and they run no app code:
+#   install scripts are off and wrangler runs without the OIDC request variables. The checks and the
+#   smoke run in jobs that have no token; only `report` can write issues.
+# - Rollback: `deploy` records the live version, and the commit its "deploy <sha>" message names, before
+#   it deploys. If the smoke fails, `rollback` puts that version back, and `smoke-again` smokes it with
+#   --expect that commit. If that fails too, or the rollback fails, or no version was live, nothing rolls
+#   back again and the issue gets `owner`. main is unchanged either way; the next push deploys again.
+# Where this file differs from the template, for this repo:
+# - `check` runs `npm run validate` (what CI runs) on .nvmrc's Node; the repo has no Makefile.
+# - The identity and folder are this repo's own (setkernel-live-deploy, the project's root folder), not
+#   vars.DEPLOY_INFISICAL_IDENTITY and /deploy. The same identity serves `rollback`.
+# - The deploy sets VERSION to the commit (scripts/smoke.mjs waits for /api/state's `version`) and puts
+#   the two Worker secrets from Infisical into the same version, so each deploy is one version.
+# - The smoke may wait 10 minutes for the Durable Object to run the new code, so its jobs get 15, and
+#   scripts/smoke.mjs has no dependencies, so they install nothing.
 on:
-  # Deploy on merge (setkernel-live#30, hq#152): every push to main deploys, then a smoke check
-  # waits for the Durable Object to run the new commit and checks each route; a failed check rolls
-  # back to the previous version and opens an issue for the agents. Docs-only pushes don't deploy.
   push:
     branches: [main]
-    paths-ignore: ["**.md", "docs/**"]
-  workflow_dispatch: {}
+  workflow_dispatch: {} # re-deploys main's head
+
+permissions: {}
 
 concurrency:
-  group: deploy-production
+  group: deploy-${{ github.event.repository.name }}
   cancel-in-progress: false
 
-permissions:
-  contents: read
-
 jobs:
-  deploy:
+  # The same checks as ci.yml, on this exact commit, before anything is deployed.
+  check:
+    if: github.ref == 'refs/heads/main'
     runs-on: setkernel-linux
-    timeout-minutes: 25 # the smoke check may wait up to 10 minutes for the Durable Object
+    timeout-minutes: 20
     permissions:
       contents: read
-      id-token: write # OIDC login to Infisical
-      issues: write   # open an issue when the smoke check fails
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: npm
-
-      - run: npm ci
-
+      - run: npm ci --no-audit --no-fund
       - name: Re-gate before deploy
         run: npm run validate
 
-      # The deploy token lives in Infisical (project setkernel-live, prod), not in GitHub
-      # (setkernel decision 0003 + amendments). Fetched last, so no npm script runs with it. The
-      # org-runner Access token gets past Cloudflare Access; the identity only accepts this
-      # workflow on main of this repo.
+  deploy:
+    needs: check
+    runs-on: setkernel-linux
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # OIDC login to Infisical
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    outputs:
+      previous-version: ${{ steps.live.outputs.version }}
+      previous-sha: ${{ steps.live.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # wrangler from the lockfile; no install script runs in the job that can get the token
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      # The deploy token lives in Infisical (project setkernel-live, prod), not in GitHub (decision 0003
+      # + amendments). The org-runner Access token gets past Cloudflare Access; the identity only accepts
+      # this workflow on main of this repo.
       - name: Fetch the deploy token from Infisical
         uses: Infisical/secrets-action@d2e351f16c6ca20d17c85e6c992e04bdeb64e87d # v1.0.18
         with:
@@ -50,54 +81,176 @@ jobs:
           identity-id: 37b06681-c931-4bad-b3cf-4e76bfb633dc # setkernel-live-deploy
           oidc-audience: https://github.com/setkernel
           domain: https://secrets-api.setkernel.net
-          project-slug: setkernel-live
+          project-slug: ${{ github.event.repository.name }}
           env-slug: prod
           secret-path: /
           export-type: env
           extra-headers: |
             CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
             CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-
-      # Account is resolved from the token; wrangler.jsonc carries no account id.
-      # GITHUB_WEBHOOK_SECRET (same Infisical project) becomes a Worker secret for /github/webhook,
-      # and BUZZ_PRIVATE_KEY (the Worker's Buzz identity for the "updates stopped" alert,
-      # setkernel-live#9) another; the deploy fails if either is missing from Infisical.
-      - uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
-        env:
-          GITHUB_WEBHOOK_SECRET: ${{ env.GITHUB_WEBHOOK_SECRET }}
-          BUZZ_PRIVATE_KEY: ${{ env.BUZZ_PRIVATE_KEY }}
-        with:
-          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
-          secrets: |
-            GITHUB_WEBHOOK_SECRET
-            BUZZ_PRIVATE_KEY
-          # VERSION = this commit, so /api/state shows which code the Durable Object runs.
-          command: deploy --var VERSION:${{ github.sha }}
-
-      # Runs without the deploy credentials: they are removed from its environment.
-      - name: Smoke check
-        id: smoke
+      # What a failed smoke rolls back to: the version serving all traffic, and the commit its message
+      # names. A Worker with no deployment yet has nothing to roll back to.
+      - name: Record the live version
+        id: live
         run: |
-          set -o pipefail
-          env -u CLOUDFLARE_API_TOKEN -u GITHUB_WEBHOOK_SECRET -u BUZZ_PRIVATE_KEY \
-            node scripts/smoke.mjs --expect "${{ github.sha }}" 2>&1 | tee smoke.log
+          unset ACTIONS_ID_TOKEN_REQUEST_URL ACTIONS_ID_TOKEN_REQUEST_TOKEN
+          if ! npx --no-install wrangler deployments status --json > "$RUNNER_TEMP/live.json"; then
+            echo "::warning::no live version read, so there is nothing to roll back to"
+            exit 0
+          fi
+          version=$(jq -r '[.versions[]? | select(.percentage == 100) | .version_id][0] // empty' "$RUNNER_TEMP/live.json")
+          [ -n "$version" ] || exit 0
+          message=$(npx --no-install wrangler versions view "$version" --json |
+            jq -r '.annotations["workers/message"] // empty') || message=
+          sha=$(printf '%s\n' "$message" | sed -n 's/^deploy \([0-9a-f]\{40\}\)$/\1/p')
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+      # The account comes from the token; wrangler.jsonc carries no account id. VERSION = this commit, so
+      # /api/state shows which code the Durable Object runs. GITHUB_WEBHOOK_SECRET (/github/webhook) and
+      # BUZZ_PRIVATE_KEY (the Worker's Buzz identity, setkernel-live#9) come from the same Infisical
+      # project and go into this version as Worker secrets, read from stdin, never a file; the deploy
+      # fails if either is missing.
+      - name: Deploy
+        id: deploy
+        run: |
+          for name in GITHUB_WEBHOOK_SECRET BUZZ_PRIVATE_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::${name} is not in Infisical (project setkernel-live, prod, /)"
+              exit 1
+            fi
+          done
+          jq -n '{GITHUB_WEBHOOK_SECRET: env.GITHUB_WEBHOOK_SECRET, BUZZ_PRIVATE_KEY: env.BUZZ_PRIVATE_KEY}' |
+            env -u ACTIONS_ID_TOKEN_REQUEST_URL -u ACTIONS_ID_TOKEN_REQUEST_TOKEN \
+              npx --no-install wrangler deploy --message "deploy ${GITHUB_SHA}" \
+                --var "VERSION:${GITHUB_SHA}" --secrets-file /dev/stdin
 
-      - name: Roll back to the previous version
-        if: failure() && steps.smoke.outcome == 'failure'
+  # The smoke check, without the deploy token: it fails until the Durable Object runs this commit.
+  # Its output is status codes, key names and the version only (scripts/smoke.mjs), never a body.
+  smoke:
+    needs: deploy
+    runs-on: setkernel-linux
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Smoke check
+        run: node scripts/smoke.mjs --expect "${GITHUB_SHA}"
+
+  # A failed smoke puts back the version that was live before this deploy, once.
+  rollback:
+    needs: [deploy, smoke]
+    if: ${{ !cancelled() && needs.smoke.result == 'failure' }}
+    runs-on: setkernel-linux
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # OIDC login to Infisical
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Fetch the deploy token from Infisical
+        uses: Infisical/secrets-action@d2e351f16c6ca20d17c85e6c992e04bdeb64e87d # v1.0.18
+        with:
+          method: oidc
+          identity-id: 37b06681-c931-4bad-b3cf-4e76bfb633dc # setkernel-live-deploy
+          oidc-audience: https://github.com/setkernel
+          domain: https://secrets-api.setkernel.net
+          project-slug: ${{ github.event.repository.name }}
+          env-slug: prod
+          secret-path: /
+          export-type: env
+          extra-headers: |
+            CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+            CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      - name: Roll back
         env:
-          CLOUDFLARE_API_TOKEN: ${{ env.CLOUDFLARE_API_TOKEN }}
-        run: npx --no-install wrangler rollback --message "smoke check failed for ${{ github.sha }}"
+          VERSION: ${{ needs.deploy.outputs.previous-version }}
+        run: |
+          if [ -z "$VERSION" ]; then
+            echo "::error::no version was live before ${GITHUB_SHA}, so there is nothing to roll back to"
+            exit 1
+          fi
+          env -u ACTIONS_ID_TOKEN_REQUEST_URL -u ACTIONS_ID_TOKEN_REQUEST_TOKEN \
+            npx --no-install wrangler rollback "$VERSION" --message "rollback from ${GITHUB_SHA::7}" --yes
 
-      # smoke.log holds status codes, key names and the version only (scripts/smoke.mjs), never a body.
+  # The same smoke check against the version rolled back to, without the token.
+  smoke-again:
+    needs: [deploy, rollback]
+    if: ${{ !cancelled() && needs.rollback.result == 'success' }}
+    runs-on: setkernel-linux
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Smoke check the version rolled back to
+        env:
+          EXPECT: ${{ needs.deploy.outputs.previous-sha }}
+        run: |
+          if [ -z "$EXPECT" ]; then
+            echo "::error::the version rolled back to names no commit (its message is not 'deploy <sha>'), so nothing can check it"
+            exit 1
+          fi
+          node scripts/smoke.mjs --expect "$EXPECT"
+
+  # Any failure above, the checks included, opens one issue for the agents, and for the owner too when
+  # a failed smoke could not be rolled back or failed again after it. The runner image has curl and jq
+  # but no gh.
+  report:
+    needs: [check, deploy, smoke, rollback, smoke-again]
+    if: failure()
+    runs-on: setkernel-linux
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
       - name: Open an issue for the agents
-        if: failure() && steps.smoke.outcome == 'failure'
         env:
           GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CHECK: ${{ needs.check.result }}
+          DEPLOY: ${{ needs.deploy.result }}
+          SMOKE: ${{ needs.smoke.result }}
+          ROLLBACK: ${{ needs.rollback.result }}
+          SMOKE_AGAIN: ${{ needs.smoke-again.result }}
+          VERSION: ${{ needs.deploy.outputs.previous-version }}
+          PREVIOUS: ${{ needs.deploy.outputs.previous-sha }}
         run: |
-          {
-            echo "The deploy of ${{ github.sha }} failed its smoke check and was rolled back to the previous version."
-            echo; echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo; echo '```'; tail -n 60 smoke.log; echo '```'
-            echo; echo "README \"Reading a failed smoke\" says what each line means."
-          } > body.md
-          gh issue create --repo "${{ github.repository }}" --title "Deploy smoke check failed for ${GITHUB_SHA::7}" --label agent-ready --body-file body.md
+          more='[]'
+          case "${ROLLBACK}:${SMOKE_AGAIN}" in
+            success:success)
+              rolled="The smoke failed, so this run rolled back to ${VERSION} (${PREVIOUS}), and the smoke passed on that. main is unchanged: fix it there and the next push deploys again." ;;
+            success:*)
+              more='["owner"]'
+              if [ -z "$PREVIOUS" ]; then
+                rolled="The smoke failed, so this run rolled back to ${VERSION}, but that version's message names no commit, so no smoke could check it. main is unchanged."
+              else
+                rolled="The smoke failed, so this run rolled back to ${VERSION} (${PREVIOUS}), but the smoke failed on that too: the smoke or the environment is wrong, not ${GITHUB_SHA::7}. Nothing was rolled back again. main is unchanged."
+              fi ;;
+            failure:*)
+              more='["owner"]'
+              rolled="The smoke failed and the rollback failed (the job log says why), so ${GITHUB_SHA::7} may still be live. main is unchanged." ;;
+            *)
+              rolled="Nothing was rolled back: no smoke failed after a deploy." ;;
+          esac
+          body="The deploy of ${GITHUB_SHA} failed. Jobs: check ${CHECK}, deploy ${DEPLOY}, smoke ${SMOKE}, rollback ${ROLLBACK}, smoke-again ${SMOKE_AGAIN}.
+
+          ${rolled}
+
+          Run: ${RUN_URL}
+
+          README \"Reading a failed smoke\" says what each smoke line means."
+          jq -n --arg title "Deploy failed for ${GITHUB_SHA::7}" --arg body "$body" --argjson more "$more" \
+            '{title: $title, body: $body, labels: ["agent-ready"]} | .labels += $more' |
+            curl -fsS -X POST "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/issues" \
+              -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" --data-binary @- > /dev/null
