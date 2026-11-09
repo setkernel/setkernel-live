@@ -12,7 +12,7 @@
 // TOP_SCRIPTS of each, or every script with --scripts.
 //
 // The token needs Account Analytics: Read and nothing else. Pass it from Infisical in the
-// environment; it is never printed. CI: the `baseline` workflow (workflow_dispatch).
+// environment; it is never printed. Run it by hand (README.md, "The baseline").
 
 import { pathToFileURL } from "node:url";
 import allowances from "../allowances.json" with { type: "json" };
