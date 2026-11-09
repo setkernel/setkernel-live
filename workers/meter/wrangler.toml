@@ -1,0 +1,33 @@
+# sk-meter: the Cloudflare billing guard. One hourly cron, no routes, no public URL.
+name = "sk-meter"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = false
+preview_urls = false
+# Every var and secret reaches the Worker through the Infisical -> Cloudflare Workers secret sync
+# (project sk-ctl-workers, env prod), never through this file or CI. keep_vars stops a deploy
+# from deleting what the sync set; there is deliberately no [vars] block.
+keep_vars = true
+
+[triggers]
+# 7 past the hour, clear of the top-of-hour rush
+crons = ["7 * * * *"]
+
+[observability]
+enabled = true
+
+# The guard flags (guard:alert, guard:degrade, guard:refuse) and the last report. Every Worker that
+# reads the guard binds this same namespace as GUARD. It is the `sk-meter` namespace, owned by tofu in
+# setkernel/setkernel-cloudflare (output sk_meter_kv_namespace_id): bind it, never create it.
+[[kv_namespaces]]
+binding = "GUARD"
+id = "f79ca12aeb9347f9851f5dfd53313f39"
+
+# Set by the sync from Infisical sk-ctl-workers/prod (never in this file):
+#   BILLING_DAY          the day of the month the billing cycle starts (13); required
+#   CF_ACCOUNT_ID        the account to meter
+#   CF_ANALYTICS_TOKEN   Account Analytics: Read, on this account only
+#   ALERT_WEBHOOK_URL    https://alerts.setkernel.net/meter, forwards { source, text, mention } to Buzz
+#   ALERT_WEBHOOK_TOKEN  bearer token that endpoint checks
+#   ALERT_ACCESS_CLIENT_ID      the sk-meter-alerts Access service token in front of that
+#   ALERT_ACCESS_CLIENT_SECRET  endpoint (hq observability/README.md, "Meter alerts")
