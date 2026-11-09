@@ -10,6 +10,8 @@ The public page at https://live.setkernel.com: a Cloudflare Worker with static a
 Durable Object. sk-obs01 pushes filtered, delayed events to it; visitors watch over a WebSocket.
 It also holds `workers/meter`, sk-meter, the Cloudflare billing guard (an hourly cron, no route;
 `workers/meter/README.md`), moved here on 2026-11-09 (setkernel/hq#1449).
+`workers/status` is sk-status's code (the `/status` read model on ctl.setkernel.net), moved the same
+day; it has never been deployed and nothing here deploys it (`workers/status/README.md`).
 Public repo: everything here is visible to anyone.
 
 ## Commands
@@ -24,8 +26,9 @@ Public repo: everything here is visible to anyone.
 #                                    and repo names against GitHub's public list, live)
 # worker:   npm run test:worker      (vitest in workerd: the real Worker and Hub, see test/worker/)
 # meter:    npm run test:meter       (node --test: sk-meter's guard, usage queries, alert, baseline)
+# status:   npm run test:status      (node --test: sk-status's board, views, Access check, routes)
 # lint:     npm run check            (node --check on every script)
-# validate: npm run validate         (check + test + test:worker + test:meter + a wrangler deploy --dry-run
+# validate: npm run validate         (check + test + test:worker + test:meter + test:status + a wrangler deploy --dry-run
 #                                    of each Worker; what CI runs)
 ```
 
@@ -102,6 +105,9 @@ or nothing live to roll back to, gives the issue `owner` too.
 - `workers/meter/`: sk-meter, its own Worker (`wrangler.toml`, not `wrangler.jsonc`): `src/` the hourly
   run and the guard flags, `allowances.json`, `tools/` the baseline and the offline drill, `test/` its
   `node --test` suites. Its settings come from the Infisical -> Workers sync (`keep_vars = true`).
+- `workers/status/`: sk-status (`wrangler.toml`): `src/` the routes, the `Board` Durable Object and the
+  views, `public/status/fonts/`, `test/` (its `setup.js` resolves `cloudflare:workers` to a stand-in).
+  Not deployed; its writer, the control Worker, is being retired.
 - `test/`: `node --test` suites for the pure modules and the page (`day.test.mjs` for Day).
 - `test/worker/`: vitest suites run in workerd by `@cloudflare/vitest-plugin` (`vitest.config.mjs`
   reads `wrangler.jsonc`). They fake Access's certs with a throwaway key and drive every route
