@@ -1,0 +1,47 @@
+# sk-status: the read model of the org, as one Durable Object (hq#208). Routes on
+# ctl.setkernel.net/status only, behind its own Access app; no workers.dev or preview URL. The control Worker
+# writes to it over a service binding (the Feed entrypoint), never over HTTP (README.md).
+name = "sk-status"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = false
+preview_urls = false
+# Every var reaches the Worker through the Infisical -> Cloudflare Workers secret sync (project
+# sk-ctl-workers, env prod, folder /sk-status only: / holds sk-meter's and the control Worker's credentials),
+# never through this file or CI (decision 0003).
+keep_vars = true
+
+# /status and everything under /status/, nothing else on the hostname. The DNS record and the
+# Access app are tofu in setkernel/setkernel-cloudflare; the routes need them first (README.md).
+routes = [
+  { pattern = "ctl.setkernel.net/status", zone_name = "setkernel.net" },
+  { pattern = "ctl.setkernel.net/status/*", zone_name = "setkernel.net" },
+]
+
+# The page's two font files and their licence. Static assets are served before any Worker code
+# and aren't billed as Worker requests.
+[assets]
+directory = "public"
+
+[observability]
+enabled = true
+
+# sk-meter's guard flags. The `sk-meter` namespace, owned by tofu in setkernel/setkernel-cloudflare
+# (output sk_meter_kv_namespace_id): bind it, never create it. sk-status only reads it.
+[[kv_namespaces]]
+binding = "GUARD"
+id = "f79ca12aeb9347f9851f5dfd53313f39"
+
+[[durable_objects.bindings]]
+name = "BOARD"
+class_name = "Board"
+
+# Migration tags are permanent once deployed: never edit or reuse "v1"; a change is a new tag.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Board"]
+
+# Set by the sync from Infisical sk-ctl-workers/prod, folder /sk-status (never in this file):
+#   STATUS_ACCESS_AUD   the audience tag of the Access app `sk-status`. Unset, every request is a 401.
+#   STATUS_CLIENTS      JSON { "<service token client id>": "internal" | "public" }: the wall's
+#                       token and the showcase publisher's. Unset, only people get in.
