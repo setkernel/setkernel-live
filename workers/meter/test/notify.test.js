@@ -2,7 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { notify } from "../src/notify.js";
+import { notify, payload } from "../src/notify.js";
 
 const URL = "https://alerts.example.test/meter";
 const ALERT = { text: "x", mention: false };
@@ -39,7 +39,7 @@ test("an Access redirect to its login page is a failure, so the alert is retried
   await assert.rejects(notify({ ALERT_WEBHOOK_URL: URL }, ALERT, capture(302)), /HTTP 302/);
 });
 
-test("the receiver's contract: POST { source, text, mention } as JSON, and its 204 counts as delivered", async () => {
+test("the receiver's contract: POST { source, text, mention, title, message } as JSON, and its 204 counts as delivered", async () => {
   const f = capture(204);
   const env = { ALERT_WEBHOOK_URL: "https://alerts.setkernel.net/meter", ALERT_WEBHOOK_TOKEN: "t" };
   assert.equal(await notify(env, { text: "line 1\nline 2", mention: true }, f), true);
@@ -47,7 +47,15 @@ test("the receiver's contract: POST { source, text, mention } as JSON, and its 2
   assert.equal(url, "https://alerts.setkernel.net/meter");
   assert.equal(init.method, "POST");
   assert.equal(init.headers["content-type"], "application/json");
-  assert.deepEqual(JSON.parse(init.body), { source: "sk-meter", text: "line 1\nline 2", mention: true });
+  assert.deepEqual(JSON.parse(init.body), { source: "sk-meter", text: "line 1\nline 2", mention: true, title: "sk-meter: line 1", message: "line 1\nline 2" });
+});
+
+test("the ops Worker's /alert reads title as the subject and message as the body", () => {
+  assert.deepEqual(payload({ text: "\n  DEGRADE: queues_ops 85%\nmore", mention: true }), {
+    source: "sk-meter", text: "\n  DEGRADE: queues_ops 85%\nmore", mention: true, title: "sk-meter: DEGRADE: queues_ops 85%", message: "\n  DEGRADE: queues_ops 85%\nmore",
+  });
+  assert.equal(payload({ text: "x".repeat(500) }).title.length, 200);
+  assert.equal(payload({ text: "" }).title, "sk-meter: alert");
 });
 
 test("an http:// URL is refused before anything is sent, so no secret leaves in the clear", async () => {
