@@ -27,7 +27,6 @@ id = "f79ca12aeb9347f9851f5dfd53313f39"
 #   BILLING_DAY          the day of the month the billing cycle starts (13); required
 #   CF_ACCOUNT_ID        the account to meter
 #   CF_ANALYTICS_TOKEN   Account Analytics: Read, on this account only
-#   ALERT_WEBHOOK_URL    https://alerts.setkernel.net/meter, forwards { source, text, mention } to Buzz
-#   ALERT_WEBHOOK_TOKEN  bearer token that endpoint checks
-#   ALERT_ACCESS_CLIENT_ID      the sk-meter-alerts Access service token in front of that
-#   ALERT_ACCESS_CLIENT_SECRET  endpoint (hq observability/README.md, "Meter alerts")
+#   ALERT_WEBHOOK_URL    the ops Worker's POST /alert, which emails { title, message } (README.md)
+#   ALERT_WEBHOOK_TOKEN  its OPS_ALERT_TOKEN bearer
+#   ALERT_ACCESS_CLIENT_ID, ALERT_ACCESS_CLIENT_SECRET  unused (the old route's Access token)

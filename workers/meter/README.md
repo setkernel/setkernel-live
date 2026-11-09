@@ -83,9 +83,14 @@ nothing there.
 | `BILLING_DAY` | `13` (cycle starts on the 13th; required, 1-28) |
 | `CF_ACCOUNT_ID` | the account to meter |
 | `CF_ANALYTICS_TOKEN` | `sk-meter-analytics-read`: Account Analytics Read, nothing else (setkernel-cloudflare tofu) |
-| `ALERT_WEBHOOK_URL` | `https://alerts.setkernel.net/meter` (https only; anything else is refused) |
-| `ALERT_WEBHOOK_TOKEN` | bearer the receiver checks |
-| `ALERT_ACCESS_CLIENT_ID`, `ALERT_ACCESS_CLIENT_SECRET` | the `sk-meter-alerts` Access service token |
+| `ALERT_WEBHOOK_URL` | `https://setkernel-ops.setkernel.workers.dev/alert`, the ops Worker's email relay (https only; anything else is refused) |
+| `ALERT_WEBHOOK_TOKEN` | the ops Worker's `OPS_ALERT_TOKEN` (Infisical `hq-workers/prod`, folder `/ops`), copied, never retyped |
+| `ALERT_ACCESS_CLIENT_ID`, `ALERT_ACCESS_CLIENT_SECRET` | unused since the relay has no Access app; delete them with the `sk-meter-alerts` token |
+
+Until 2026-11-09 the URL was `https://alerts.setkernel.net/meter`, the buzz-alerts bridge on
+sk-obs01, which hq#1261 removed. An alert that fails is retried every hour, so the alert that
+was due arrives on the first run after the two values change. The body carries both shapes
+(`src/notify.js`), so the change needs no deploy of its own.
 
 The KV namespace `sk-meter` (`f79ca12aeb9347f9851f5dfd53313f39`) is tofu-owned in
 setkernel-cloudflare: this repo binds it and never creates or deletes it.
