@@ -7,7 +7,7 @@ name: Deploy
 # smokes that, and a failed run opens an agent-ready issue with the run's URL.
 # - One concurrency group, never cancelled: a newer push replaces the pending run, so the newest main
 #   always deploys and no deploy stops half way.
-# - Only `deploy` and `rollback` can get the deploy token (id-token: write), and they run no app code:
+# - Only `deploy`, `rollback` and `meter` can get the deploy token (id-token: write), and they run no app code:
 #   install scripts are off and wrangler runs without the OIDC request variables. The checks and the
 #   smoke run in jobs that have no token; only `report` can write issues.
 # - Rollback: `deploy` records the live version, and the commit its "deploy <sha>" message names, before
@@ -22,6 +22,10 @@ name: Deploy
 #   the two Worker secrets from Infisical into the same version, so each deploy is one version.
 # - The smoke may wait 10 minutes for the Durable Object to run the new code, so its jobs get 15, and
 #   scripts/smoke.mjs has no dependencies, so they install nothing.
+# - The `meter` job deploys the second Worker, sk-meter (workers/meter, setkernel/hq#1449), with the same
+#   token after the same `check`. It has no route, so it checks the live deployment itself and rolls back
+#   in the same job; like `deploy` and `rollback` it installs no scripts and runs nothing but wrangler.
+#   It doesn't wait for the page's deploy, and the page's smoke doesn't wait for it.
 on:
   push:
     branches: [main]
@@ -202,11 +206,89 @@ jobs:
           fi
           node scripts/smoke.mjs --expect "$EXPECT"
 
+  # sk-meter (workers/meter/README.md, "Deploy"): one hourly cron and no route, so nothing can be asked over
+  # HTTP. The job records the version serving all traffic, deploys, and passes only if this run's version
+  # ("deploy <sha>") now serves all of it. Otherwise it rolls back to the recorded version and fails.
+  # That is a check of the deployment, not a smoke: a version whose cron throws still passes it, and
+  # sk-watch's failed-cron-event alert covers that. Its `rollback` output tells `report` what happened:
+  # not-deployed (the deploy failed, nothing changed), nothing-live (no version to roll back to),
+  # done (rolled back, and the old version serves all traffic again) or failed (the rollback failed
+  # or didn't take); empty when the job passed.
+  meter:
+    needs: check
+    runs-on: setkernel-linux
+    timeout-minutes: 10
+    outputs:
+      rollback: ${{ steps.meter.outputs.rollback }}
+    permissions:
+      contents: read
+      id-token: write # OIDC login to Infisical
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Fetch the deploy token from Infisical
+        uses: Infisical/secrets-action@d2e351f16c6ca20d17c85e6c992e04bdeb64e87d # v1.0.18
+        with:
+          method: oidc
+          identity-id: 37b06681-c931-4bad-b3cf-4e76bfb633dc # setkernel-live-deploy
+          oidc-audience: https://github.com/setkernel
+          domain: https://secrets-api.setkernel.net
+          project-slug: ${{ github.event.repository.name }}
+          env-slug: prod
+          secret-path: /
+          export-type: env
+          extra-headers: |
+            CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+            CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      # Only CLOUDFLARE_API_TOKEN reaches wrangler: env -i drops the OIDC request variables and the
+      # page's two Worker secrets, which sk-meter never gets. Its settings come from the Infisical sync.
+      - name: Deploy sk-meter, check it, roll back if it isn't live
+        id: meter
+        run: |
+          # Whatever ends this script, the trap records how far it got (bash -e exits on any failed command).
+          state=not-deployed
+          trap 'echo "rollback=${state}" >> "$GITHUB_OUTPUT"' EXIT
+          wrangler() {
+            env -i PATH="$PATH" HOME="$HOME" CI=true WRANGLER_SEND_METRICS=false \
+              CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_TOKEN" \
+              npx --no-install wrangler "$@" --config workers/meter/wrangler.toml
+          }
+          live() { wrangler deployments status --json | jq -r '[.versions[]? | select(.percentage == 100) | .version_id][0] // empty'; }
+          before=$(live) || before=
+          wrangler deploy --message "deploy ${GITHUB_SHA}"
+          state=failed # deployed: from here a failure leaves sk-meter on an unknown version
+          now=$(live) || now=
+          message=$(wrangler versions view "$now" --json | jq -r '.annotations["workers/message"] // empty') || message=
+          if [ "$message" = "deploy ${GITHUB_SHA}" ]; then
+            echo "sk-meter serves ${now} (deploy ${GITHUB_SHA}) to all traffic"
+            state=
+            exit 0
+          fi
+          echo "::error::sk-meter's live version ${now:-(none)} is '${message}', not 'deploy ${GITHUB_SHA}'"
+          if [ -z "$before" ]; then
+            echo "::error::no version was live before, so there is nothing to roll back to"
+            state=nothing-live
+            exit 1
+          fi
+          wrangler rollback "$before" --message "rollback from ${GITHUB_SHA::7}" --yes
+          if [ "$(live)" = "$before" ]; then
+            echo "::error::rolled back to ${before}, which serves all traffic again"
+            state=done
+          else
+            echo "::error::rolled back to ${before}, but it doesn't serve all traffic"
+          fi
+          exit 1
+
   # Any failure above, the checks included, opens one issue for the agents, and for the owner too when
-  # a failed smoke could not be rolled back or failed again after it. The runner image has curl and jq
+  # a failed smoke could not be rolled back or failed again after it, or sk-meter's rollback failed or
+  # had nothing to roll back to. The runner image has curl and jq
   # but no gh.
   report:
-    needs: [check, deploy, smoke, rollback, smoke-again]
+    needs: [check, deploy, smoke, rollback, smoke-again, meter]
     if: failure()
     runs-on: setkernel-linux
     timeout-minutes: 5
@@ -222,6 +304,8 @@ jobs:
           SMOKE: ${{ needs.smoke.result }}
           ROLLBACK: ${{ needs.rollback.result }}
           SMOKE_AGAIN: ${{ needs.smoke-again.result }}
+          METER: ${{ needs.meter.result }}
+          METER_ROLLBACK: ${{ needs.meter.outputs.rollback }}
           VERSION: ${{ needs.deploy.outputs.previous-version }}
           PREVIOUS: ${{ needs.deploy.outputs.previous-sha }}
         run: |
@@ -240,11 +324,27 @@ jobs:
               more='["owner"]'
               rolled="The smoke failed and the rollback failed (the job log says why), so ${GITHUB_SHA::7} may still be live. main is unchanged." ;;
             *)
-              rolled="Nothing was rolled back: no smoke failed after a deploy." ;;
+              rolled="The page: nothing was rolled back, because no smoke failed after its deploy." ;;
           esac
-          body="The deploy of ${GITHUB_SHA} failed. Jobs: check ${CHECK}, deploy ${DEPLOY}, smoke ${SMOKE}, rollback ${ROLLBACK}, smoke-again ${SMOKE_AGAIN}.
+          # sk-meter's own outcome (the meter job). Its rollback failing, or nothing to roll back to, is the owner's.
+          case "$METER_ROLLBACK" in
+            not-deployed)
+              meter_text="sk-meter: the deploy failed before anything changed, so the version live before still serves." ;;
+            nothing-live)
+              more='["owner"]'
+              meter_text="sk-meter: this run's version was not serving all traffic, and no version was live before, so nothing was rolled back. sk-meter may be running no version at all." ;;
+            done)
+              meter_text="sk-meter: this run's version was not serving all traffic, so the meter job rolled back to the version live before, which serves all traffic again." ;;
+            failed)
+              more='["owner"]'
+              meter_text="sk-meter: this run's version was not serving all traffic and the rollback failed or did not take, so sk-meter may be on neither version. Read wrangler deployments status --config workers/meter/wrangler.toml." ;;
+            *)
+              meter_text="" ;;
+          esac
+          body="The deploy of ${GITHUB_SHA} failed. Jobs: check ${CHECK}, deploy ${DEPLOY}, smoke ${SMOKE}, rollback ${ROLLBACK}, smoke-again ${SMOKE_AGAIN}, meter ${METER} (sk-meter).
 
           ${rolled}
+          ${meter_text}
 
           Run: ${RUN_URL}
 

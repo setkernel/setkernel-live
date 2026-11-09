@@ -1,0 +1,119 @@
+{
+  "plan": "Workers Paid, $5 a month; no spend above it (setkernel/hq docs/decisions/0007-model-v4c.html)",
+  "checked": "2026-10-15",
+  "thresholds": { "alert": 0.5, "degrade": 0.8, "refuse": 0.95 },
+  "metrics": {
+    "workers_requests": {
+      "label": "Workers requests",
+      "allowance": 10000000,
+      "unit": "requests",
+      "window": "month",
+      "source": "https://developers.cloudflare.com/workers/platform/pricing/"
+    },
+    "workers_cpu_ms": {
+      "label": "Workers CPU time",
+      "allowance": 30000000,
+      "unit": "CPU ms",
+      "window": "month",
+      "source": "https://developers.cloudflare.com/workers/platform/pricing/"
+    },
+    "do_requests": {
+      "label": "Durable Objects requests",
+      "allowance": 1000000,
+      "unit": "requests",
+      "window": "month",
+      "source": "https://developers.cloudflare.com/workers/platform/pricing/"
+    },
+    "do_duration_gbs": {
+      "label": "Durable Objects duration",
+      "allowance": 400000,
+      "unit": "GB-s",
+      "window": "month",
+      "source": "https://developers.cloudflare.com/workers/platform/pricing/"
+    },
+    "workflows_steps": {
+      "label": "Workflows steps",
+      "allowance": 500000,
+      "unit": "steps",
+      "window": "month",
+      "source": "https://developers.cloudflare.com/workflows/reference/pricing/"
+    },
+    "queues_ops": {
+      "label": "Queues operations",
+      "allowance": 1000000,
+      "unit": "operations",
+      "window": "month",
+      "source": "https://developers.cloudflare.com/workers/platform/pricing/"
+    },
+    "d1_rows_read": {
+      "label": "D1 rows read",
+      "allowance": 25000000000,
+      "unit": "rows",
+      "window": "month",
+      "source": "https://developers.cloudflare.com/workers/platform/pricing/"
+    },
+    "d1_rows_written": {
+      "label": "D1 rows written",
+      "allowance": 50000000,
+      "unit": "rows",
+      "window": "month",
+      "source": "https://developers.cloudflare.com/workers/platform/pricing/"
+    },
+    "r2_storage_bytes": {
+      "label": "R2 storage",
+      "allowance": 10000000000,
+      "unit": "bytes (10 GB-month, counted as 10^9-byte GB so the guard errs low)",
+      "window": "gauge",
+      "source": "https://developers.cloudflare.com/r2/pricing/"
+    },
+    "r2_class_a": {
+      "label": "R2 Class A operations",
+      "allowance": 1000000,
+      "unit": "requests",
+      "window": "month",
+      "source": "https://developers.cloudflare.com/r2/pricing/"
+    },
+    "r2_class_b": {
+      "label": "R2 Class B operations",
+      "allowance": 10000000,
+      "unit": "requests",
+      "window": "month",
+      "source": "https://developers.cloudflare.com/r2/pricing/"
+    },
+    "kv_reads": {
+      "label": "KV reads",
+      "allowance": 10000000,
+      "unit": "operations",
+      "window": "month",
+      "source": "https://developers.cloudflare.com/workers/platform/pricing/"
+    },
+    "kv_writes": {
+      "label": "KV writes",
+      "allowance": 1000000,
+      "unit": "operations",
+      "window": "month",
+      "source": "https://developers.cloudflare.com/workers/platform/pricing/"
+    },
+    "kv_deletes": {
+      "label": "KV deletes",
+      "allowance": 1000000,
+      "unit": "operations",
+      "window": "month",
+      "source": "https://developers.cloudflare.com/workers/platform/pricing/"
+    },
+    "kv_lists": {
+      "label": "KV lists",
+      "allowance": 1000000,
+      "unit": "operations",
+      "window": "month",
+      "source": "https://developers.cloudflare.com/workers/platform/pricing/"
+    },
+    "ai_neurons": {
+      "label": "Workers AI neurons",
+      "allowance": 10000,
+      "unit": "neurons",
+      "window": "day",
+      "source": "https://developers.cloudflare.com/workers-ai/platform/pricing/"
+    }
+  }
+}

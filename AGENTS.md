@@ -8,6 +8,8 @@ secrets, branches and commits, the end-of-run report) come from setkernel's cent
 ## What this repo is
 The public page at https://live.setkernel.com: a Cloudflare Worker with static assets and one
 Durable Object. sk-obs01 pushes filtered, delayed events to it; visitors watch over a WebSocket.
+It also holds `workers/meter`, sk-meter, the Cloudflare billing guard (an hourly cron, no route;
+`workers/meter/README.md`), moved here on 2026-11-09 (setkernel/hq#1449).
 Public repo: everything here is visible to anyone.
 
 ## Commands
@@ -21,8 +23,10 @@ Public repo: everything here is visible to anyone.
 #                                    its poster (the artifact, the pull request, the shots branch, the comment),
 #                                    and repo names against GitHub's public list, live)
 # worker:   npm run test:worker      (vitest in workerd: the real Worker and Hub, see test/worker/)
+# meter:    npm run test:meter       (node --test: sk-meter's guard, usage queries, alert, baseline)
 # lint:     npm run check            (node --check on every script)
-# validate: npm run validate         (check + test + test:worker + wrangler deploy --dry-run; what CI runs)
+# validate: npm run validate         (check + test + test:worker + test:meter + a wrangler deploy --dry-run
+#                                    of each Worker; what CI runs)
 ```
 
 ## Deploy
@@ -34,9 +38,13 @@ if the rollback or its smoke fails). Where it differs from the template, the hea
 validate`, the identity and folder, `VERSION` and the Worker secrets in the deploy's one version). It
 reads `CLOUDFLARE_API_TOKEN`, `GITHUB_WEBHOOK_SECRET` and `BUZZ_PRIVATE_KEY` from Infisical (project
 `setkernel-live`, prod, `/`) through the OIDC identity `setkernel-live-deploy`, which accepts only that
-workflow on `main`, in the `deploy` and `rollback` jobs only. The token itself is
+workflow file on `main` (its binding is the file, not a job); only the `deploy`, `rollback` and
+`meter` jobs ask for it. The token itself is
 `setkernel-live-deploy` in setkernel-cloudflare `stacks/services/api_tokens.tf`. Never deploy from
 a laptop.
+The same workflow's `meter` job deploys sk-meter (`workers/meter/wrangler.toml`) with that token,
+checks that its version serves all traffic and rolls it back in the job if not. A failed rollback,
+or nothing live to roll back to, gives the issue `owner` too.
 
 ## Layout
 - `src/worker.js`: routes (`/ws`, `/api/state`, `/api/replay`, `/ingest`, `/ingest/usage`, `/ingest/limits`, `/usage/data`, `/usage/`, `/github/webhook`, `/github/queue`) and the `Hub` and `Usage` Durable Objects.
@@ -91,6 +99,9 @@ a laptop.
   put text from the artifact in the comment, and never write any ref but `visual-diff-shots`.
   The poster reads only the files main's `SHOTS` (in `scripts/visual-diff.mjs`) names, so a pull request
   that changes `SHOTS` gets no comment ("unexpected file in the artifact") until it merges.
+- `workers/meter/`: sk-meter, its own Worker (`wrangler.toml`, not `wrangler.jsonc`): `src/` the hourly
+  run and the guard flags, `allowances.json`, `tools/` the baseline and the offline drill, `test/` its
+  `node --test` suites. Its settings come from the Infisical -> Workers sync (`keep_vars = true`).
 - `test/`: `node --test` suites for the pure modules and the page (`day.test.mjs` for Day).
 - `test/worker/`: vitest suites run in workerd by `@cloudflare/vitest-plugin` (`vitest.config.mjs`
   reads `wrangler.jsonc`). They fake Access's certs with a throwaway key and drive every route
