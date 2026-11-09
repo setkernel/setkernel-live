@@ -38,11 +38,13 @@ if the rollback or its smoke fails). Where it differs from the template, the hea
 validate`, the identity and folder, `VERSION` and the Worker secrets in the deploy's one version). It
 reads `CLOUDFLARE_API_TOKEN`, `GITHUB_WEBHOOK_SECRET` and `BUZZ_PRIVATE_KEY` from Infisical (project
 `setkernel-live`, prod, `/`) through the OIDC identity `setkernel-live-deploy`, which accepts only that
-workflow on `main`, in the `deploy` and `rollback` jobs only. The token itself is
+workflow file on `main` (its binding is the file, not a job); only the `deploy`, `rollback` and
+`meter` jobs ask for it. The token itself is
 `setkernel-live-deploy` in setkernel-cloudflare `stacks/services/api_tokens.tf`. Never deploy from
 a laptop.
 The same workflow's `meter` job deploys sk-meter (`workers/meter/wrangler.toml`) with that token,
-checks that its version serves all traffic and rolls it back in the job if not.
+checks that its version serves all traffic and rolls it back in the job if not. A failed rollback,
+or nothing live to roll back to, gives the issue `owner` too.
 
 ## Layout
 - `src/worker.js`: routes (`/ws`, `/api/state`, `/api/replay`, `/ingest`, `/ingest/usage`, `/ingest/limits`, `/usage/data`, `/usage/`, `/github/webhook`, `/github/queue`) and the `Hub` and `Usage` Durable Objects.

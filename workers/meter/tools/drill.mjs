@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The offline drill (`make drill`): the live drill in README.md, step for step, against an
+// The offline drill (`node workers/meter/tools/drill.mjs`): the live drill in README.md, step for step, against an
 // in-memory KV and a fake analytics API. Nothing leaves this machine. Exit 1 if any step doesn't
 // see what the live drill must see.
 
