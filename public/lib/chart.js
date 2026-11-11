@@ -2,8 +2,8 @@
 // across the page with the Now column (wide, and the wall), across without it (medium), or down
 // the page (the phone); the Now list, the key and the table. Every string goes in with
 // textContent, and every colour comes from a class in style.css, so the CSP needs no inline style.
-import { STAR_NOTE, ciSummary, clock, stateWords, tally, whenDay, zoneName } from "./words.js";
-import { BIN, BINS, ROWS, band, binTime, ciLabel, label, levels, moment, momentTitle, poleMerges, poleTally, silentLanes } from "./day.js";
+import { ciSummary, clock, stateWords, tally, whenDay, zoneName } from "./words.js";
+import { BIN, BINS, binTime, ciLabel, levels, moment, momentTitle, rowsOf, silentLanes } from "./day.js";
 import { GRID, hourRules, labelFits } from "./layout.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -39,25 +39,29 @@ const markCls = (action) => (action === "requested_changes" ? "mark sig" : "mark
 const STAGE_STYLE = { started: { w: 2.5, cls: "st-building" }, building: { w: 2.5, cls: "st-building" }, review: { w: 5, cls: "st-review" }, fixing: { w: 2.5, cls: "st-fixing", dash: "6 4" } };
 const STAGE_STYLE_TALL = { started: { w: 1, cls: "st-started" }, building: { w: 2, cls: "st-building" }, review: { w: 4, cls: "st-review" }, fixing: { w: 2, cls: "st-fixing", dash: "4 4" } };
 
+// The chart is drawn in the page's own units: 1 at 16 px, larger where the root type grows (2560
+// px), so its words keep the page's size. The SVG is the box's width; its viewBox is that over u.
+export const unit = () => parseFloat(getComputedStyle(document.documentElement).fontSize) / 16 || 1;
+
 const sliderAttrs = (label) => ({ tabindex: 0, role: "slider", "aria-label": label, "aria-valuemin": 0, "aria-valuemax": BINS - 1, "aria-valuenow": BINS - 1 });
 
-// The lanes across: Polaris, the four engineers and CI, time running left to right to now. With
+// The lanes across: the engineers the feed sends and CI, time running left to right to now. With
 // `now` the Now column sits on the right on its own ground (the wide page and the wall).
 // Returns { svg, drawMoment(i), drawCursor(i), pick(ev) }.
 export function drawWide(box, D, { tz, offline, now = true }) {
   const S = GRID;
   box.textContent = "";
-  const W = box.clientWidth;
+  const u = unit(), W = box.clientWidth / u;
   const gutR = now ? S.gutR : 0;
   const px0 = S.gutL + S.gap, px1 = W - gutR - (now ? S.gap : 8), pw = px1 - px0;
   const x = (ts) => px0 + ((ts - D.t0) / (D.end - D.t0)) * pw;
-  const rows = ROWS.map((r) => ({ ...r }));
+  const rows = rowsOf(D);
   let y = S.axis;
   for (const r of rows) { r.y = y; r.h = S[r.kind]; y += r.h; }
   const H = y + 8;
   const top = S.axis - 8; // where the rules start, above the first row
   const lab = S.axis - 12; // the axis labels' baseline
-  const svg = node("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}`, ...sliderAttrs("The last 24 hours. Use the arrow keys to move through the day.") }, box);
+  const svg = node("svg", { width: W * u, height: H * u, viewBox: `0 0 ${W} ${H}`, ...sliderAttrs("The last 24 hours. Use the arrow keys to move through the day.") }, box);
   const bg = node("g", {}, svg), fg = node("g", {}, svg), cur = node("g", {}, svg);
   const nowX = x(D.nowS);
   const ys = (r, k) => r.y + k; // a baseline k px down the row
@@ -89,10 +93,6 @@ export function drawWide(box, D, { tz, offline, now = true }) {
     if (r.kind === "eng") {
       fit(text(g, 0, ys(r, 48), r.id, "t-name"), S.gutL);
       fit(text(g, 0, ys(r, 72), live ? tally(D.s.byAgent?.[r.id]) : "", "t-meta"), S.gutL);
-    } else if (r.kind === "pole") {
-      const n = text(g, 0, ys(r, 28), "Polaris", "t-name");
-      text(g, n.getComputedTextLength() + 8, ys(r, 28), STAR_NOTE.Polaris, "t-meta");
-      fit(text(g, 0, ys(r, 52), live ? poleTally(D.s.byAgent?.Polaris) : "", "t-meta"), S.gutL);
     } else if (r.kind === "ci") {
       text(g, 0, ys(r, 20), "CI", "t-name");
       fit(text(g, 0, ys(r, 36), live ? ciSummary(D.s.counts) : "", "t-label"), S.gutL);
@@ -112,33 +112,16 @@ export function drawWide(box, D, { tz, offline, now = true }) {
   if (offline && D.lastS) hatch(D.lastS, D.nowS, rows[0].y, ciRow.y + ciRow.h, `No word since ${clock(D.lastS, tz)}`);
   if (!D.s.lastIngest) hatch(D.t0, D.nowS, rows[0].y, ciRow.y + ciRow.h, "Nothing has arrived yet");
   if (D.ciFrom) hatch(D.t0, D.ciFrom, ciRow.y + 4, ciRow.y + ciRow.h - 4, "Older runs aren't kept");
-  if (D.workFrom) for (const r of rows.filter((r) => r.kind === "eng" || r.kind === "pole")) hatch(D.t0, D.workFrom, r.y + 4, r.y + r.h - 4, "Older actions aren't kept");
+  if (D.workFrom) for (const r of rows.filter((r) => r.kind === "eng")) hatch(D.t0, D.workFrom, r.y + 4, r.y + r.h - 4, "Older actions aren't kept");
   // a VM that stopped reporting (setkernel-live#54): its lane hatched red from the last run
   const silent = Object.fromEntries(silentLanes(D).map((l) => [l.name, l]));
   for (const r of rows.filter((r) => silent[r.id])) hatch(silent[r.id].from, silent[r.id].to, r.y + 4, r.y + r.h - 4, null, "f-hatch-sig");
 
-  // engineer lanes: one quiet activity band, and the stage line through the lane
+  // engineer lanes: the stage line through the lane, and its marks (no activity band: how much
+  // Claude or chat a lane used is usage, which the page never shows)
   for (const r of rows.filter((r) => r.kind === "eng")) {
-    const base = ys(r, 48), bandH = 32, track = ys(r, 68);
+    const track = ys(r, 56);
     const down = silent[r.id];
-    const sm = band(D, r.id);
-    if (sm.some((n) => n > 0)) {
-      let pts = sm.map((n, i) => [x(binTime(D, i) + BIN / 2), base - (bandH * n) / D.maxAct]);
-      if (down?.lastRun != null) {
-        // the band stops at the last run, where the hatch begins, so it never runs into it
-        const xs = x(down.from), k = pts.findIndex(([px]) => px > xs);
-        if (k >= 0) {
-          const [[ax, ay], [bx, by]] = [pts[k - 1] ?? [xs, base], pts[k]];
-          pts = [...pts.slice(0, k), [xs, ay + ((by - ay) * (xs - ax)) / (bx - ax || 1)]];
-          sm.length = pts.length;
-        }
-      }
-      const line = pts.map(([px, py], i) => `${i ? "L" : "M"}${px.toFixed(1)} ${py.toFixed(1)}`).join("");
-      node("path", { d: `${line}L${pts.at(-1)[0].toFixed(1)} ${base}L${pts[0][0].toFixed(1)} ${base}Z`, class: "f-band" }, fg);
-      // the edge only where there is activity: an empty stretch draws nothing, not a second rule
-      const edge = pts.map(([px, py], i) => (sm[i] > 0 || sm[i - 1] > 0 ? `${i && (sm[i - 1] > 0 || sm[i - 2] > 0) ? "L" : "M"}${px.toFixed(1)} ${py.toFixed(1)}` : "")).join("");
-      node("path", { d: edge, class: "s-bar", "stroke-width": 1, "stroke-linejoin": "round" }, fg);
-    }
     // the faint track; a VM that stopped reporting: it stops at the last run, with a red end cap
     const trackTo = down ? x(down.from) : nowX;
     if (trackTo > px0) node("line", { x1: px0, x2: trackTo, y1: track, y2: track, class: "s-rule-2", "stroke-width": 1 }, fg);
@@ -163,12 +146,6 @@ export function drawWide(box, D, { tz, offline, now = true }) {
       t.setAttribute("y", track + 16);
       t.setAttribute("text-anchor", "end");
     } else t.remove();
-  }
-  // Polaris: one quiet tick per merge, on a light rule
-  for (const r of rows.filter((r) => r.kind === "pole")) {
-    const yy = ys(r, 40);
-    node("line", { x1: px0, x2: nowX, y1: yy, y2: yy, class: "s-rule", "stroke-width": 1 }, bg);
-    for (const w of poleMerges(D)) mark(fg, "tick", x(w.ts), yy, 2 * S.r, label(w, tz), "tick");
   }
   // CI: one shared row with no owner; a pass is a quiet tick, a failure the red bar
   const ciY = ciRow.y + 16;
@@ -209,9 +186,6 @@ export function drawWide(box, D, { tz, offline, now = true }) {
         text(mom, mx, ys(r, 24), lines[0] ? r.id : "", "t-now-who");
         big(ys(r, 48), lines[0] ?? "", lines.idle, lines.state, lines.silent);
         fit(text(mom, mx, ys(r, 72), lines[1] ?? "", "t-now-detail"), room);
-      } else if (r.kind === "pole") {
-        fit(text(mom, mx, ys(r, 28), lines[0] ?? "", "t-now-pole"), room);
-        fit(text(mom, mx, ys(r, 52), lines[1] ?? "", "t-label"), room);
       } else {
         fit(text(mom, mx, ys(r, 20), lines[0] ?? "", "t-now-pole"), room);
         if (lines[1]) fit(text(mom, mx, ys(r, 36), lines[1], "t-label"), room);
@@ -241,25 +215,21 @@ export function drawWide(box, D, { tz, offline, now = true }) {
 // The phone: time runs down the page, newest at the top, one column per row.
 export function drawTall(box, D, { tz, offline }) {
   box.textContent = "";
-  const W = box.clientWidth;
-  const ax = 40, colW = { pole: 24, eng: Math.floor((W - ax - 24 - 24 - 12) / 4), ci: 24 };
+  const u = unit(), W = box.clientWidth / u;
+  const ax = 40, colW = { eng: Math.floor((W - ax - 24 - 6) / D.lanes.length), ci: 24 };
   const cols = [];
   let cx = ax;
-  for (const r of ROWS) {
+  for (const r of rowsOf(D)) {
     if (r.kind === "sep") { cx += 6; continue; }
     cols.push({ ...r, x: cx, w: colW[r.kind] });
     cx += colW[r.kind];
   }
   const top = 70, binH = 5, H = top + BINS * binH + 12;
   const y = (ts) => top + ((D.end - ts) / (D.end - D.t0)) * BINS * binH;
-  const svg = node("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}`, ...sliderAttrs("The last 24 hours, newest first. Use the arrow keys to move through the day.") }, box);
+  const svg = node("svg", { width: W * u, height: H * u, viewBox: `0 0 ${W} ${H}`, ...sliderAttrs("The last 24 hours, newest first. Use the arrow keys to move through the day.") }, box);
   const bg = node("g", {}, svg), fg = node("g", {}, svg), cur = node("g", {}, svg);
-  // headers: the engineers across the top, Polaris set vertically over its narrow column
-  for (const c of cols) {
-    if (c.kind === "eng") { text(bg, c.x + c.w / 2, top - 10, c.id, "t-sub t-ink", "middle"); continue; }
-    if (c.kind === "ci") { text(bg, c.x + c.w / 2, top - 10, "CI", "t-sub", "middle"); continue; }
-    text(bg, 0, 0, c.id, "t-sub t-ink").setAttribute("transform", `translate(${c.x + c.w / 2 + 4} ${top - 8}) rotate(-90)`);
-  }
+  // headers: the engineers across the top, then CI
+  for (const c of cols) text(bg, c.x + c.w / 2, top - 10, c.kind === "ci" ? "CI" : c.id, c.kind === "ci" ? "t-sub" : "t-sub t-ink", "middle");
   node("line", { x1: 0, x2: W, y1: top - 4, y2: top - 4, class: "s-rule" }, bg);
   for (const { ts, mid } of hourRules(D.t0, D.nowS, D.mid)) {
     node("line", { x1: mid ? 0 : ax - 4, x2: W, y1: y(ts), y2: y(ts), class: mid ? "s-rule-2" : "s-rule" }, bg);
@@ -286,27 +256,20 @@ export function drawTall(box, D, { tz, offline }) {
   for (const c of cols.filter((c) => silent[c.id])) hatch(silent[c.id].from, silent[c.id].to, c.x + 2, c.x + c.w - 2, null, "f-hatch-sig");
   for (const c of cols) {
     if (c.kind === "eng") {
-      const left = c.x + 4, barW = c.w * 0.5, track = c.x + c.w * 0.68;
+      const track = c.x + c.w / 2;
       const down = silent[c.id];
       if (down?.lastRun != null && down.lastRun >= D.t0) node("line", { x1: track - 8, x2: track + 8, y1: y(down.from), y2: y(down.from), class: "st-fixing", "stroke-width": 2 }, fg);
-      const total = D.total[c.id];
-      for (let i = 0; i < BINS; i++) {
-        if (total[i]) node("rect", { x: left, y: y(binTime(D, i) + BIN), width: Math.max(1.5, (barW * total[i]) / D.maxAct), height: binH, class: "f-band" }, fg);
-      }
       for (const sp of D.spans[c.id]) {
         const st = STAGE_STYLE_TALL[sp.stage];
         node("line", { x1: track, x2: track, y1: y(sp.to), y2: Math.max(y(sp.from), y(sp.to) + 1), class: st.cls, "stroke-width": st.w, ...(st.dash ? { "stroke-dasharray": st.dash } : {}) }, fg);
       }
       for (const w of D.marks[c.id]) mark(fg, w.action, track, y(w.ts), 4.5, w.title, markCls(w.action));
       node("line", { x1: c.x + c.w, x2: c.x + c.w, y1: top, y2: H - 12, class: "s-rule" }, bg);
-    } else if (c.kind === "ci") {
+    } else {
       for (const r of D.ci) {
         const pass = r.result === "pass";
         mark(fg, pass ? "tick" : "ci-fail", c.x + c.w / 2, y(r.ts), pass ? 6 : 5, ciLabel(r, tz), pass ? "tick" : "mark sig").setAttribute("transform", `rotate(90 ${c.x + c.w / 2} ${y(r.ts)})`);
       }
-    } else {
-      node("line", { x1: c.x + c.w / 2, x2: c.x + c.w / 2, y1: top, y2: H - 12, class: "s-rule" }, bg);
-      for (const w of poleMerges(D)) mark(fg, "tick", c.x + c.w / 2, y(w.ts), 8, label(w, tz), "tick").setAttribute("transform", `rotate(90 ${c.x + c.w / 2} ${y(w.ts)})`);
     }
   }
   node("rect", { class: "plotframe", x: ax - 4, y: top - 2, width: W - ax + 4, height: H - top - 8 }, bg);
@@ -344,11 +307,11 @@ export function drawNowList(ul, D, i, { tz, offline }) {
   ul.textContent = "";
   if (!D.s.lastIngest) return;
   ul.appendChild(el("li", "when", momentTitle(D, i, offline, tz)));
-  for (const r of ROWS) {
+  for (const r of rowsOf(D)) {
     if (r.kind === "sep") continue;
     const lines = moment(D, r, i, tz);
     const li = el("li");
-    const a = el("span", r.kind === "eng" ? `l1${lines.idle ? " idle" : ""}${lines.silent ? " silent" : ""}` : "l2", lines[0] || (r.kind === "pole" ? poleTally(D.s.byAgent?.Polaris) : ""));
+    const a = el("span", r.kind === "eng" ? `l1${lines.idle ? " idle" : ""}${lines.silent ? " silent" : ""}` : "l2", lines[0] || "");
     if (lines.state && lines[0]) a.prepend(stateShape(lines.state));
     const extra = r.kind === "ci" ? [lines[1], ciSummary(D.s.counts)].filter(Boolean).join(" · ") : lines[1] ?? "";
     li.append(el("span", "who", r.id), a, el("span", "l2", extra));
@@ -362,12 +325,7 @@ export function fillLegend(ul, items) {
   for (const it of items) {
     const li = el("li");
     const s = node("svg", { "aria-hidden": "true" });
-    if (it.kind === "band") {
-      s.setAttribute("class", "sw band");
-      s.setAttribute("viewBox", "0 0 24 16");
-      node("path", { d: "M0 14L6 9L12 11L18 4L24 8V14Z", class: "f-band" }, s);
-      node("path", { d: "M0 14L6 9L12 11L18 4L24 8", class: "s-bar" }, s);
-    } else if (it.kind === "stages") {
+    if (it.kind === "stages") {
       // the stages as one entry: a short swatch each, the words beside them
       s.setAttribute("class", `sw sw-${it.stages.length}`);
       s.setAttribute("viewBox", `0 0 ${it.stages.length * 28 - 4} 16`);
@@ -390,7 +348,7 @@ export function fillTable(box, rows, tz) {
   box.textContent = "";
   const t = el("table");
   t.appendChild(el("caption", "", rows.length
-    ? `${rows.length} ${rows.length === 1 ? "action" : "actions"} in the last 24 hours, newest first. Claude requests and chat posts are counted per ten minutes in the chart, not listed.`
+    ? `${rows.length} ${rows.length === 1 ? "action" : "actions"} in the last 24 hours, newest first.`
     : "Nothing in the last 24 hours."));
   const head = t.createTHead().insertRow();
   for (const h of ["Time", "Who", "What"]) {
