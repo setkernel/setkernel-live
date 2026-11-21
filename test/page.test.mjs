@@ -32,7 +32,9 @@ test("CSP allows scripts, styles and fonts only from the page itself", () => {
 
 test("index.html and style.css fetch nothing from another host", () => {
   const html = read("index.html");
+  assert.match(html, /<link rel="canonical" href="https:\/\/live\.setkernel\.com\/">/, "the main page names its canonical URL");
   for (const m of html.matchAll(/<(link|script|img|iframe)\b[^>]*>/gi)) {
+    if (/rel="canonical"/.test(m[0])) continue; // names this page's URL; fetches nothing
     assert.doesNotMatch(m[0], /(src|href)\s*=\s*["']?(https?:)?\/\//i, m[0]);
   }
   const css = read("style.css");
